@@ -1,0 +1,980 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>TraceTheToxin</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>
+*{ margin:0; padding:0; box-sizing:border-box; }
+
+body{
+  font-family:-apple-system,BlinkMacSystemFont,sans-serif;
+  background:#111;
+  color:white;
+  height:100vh;
+  display:flex;
+  flex-direction:column;
+}
+
+header{
+  padding:12px;
+  background:#181818;
+  border-bottom:1px solid #333;
+}
+
+.header-top{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+}
+
+header h1{ font-size:20px; }
+
+header p{ font-size:12px; opacity:.8; margin-top:3px; }
+
+.stats{
+  display:flex;
+  justify-content:space-between;
+  margin-top:10px;
+  font-size:13px;
+}
+
+/* Language toggle */
+.lang-toggle{
+  display:flex;
+  gap:4px;
+  align-items:center;
+  flex-shrink:0;
+}
+
+.lang-btn{
+  background:#303030;
+  color:#aaa;
+  border:none;
+  border-radius:6px;
+  padding:5px 9px;
+  font-size:12px;
+  font-weight:600;
+  cursor:pointer;
+  transition:background .15s,color .15s;
+}
+
+.lang-btn.active{
+  background:#00a7b5;
+  color:white;
+}
+
+#map{ flex:1; }
+
+.panel{
+  background:#181818;
+  padding:12px;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  border-top:1px solid #333;
+}
+
+select, input{
+  width:100%;
+  padding:12px;
+  border:none;
+  border-radius:8px;
+  background:#262626;
+  color:white;
+  font-size:14px;
+}
+
+button{
+  padding:14px;
+  border:none;
+  border-radius:8px;
+  cursor:pointer;
+  font-weight:bold;
+  font-size:14px;
+}
+
+.report-btn{ background:#ff4b4b; color:white; }
+.export-btn{ background:#00a7b5; color:white; }
+
+.filters{
+  display:flex;
+  gap:6px;
+  overflow-x:auto;
+}
+
+.filter{
+  background:#303030;
+  color:white;
+  padding:10px 14px;
+  border-radius:8px;
+  white-space:nowrap;
+  font-size:13px;
+}
+
+.filter.active{
+  background:#00a7b5;
+}
+
+/* Manual pin mode toggle */
+.pin-mode-row{
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+
+.pin-mode-btn{
+  flex:1;
+  background:#303030;
+  color:#ccc;
+  padding:11px;
+  border-radius:8px;
+  font-size:13px;
+  transition:background .15s,color .15s;
+}
+
+.pin-mode-btn.active{
+  background:#f5a623;
+  color:#111;
+}
+
+.pin-mode-hint{
+  font-size:11px;
+  color:#888;
+  text-align:center;
+}
+
+/* Legend bar */
+.legend{
+  display:flex;
+  gap:10px;
+  font-size:11px;
+  align-items:center;
+  flex-wrap:wrap;
+}
+
+.legend-item{
+  display:flex;
+  align-items:center;
+  gap:4px;
+  opacity:.8;
+}
+
+.legend-dot{
+  width:10px;
+  height:10px;
+  border-radius:50%;
+  display:inline-block;
+}
+
+.leaflet-popup-content{ color:#111; font-size:13px; line-height:1.6; }
+
+/* ── Compass widget ───────────────────────────────── */
+.compass-control{
+  background:rgba(24,24,24,.92);
+  border-radius:50%;
+  width:72px;
+  height:72px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  box-shadow:0 2px 10px rgba(0,0,0,.5);
+  border:1px solid #444;
+  cursor:default;
+  user-select:none;
+}
+.compass-rose{ position:relative; width:54px; height:54px; }
+.compass-rose svg{ width:54px; height:54px; }
+.compass-deg{ font-size:9px; color:#aaa; margin-top:1px; letter-spacing:.5px; text-align:center; }
+
+/* ── Live wind marker at GPS ──────────────────────── */
+.wind-label{
+  background:rgba(0,168,181,.92);
+  color:white;
+  border-radius:6px;
+  padding:2px 6px;
+  font-size:10px;
+  font-weight:700;
+  white-space:nowrap;
+  box-shadow:0 1px 4px rgba(0,0,0,.4);
+  pointer-events:none;
+  text-align:center;
+  line-height:1.4;
+}
+
+/* ── Backtrack trail ──────────────────────────────── */
+@keyframes dashMove{
+  to{ stroke-dashoffset:-20; }
+}
+.bt-popup-inner{
+  font-family:-apple-system,BlinkMacSystemFont,sans-serif;
+  font-size:13px;
+  line-height:1.6;
+  color:#111;
+}
+.bt-clear-btn{
+  background:#555;
+  color:white;
+  border:none;
+  border-radius:6px;
+  padding:5px 12px;
+  font-size:12px;
+  cursor:pointer;
+  margin-top:4px;
+  width:100%;
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-top">
+    <div>
+      <h1>TraceTheToxin</h1>
+      <p id="subtitle">Community Air Reporting Network</p>
+    </div>
+    <div class="lang-toggle">
+      <button class="lang-btn active" onclick="setLang('en')">🇬🇧 EN</button>
+      <button class="lang-btn" onclick="setLang('sr')">🇷🇸 SR</button>
+    </div>
+  </div>
+  <div class="stats">
+    <span id="reportCount">0 Reports</span>
+    <span id="updated">Loading...</span>
+  </div>
+</header>
+
+<div id="map"></div>
+<!-- Compass overlay — positioned via JS as Leaflet control -->
+<div id="compassWidget" class="compass-control" title="Compass" style="display:none">
+  <div class="compass-rose">
+    <svg viewBox="0 0 54 54" xmlns="http://www.w3.org/2000/svg" id="compassSvg">
+      <!-- outer ring -->
+      <circle cx="27" cy="27" r="26" fill="none" stroke="#444" stroke-width="1.2"/>
+      <!-- cardinal labels -->
+      <text x="27" y="8"  text-anchor="middle" fill="#fff" font-size="7" font-weight="700">N</text>
+      <text x="27" y="51" text-anchor="middle" fill="#888" font-size="6">S</text>
+      <text x="50" y="30" text-anchor="middle" fill="#888" font-size="6">E</text>
+      <text x="4"  y="30" text-anchor="middle" fill="#888" font-size="6">W</text>
+      <!-- needle group — rotated by JS -->
+      <g id="compassNeedle" style="transform-origin:27px 27px">
+        <!-- North (red) -->
+        <polygon points="27,6 23,27 27,24 31,27" fill="#ff4b4b"/>
+        <!-- South (white) -->
+        <polygon points="27,48 23,27 27,30 31,27" fill="#ccc"/>
+        <!-- centre dot -->
+        <circle cx="27" cy="27" r="2.5" fill="#fff"/>
+      </g>
+    </svg>
+  </div>
+  <div class="compass-deg" id="compassDeg">--°</div>
+</div>
+
+<div class="panel">
+
+  <select id="category">
+    <option value="Chemical"   data-sr="Hemijsko">Chemical</option>
+    <option value="Smoke"      data-sr="Dim">Smoke</option>
+    <option value="Sulfur"     data-sr="Sumpor">Sulfur</option>
+    <option value="Sewage"     data-sr="Kanalizacija">Sewage</option>
+    <option value="Plastic"    data-sr="Plastika">Plastic</option>
+    <option value="Dust"       data-sr="Prašina">Dust</option>
+    <option value="Unknown"    data-sr="Nepoznato">Unknown</option>
+  </select>
+
+  <input id="comment" type="text" placeholder="Optional notes...">
+
+  <!-- Manual pin toggle -->
+  <div class="pin-mode-row">
+    <button class="pin-mode-btn" id="pinModeBtn" onclick="togglePinMode()">
+      📍 <span id="pinModeLabel">Set location manually</span>
+    </button>
+  </div>
+  <p class="pin-mode-hint" id="pinModeHint" style="display:none" data-en="Tap the map to place your pin, then report." data-sr="Tapni kartu da postaviš pin, pa prijavi.">Tap the map to place your pin, then report.</p>
+
+  <button class="report-btn" onclick="reportBadAir()">
+    ⚠️ <span id="reportBtnLabel">REPORT BAD AIR</span>
+  </button>
+
+  <div class="filters">
+    <button class="filter" id="fh1"  onclick="setFilterHours(1)"> <span data-en="1h"  data-sr="1h">1h</span></button>
+    <button class="filter" id="fh3"  onclick="setFilterHours(3)"> <span data-en="3h"  data-sr="3h">3h</span></button>
+    <button class="filter" id="fh6"  onclick="setFilterHours(6)"> <span data-en="6h"  data-sr="6h">6h</span></button>
+    <button class="filter" id="fh12" onclick="setFilterHours(12)"><span data-en="12h" data-sr="12h">12h</span></button>
+  </div>
+
+  <div class="filters">
+    <button class="filter active" id="f1"    onclick="setFilter(1)">   <span data-en="Today"   data-sr="Danas">Today</span></button>
+    <button class="filter"        id="f7"    onclick="setFilter(7)">   <span data-en="7 Days"  data-sr="7 dana">7 Days</span></button>
+    <button class="filter"        id="f30"   onclick="setFilter(30)">  <span data-en="30 Days" data-sr="30 dana">30 Days</span></button>
+    <button class="filter"        id="f9999" onclick="setFilter(9999)"><span data-en="All Time" data-sr="Sve">All Time</span></button>
+  </div>
+
+  <div class="legend">
+    <span style="font-size:11px;color:#888;" data-en="Pin age:" data-sr="Starost pina:" id="legendLabel">Pin age:</span>
+    <span class="legend-item"><span class="legend-dot" style="background:#ff4b4b"></span> <span data-en="Fresh" data-sr="Svež" class="leg">Fresh</span></span>
+    <span class="legend-item"><span class="legend-dot" style="background:#e07a00"></span> <span data-en="1–6h"  data-sr="1–6h"  class="leg">1–6h</span></span>
+    <span class="legend-item"><span class="legend-dot" style="background:#888"></span>    <span data-en="6–24h" data-sr="6–24h" class="leg">6–24h</span></span>
+    <span class="legend-item"><span class="legend-dot" style="background:#555"></span>    <span data-en="Older" data-sr="Starije" class="leg">Older</span></span>
+  </div>
+
+  <button class="export-btn" onclick="downloadCSV()">
+    <span id="csvLabel">Download CSV</span>
+  </button>
+
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<script>
+
+/* ── Supabase ─────────────────────────────────────── */
+const SUPABASE_URL = 'https://fnkqmwweljsupbmerbkh.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZua3Ftd3dlbGpzdXBibWVyYmtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE3OTcwODUsImV4cCI6MjA5NzM3MzA4NX0.eX3mxnSpGmJ6Ebw7Y4F_jHiJarPH4ri9WNYXwmLi16I';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+/* ── i18n ─────────────────────────────────────────── */
+let lang = 'en';
+
+const T = {
+  subtitle:       { en:'Community Air Reporting Network', sr:'Mreža za prijavu kvaliteta vazduha' },
+  reportCount:    { en:'Reports', sr:'Prijava' },
+  loading:        { en:'Loading...', sr:'Učitavanje...' },
+  reportBtn:      { en:'REPORT BAD AIR', sr:'PRIJAVI LOŠ VAZDUH' },
+  pinModeOff:     { en:'Set location manually', sr:'Postavi lokaciju ručno' },
+  pinModeOn:      { en:'Using map pin — tap to move', sr:'Koristi pin sa karte — tapni za pomak' },
+  pinHint:        { en:'Tap the map to place your pin, then report.', sr:'Tapni kartu da postaviš pin, pa prijavi.' },
+  csvLabel:       { en:'Download CSV', sr:'Preuzmi CSV' },
+  legendLabel:    { en:'Pin age:', sr:'Starost pina:' },
+  commentPH:      { en:'Optional notes...', sr:'Opciona napomena...' },
+  waitGps:        { en:'Waiting for GPS...', sr:'Čekanje GPS-a...' },
+  locationReq:    { en:'Location access required.', sr:'Potreban je pristup lokaciji.' },
+  submitted:      { en:'Report submitted.', sr:'Prijava uspešna.' },
+  popupTitle:     { en:'⚠️ Air Report', sr:'⚠️ Prijava vazduha' },
+  popupCat:       { en:'Category', sr:'Kategorija' },
+  popupDate:      { en:'Date', sr:'Datum' },
+  popupWind:      { en:'Wind', sr:'Vetar' },
+  popupDir:       { en:'Direction', sr:'Smer' },
+  popupPressure:  { en:'Pressure', sr:'Pritisak' },
+  popupNotes:     { en:'Notes', sr:'Napomena' },
+  popupNone:      { en:'None', sr:'Nema' },
+};
+
+function t(key){ return T[key]?.[lang] ?? key; }
+
+function setLang(l){
+  lang = l;
+  document.querySelectorAll('.lang-btn').forEach(b=>{
+    // match by onclick attribute value e.g. setLang('en')
+    b.classList.toggle('active', b.getAttribute('onclick').includes("'"+l+"'"));
+  });
+  applyLang();
+  // reload open popups so backtrack section re-renders in new language
+  map.eachLayer(layer=>{
+    if(layer.getPopup && layer.getPopup() && layer.isPopupOpen()){
+      layer.closePopup();
+    }
+  });
+  // re-render all pins with new language
+  if(currentHours) loadPinsByHours(currentHours);
+  else loadPins();
+}
+
+function applyLang(){
+  document.getElementById('subtitle').textContent    = t('subtitle');
+  document.getElementById('reportBtnLabel').textContent = t('reportBtn');
+  document.getElementById('csvLabel').textContent    = t('csvLabel');
+  document.getElementById('legendLabel').textContent = t('legendLabel');
+  document.getElementById('comment').placeholder     = t('commentPH');
+  document.getElementById('pinModeLabel').textContent = pinMode ? t('pinModeOn') : t('pinModeOff');
+  document.getElementById('pinModeHint').textContent = t('pinHint');
+
+  // filter buttons (all spans with data-en)
+  document.querySelectorAll('.filters span[data-en]').forEach(el=>{
+    el.textContent = el.dataset[lang] || el.dataset.en;
+  });
+
+  // legend spans
+  document.querySelectorAll('.leg').forEach(el=>{
+    el.textContent = el.dataset[lang] || el.dataset.en;
+  });
+
+  // category select
+  const sel = document.getElementById('category');
+  Array.from(sel.options).forEach(opt=>{
+    opt.textContent = lang==='sr' ? (opt.dataset.sr || opt.value) : opt.value;
+  });
+
+  // updated text
+  const upd = document.getElementById('updated');
+  if(upd.textContent === 'Loading...' || upd.textContent === 'Učitavanje...')
+    upd.textContent = t('loading');
+}
+
+/* ── Map ──────────────────────────────────────────── */
+const map = L.map('map').setView([45.25,19.85],11);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+  attribution:'© OpenStreetMap'
+}).addTo(map);
+
+let userCoords   = null;
+let userMarker   = null;
+let reportMarkers= [];
+let pinMode      = false;
+let manualCoords = null;
+let manualMarker = null;
+let currentDays  = 1;
+
+/* ── GPS ──────────────────────────────────────────── */
+navigator.geolocation.watchPosition(
+  (pos)=>{
+    userCoords = { lat:pos.coords.latitude, lon:pos.coords.longitude };
+    if(!userMarker){
+      userMarker = L.circleMarker([userCoords.lat,userCoords.lon],{
+        radius:8, color:'#00d0ff', fillColor:'#00d0ff', fillOpacity:.8
+      }).addTo(map);
+      if(!pinMode) map.setView([userCoords.lat,userCoords.lon],13);
+    } else {
+      userMarker.setLatLng([userCoords.lat,userCoords.lon]);
+    }
+  },
+  ()=>{ /* silent — alert only on report attempt */ },
+  { enableHighAccuracy:true }
+);
+
+/* ── Manual pin mode ──────────────────────────────── */
+function togglePinMode(){
+  pinMode = !pinMode;
+  const btn = document.getElementById('pinModeBtn');
+  const hint= document.getElementById('pinModeHint');
+  btn.classList.toggle('active', pinMode);
+  document.getElementById('pinModeLabel').textContent = pinMode ? t('pinModeOn') : t('pinModeOff');
+  hint.style.display = pinMode ? 'block' : 'none';
+
+  if(!pinMode){
+    // remove manual marker when turning off
+    if(manualMarker){ map.removeLayer(manualMarker); manualMarker=null; }
+    manualCoords=null;
+  }
+}
+
+map.on('click', function(e){
+  if(!pinMode) return;
+  manualCoords = { lat:e.latlng.lat, lon:e.latlng.lng };
+  if(manualMarker){
+    manualMarker.setLatLng(e.latlng);
+  } else {
+    manualMarker = L.marker(e.latlng,{
+      icon: L.divIcon({
+        className:'',
+        html:`<div style="width:22px;height:22px;background:#f5a623;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,.5)"></div>`,
+        iconAnchor:[11,22]
+      })
+    }).addTo(map);
+  }
+});
+
+/* ── Pin age colour ───────────────────────────────── */
+function ageColor(createdAt){
+  const ageMs = Date.now() - new Date(createdAt).getTime();
+  const h = ageMs / 3600000;
+  if(h < 1)  return '#ff4b4b'; // fresh — red
+  if(h < 6)  return '#e07a00'; // 1–6 h  — amber
+  if(h < 24) return '#888888'; // 6–24 h — medium gray
+  return '#555555';             // older   — dark gray
+}
+
+/* ── Wind direction arrow ─────────────────────────── */
+function windArrow(deg){
+  // deg: meteorological — where wind is coming FROM
+  // arrow points the way wind is blowing TO
+  const arrowDeg = (deg + 180) % 360;
+  return `<span style="display:inline-block;transform:rotate(${arrowDeg}deg);font-size:16px;line-height:1">↑</span>`;
+}
+
+function degToCardinal(deg){
+  const cards = ['N','NE','E','SE','S','SW','W','NW'];
+  return cards[Math.round(deg/45)%8];
+}
+
+/* ── Markers ──────────────────────────────────────── */
+// windDeg = meteorological FROM direction; arrow points TO direction
+function makeIcon(color, windDeg){
+  // arrow points where wind blows TO
+  const arrowRot = windDeg !== undefined ? (windDeg + 180) % 360 : null;
+  const arrowSvg = arrowRot !== null ? `
+  <g transform="translate(14,14) rotate(${arrowRot})">
+    <line x1="0" y1="7" x2="0" y2="-7" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
+    <polygon points="0,-9 -2.5,-5 2.5,-5" fill="white"/>
+  </g>` : '';
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="36" viewBox="0 0 28 36">
+  <path d="M14 0C6.27 0 0 6.27 0 14c0 9.63 14 22 14 22S28 23.63 28 14C28 6.27 21.73 0 14 0z"
+        fill="${color}" stroke="rgba(0,0,0,.35)" stroke-width="1.5"/>
+  ${arrowSvg}
+</svg>`;
+  return L.divIcon({
+    className:'',
+    html:svg,
+    iconSize:[28,36],
+    iconAnchor:[14,36],
+    popupAnchor:[0,-36]
+  });
+}
+
+function clearMarkers(){
+  reportMarkers.forEach(m=>map.removeLayer(m));
+  reportMarkers=[];
+}
+
+/* ── Render a single pin ──────────────────────────── */
+function renderPin(report){
+  const reportDate = new Date(report.created_at);
+  const color = ageColor(report.created_at);
+  const arrow = windArrow(report.wind_direction);
+  const card  = degToCardinal(report.wind_direction);
+  const rid   = 'r_' + (report.id || Math.random().toString(36).slice(2));
+
+  const popupHtml = `<div class="bt-popup-inner">
+<b>${t('popupTitle')}</b><br><br>
+<b>${t('popupCat')}:</b> ${report.category || 'Unknown'}<br>
+<b>${t('popupDate')}:</b> ${reportDate.toLocaleString()}<br>
+<b>${t('popupWind')}:</b> ${report.wind_speed} km/h<br>
+<b>${t('popupDir')}:</b> ${report.wind_direction}° ${card} ${arrow}<br>
+<b>${t('popupPressure')}:</b> ${report.sea_level_pressure} hPa<br>
+<b>${t('popupNotes')}:</b> ${report.comment || t('popupNone')}
+<hr style="margin:8px 0;border-color:#ddd">
+<button class="bt-clear-btn" onclick="clearBacktrack()">
+  ${lang==='sr'?'✕ Obriši trag':'✕ Clear Trail'}
+</button>
+</div>`;
+
+  const marker = L.marker(
+    [report.latitude,report.longitude],
+    { icon: makeIcon(color, report.wind_direction) }
+  ).addTo(map);
+
+  marker.bindPopup(popupHtml, {maxWidth:240});
+
+  // Auto-run 12h backtrack on popup open
+  marker.on('popupopen', ()=>{
+    startBacktrack(report.latitude, report.longitude, report.created_at, 12);
+  });
+  marker.on('popupclose', ()=>{
+    clearBacktrack();
+  });
+
+  reportMarkers.push(marker);
+}
+
+/* ── Load pins ────────────────────────────────────── */
+async function loadPins(days){
+  if(days !== undefined) currentDays = days;
+  clearMarkers();
+
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate()-currentDays);
+
+  const {data,error} = await sb
+    .from('air_reports')
+    .select('*')
+    .order('created_at',{ascending:false});
+
+  if(error){ console.error(error); return; }
+
+  let visible=0;
+
+  data.forEach(report=>{
+    const reportDate = new Date(report.created_at);
+    if(currentDays!==9999 && reportDate<cutoff) return;
+    visible++;
+    renderPin(report);
+  });
+
+  document.getElementById('reportCount').textContent = visible + ' ' + t('reportCount');
+  document.getElementById('updated').textContent = new Date().toLocaleTimeString();
+}
+
+/* ── Filter buttons ───────────────────────────────── */
+const ALL_FILTER_IDS = ['fh1','fh3','fh6','fh12','f1','f7','f30','f9999'];
+
+function clearFilterActive(){
+  ALL_FILTER_IDS.forEach(id=>document.getElementById(id)?.classList.remove('active'));
+}
+
+// hours filter — uses fractional days for cutoff
+let currentHours = null; // null = using days mode
+
+function setFilterHours(hours){
+  clearFilterActive();
+  currentHours = hours;
+  document.getElementById('fh'+hours)?.classList.add('active');
+  loadPinsByHours(hours);
+}
+
+async function loadPinsByHours(hours){
+  clearMarkers();
+  const cutoff = new Date(Date.now() - hours * 3600000);
+
+  const {data,error} = await sb
+    .from('air_reports')
+    .select('*')
+    .order('created_at',{ascending:false});
+
+  if(error){ console.error(error); return; }
+
+  let visible=0;
+  data.forEach(report=>{
+    const reportDate = new Date(report.created_at);
+    if(reportDate < cutoff) return;
+    visible++;
+    renderPin(report);
+  });
+
+  document.getElementById('reportCount').textContent = visible + ' ' + t('reportCount');
+  document.getElementById('updated').textContent = new Date().toLocaleTimeString();
+}
+
+function setFilter(days){
+  clearFilterActive();
+  currentHours = null;
+  currentDays = days;
+  document.getElementById('f'+days)?.classList.add('active');
+  loadPins(days);
+}
+
+/* ── Report ───────────────────────────────────────── */
+async function reportBadAir(){
+  const coords = pinMode && manualCoords ? manualCoords : userCoords;
+
+  if(!coords){
+    alert(pinMode ? t('pinHint') : t('waitGps'));
+    return;
+  }
+
+  const category = document.getElementById('category').value;
+  const comment  = document.getElementById('comment').value;
+
+  try{
+    const res = await fetch(
+      `https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lon}&current=wind_speed_10m,wind_direction_10m,pressure_msl`
+    );
+    const wd = await res.json();
+    const cur = wd.current;
+
+    const {error} = await sb.from('air_reports').insert([{
+      latitude:             coords.lat,
+      longitude:            coords.lon,
+      category:             category,
+      wind_speed:           cur.wind_speed_10m,
+      wind_direction:       cur.wind_direction_10m,
+      sea_level_pressure:   cur.pressure_msl,
+      comment:              comment
+    }]);
+
+    if(error) throw error;
+
+    document.getElementById('comment').value='';
+    alert(t('submitted'));
+    loadPins();
+
+  }catch(err){
+    alert(err.message);
+  }
+}
+
+/* ── CSV ──────────────────────────────────────────── */
+async function downloadCSV(){
+  const {data} = await sb.from('air_reports').select('*');
+  if(!data||!data.length) return;
+
+  let csv='ID,Date,Latitude,Longitude,Category,WindSpeed,WindDirection,Pressure,Comment\n';
+  data.forEach(r=>{
+    csv+=`${r.id},${r.created_at},${r.latitude},${r.longitude},${r.category},${r.wind_speed},${r.wind_direction},${r.sea_level_pressure},"${r.comment||''}"\n`;
+  });
+
+  const link=document.createElement('a');
+  link.href=encodeURI('data:text/csv;charset=utf-8,'+csv);
+  link.download='TraceTheToxin.csv';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+/* ── Compass ──────────────────────────────────────── */
+// Add compass as a custom Leaflet control (top-right)
+const CompassControl = L.Control.extend({
+  options:{ position:'topright' },
+  onAdd(){ return document.getElementById('compassWidget'); }
+});
+// We'll attach it after map is ready (done at bottom)
+
+let compassHeading = null;
+
+function updateCompassNeedle(heading){
+  // heading = degrees clockwise from north (device facing direction)
+  // rotate needle so N always points to true north
+  const needle = document.getElementById('compassNeedle');
+  const deg    = document.getElementById('compassDeg');
+  if(!needle) return;
+  needle.style.transform = `rotate(${-heading}deg)`;
+  deg.textContent = Math.round(heading) + '°';
+}
+
+// DeviceOrientationEvent — works on mobile; on desktop shows static compass
+if(window.DeviceOrientationEvent){
+  const requestPermission = typeof DeviceOrientationEvent.requestPermission === 'function';
+  if(requestPermission){
+    // iOS 13+ needs explicit permission; request on first map tap
+    map.once('click', ()=>{
+      DeviceOrientationEvent.requestPermission().then(state=>{
+        if(state==='granted') listenOrientation();
+      }).catch(console.warn);
+    });
+  } else {
+    listenOrientation();
+  }
+}
+
+function listenOrientation(){
+  window.addEventListener('deviceorientationabsolute', handleOrientation, true);
+  window.addEventListener('deviceorientation',         handleOrientation, true);
+}
+
+function handleOrientation(e){
+  let heading = null;
+  if(e.absolute && e.alpha !== null){
+    heading = (360 - e.alpha) % 360; // convert alpha to compass heading
+  } else if(e.webkitCompassHeading !== undefined){
+    heading = e.webkitCompassHeading;
+  }
+  if(heading !== null){
+    compassHeading = heading;
+    updateCompassNeedle(heading);
+  }
+}
+
+/* ── Live wind at GPS location ────────────────────── */
+let liveWindMarker   = null;
+let liveWindInterval = null;
+
+async function fetchLiveWind(lat, lon){
+  try{
+    const res = await fetch(
+      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=wind_speed_10m,wind_direction_10m`
+    );
+    const d = await res.json();
+    const spd = d.current.wind_speed_10m;
+    const dir = d.current.wind_direction_10m;
+    const card = degToCardinal(dir);
+    // arrow TO direction
+    const rot = (dir + 180) % 360;
+
+    const iconHtml = `<div class="wind-label">
+      <div style="font-size:14px;transform:rotate(${rot}deg);line-height:1">↑</div>
+      <div>${spd} km/h</div>
+      <div style="font-size:9px;opacity:.8">${dir}° ${card}</div>
+    </div>`;
+
+    const icon = L.divIcon({ className:'', html:iconHtml, iconAnchor:[28,10] });
+
+    if(!liveWindMarker){
+      liveWindMarker = L.marker([lat,lon],{ icon, zIndexOffset:1000 }).addTo(map);
+    } else {
+      liveWindMarker.setLatLng([lat,lon]);
+      liveWindMarker.setIcon(icon);
+    }
+  }catch(e){ console.warn('Wind fetch failed',e); }
+}
+
+/* ── Backtrack engine ────────────────────────────── */
+let backtrackLayers = []; // polylines + markers for the trail
+let backtrackAnimFrame = null;
+
+function clearBacktrack(){
+  backtrackLayers.forEach(l=>map.removeLayer(l));
+  backtrackLayers=[];
+  if(backtrackAnimFrame){ cancelAnimationFrame(backtrackAnimFrame); backtrackAnimFrame=null; }
+}
+
+// Move a lat/lon point upwind by distKm km
+// windFromDeg = meteorological direction wind is coming FROM
+// We go in the opposite direction the wind is blowing TO, i.e. back toward source
+function moveUpwind(lat, lon, windFromDeg, distKm){
+  // upwind = opposite of where wind travels to
+  // wind travels toward (windFromDeg+180)%360
+  // upwind is back toward windFromDeg
+  const R = 6371;
+  const bearingRad = (windFromDeg * Math.PI) / 180; // go toward source
+  const d = distKm / R;
+  const lat1 = lat * Math.PI / 180;
+  const lon1 = lon * Math.PI / 180;
+  const lat2 = Math.asin(
+    Math.sin(lat1)*Math.cos(d) +
+    Math.cos(lat1)*Math.sin(d)*Math.cos(bearingRad)
+  );
+  const lon2 = lon1 + Math.atan2(
+    Math.sin(bearingRad)*Math.sin(d)*Math.cos(lat1),
+    Math.cos(d) - Math.sin(lat1)*Math.sin(lat2)
+  );
+  return { lat: lat2*180/Math.PI, lon: lon2*180/Math.PI };
+}
+
+async function fetchHistoricWind(lat, lon, isoStart, isoEnd){
+  const startDate = isoStart.slice(0,10);
+  const endDate   = isoEnd.slice(0,10);
+
+  // Open-Meteo archive has a ~5-day lag — for recent data use forecast hourly instead
+  const daysDiff = (Date.now() - new Date(isoStart)) / 86400000;
+  if(daysDiff < 7){
+    // forecast API: past_days covers up to 92 days, hourly is available immediately
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=wind_speed_10m,wind_direction_10m&wind_speed_unit=kmh&timezone=auto&past_days=7&forecast_days=1`;
+    const res = await fetch(url);
+    const d   = await res.json();
+    return d.hourly;
+  }
+
+  // Archive API for older data
+  const url = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${startDate}&end_date=${endDate}&hourly=wind_speed_10m,wind_direction_10m&wind_speed_unit=kmh&timezone=auto`;
+  const res = await fetch(url);
+  const d   = await res.json();
+  return d.hourly;
+}
+
+async function startBacktrack(lat, lon, createdAt, hours=12){
+  clearBacktrack();
+
+  try{
+    const reportTime = new Date(createdAt);
+    const startTime  = new Date(reportTime.getTime() - hours*3600000);
+
+    // Fetch hourly wind for the period
+    const hourly = await fetchHistoricWind(lat, lon,
+      startTime.toISOString(), reportTime.toISOString());
+
+    if(!hourly || !hourly.time || !hourly.time.length){
+      alert('No historical wind data available for this period.');
+      return;
+    }
+
+    // Build list of hourly wind steps covering our window, newest first
+    const steps = [];
+    for(let i=hourly.time.length-1; i>=0; i--){
+      const t = new Date(hourly.time[i]);
+      if(t >= startTime && t <= reportTime){
+        steps.push({
+          spd: hourly.wind_speed_10m[i],
+          dir: hourly.wind_direction_10m[i]
+        });
+      }
+    }
+
+    if(!steps.length){
+      alert('No wind data found for this time window.');
+      return;
+    }
+
+    // Walk upwind hour by hour, building trail points
+    const trail = [{ lat, lon }];
+    let curLat = lat, curLon = lon;
+
+    for(const step of steps){
+      const distKm = step.spd * 1; // 1 hour × speed = km travelled
+      const moved  = moveUpwind(curLat, curLon, step.dir, distKm);
+      curLat = moved.lat;
+      curLon = moved.lon;
+      trail.push({ lat:curLat, lon:curLon });
+    }
+
+    // Draw the trail as animated dashed polyline
+    const latlngs = trail.map(p=>[p.lat, p.lon]);
+
+    // Solid pale underline
+    const underline = L.polyline(latlngs, {
+      color:'#ff8800', weight:3, opacity:.25, dashArray:null
+    }).addTo(map);
+    backtrackLayers.push(underline);
+
+    // Animated dashed overlay
+    const dashed = L.polyline(latlngs, {
+      color:'#ff8800', weight:3, opacity:.9,
+      dashArray:'8 8', dashOffset:'0',
+      className:'bt-dashed'
+    }).addTo(map);
+    backtrackLayers.push(dashed);
+
+    // Animate dash offset via requestAnimationFrame
+    let offset = 0;
+    function animateDash(){
+      offset = (offset + 0.3) % 20;
+      const el = dashed.getElement();
+      if(el) el.style.strokeDashoffset = -offset;
+      backtrackAnimFrame = requestAnimationFrame(animateDash);
+    }
+    animateDash();
+
+    // Origin circle — pulsing
+    const originCircle = L.circleMarker([curLat,curLon],{
+      radius:10, color:'#ff8800', fillColor:'#ff8800',
+      fillOpacity:.35, weight:2
+    }).addTo(map);
+    backtrackLayers.push(originCircle);
+
+    // Origin label
+    const originIcon = L.divIcon({
+      className:'',
+      html:`<div style="background:#ff8800;color:white;border-radius:6px;padding:3px 7px;font-size:11px;font-weight:700;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.4);margin-left:14px">
+        ${lang==='sr'?'⚠ Mogući izvor':'⚠ Possible source'}<br>
+        <span style="font-size:9px;opacity:.85">${hours}h ${lang==='sr'?'unazad':'backtrack'}</span>
+      </div>`,
+      iconAnchor:[0,10]
+    });
+    const originMarker = L.marker([curLat,curLon],{icon:originIcon}).addTo(map);
+    backtrackLayers.push(originMarker);
+
+    // Step dots along trail
+    trail.slice(1,-1).forEach((p,i)=>{
+      const dot = L.circleMarker([p.lat,p.lon],{
+        radius:3, color:'#ff8800', fillColor:'#fff',
+        fillOpacity:.9, weight:1.5
+      }).addTo(map);
+      backtrackLayers.push(dot);
+    });
+
+    // Fit map to trail
+    map.fitBounds(L.latLngBounds(latlngs).pad(.2));
+
+  }catch(err){
+    console.error(err);
+    alert('Backtrack failed: '+err.message);
+  }
+}
+
+/* ── Init ─────────────────────────────────────────── */
+// Attach compass control
+new CompassControl().addTo(map);
+document.getElementById('compassWidget').style.display = 'flex';
+
+loadPins(1);
+setInterval(()=>loadPins(), 60000);
+
+// After GPS is available, fetch live wind and refresh every 5 min
+const _origGpsStart = navigator.geolocation.watchPosition;
+// We hook into the existing GPS watcher by polling userCoords
+function startWindWhenReady(){
+  if(userCoords){
+    fetchLiveWind(userCoords.lat, userCoords.lon);
+    liveWindInterval = setInterval(()=>{
+      if(userCoords) fetchLiveWind(userCoords.lat, userCoords.lon);
+    }, 5*60*1000);
+  } else {
+    setTimeout(startWindWhenReady, 1000);
+  }
+}
+startWindWhenReady();
+
+</script>
+</body>
+</html>
