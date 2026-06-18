@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TraceTheToxin</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body { margin: 0; font-family: -apple-system, sans-serif; background: #121212; color: #fff; display: flex; flex-direction: column; height: 100vh; }
+        #map { flex: 1; width: 100%; }
+        .controls { padding: 15px; background: #1e1e1e; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 -2px 10px rgba(0,0,0,0.5); }
+        input, button { padding: 12px; border-radius: 6px; border: none; font-size: 15px; }
+        input { background: #2a2a2a; color: white; }
+        button { background: #ff4d4d; color: white; font-weight: bold; cursor: pointer; }
+        button:hover { background: #cc3333; }
+        .download-btn { background: #00adb5; }
+        .download-btn:hover { background: #007a80; }
+    </style>
+</head>
+<body>
+
+    <div id="map"></div>
+
+    <div class="controls">
+        <input type="text" id="comment" placeholder="What does it smell like? Chemical, sulfur, smoke?">
+        <button onclick="reportBadAir()">Report Bad Air Right Here</button>
+        <button class="download-btn" onclick="downloadCSV()">Download Dataset (CSV)</button>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+
+    <script>
+        // PASTE YOUR SUPABASE KEYS HERE
+        const SUPABASE_URL = 'https://fnkqmwweljsupbmerbkh.supabase.co';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZua3Ftd3dlbGpzdXBibWVyYmtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE3OTcwODUsImV4cCI6MjA5NzM3MzA4NX0.eX3mxnSpGmJ6Ebw7Y4F_jHiJarPH4ri9WNYXwmLi16I';
+        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        // Map starts centered broadly; browser GPS will adjust this instantly
+        const map = L.map('map').setView([45.25, 19.85], 11); 
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        let userCoords = null;
+        let userMarker = null;
+
+        // Follow user GPS
+        navigator.geolocation.watchPosition(position => {
+            userCoords = { lat: position.coords.latitude, lon: position.coords.longitude };
+            
+            if (!userMarker) {
+                userMarker = L.circleMarker([userCoords.lat, userCoords.lon], {color: '#00adb5', radius: 8}).addTo(map).bindPopup("You are here").openPopup();
+                map.setView([userCoords.lat, userCoords.lon], 14);
+            } else {
+                userMarker.setLatLng([userCoords.lat, userCoords.lon]);
+            }
+        }, err => alert("Please enable GPS/Location access to drop toxic air pins."), { enableHighAccuracy: true });
+
+        // Pull existing data points
+        async function loadPins() {
+            let { data: reports, error } = await supabase.from('air_reports').select('*');
+            if (error) return console.error(error);
+
+            reports.forEach(report => {
+                const date = new Date(report.created_at).toLocaleString();
+                const popupContent = `
+                    <div style="color: #333;">
+                        <strong>⚠️ Toxic Air Logged</strong><br>
+                        <strong>Time:</strong> ${date}<br>
+                        <strong>Wind:</strong> ${report.wind_speed} km/h @ ${report.wind_direction}°<br>
+                        <strong>Pressure:</strong> ${report.sea_level_pressure} hPa<br>
+                        ${report.comment ? `<strong>Notes:</strong> "${report.comment}"` : ''}
+                    </div>
+                `;
+                L.marker([report.latitude, report.longitude]).addTo(map).bindPopup(popupContent);
+            });
+        }
+
+        // Logic to push new report
+        async function reportBadAir() {
+            if (!userCoords) return alert("Still acquiring GPS signal... try moving closer to a window or outdoors.");
+            
+            const comment = document.getElementById('comment').value;
+            
+            try {
+                // Instantly query open weather api based on exact localized coordinates
+                const weatherRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${userCoords.lat}&longitude=${userCoords.lon}&current=wind_speed_10m,wind_direction_10m,pressure_msl`);
+                const weatherData = await weatherRes.json();
+                const current = weatherData.current;
+
+                const { error } = await supabase.from('air_reports').insert([{
+                    latitude: userCoords.lat,
+                    longitude: userCoords.lon,
+                    wind_speed: current.wind_speed_10m,
+                    wind_direction: current.wind_direction_10m,
+                    sea_level_pressure: current.pressure_msl,
+                    comment: comment
+                }]);
+
+                if (error) throw error;
+
+                alert("Toxin pinned to the map! Data logged.");
+                document.getElementById('comment').value = '';
+                loadPins(); 
+
+            } catch (err) {
+                alert("Database submission error: " + err.message);
+            }
+        }
+
+        // CSV compiler for community analysis
+        async function downloadCSV() {
+            let { data: reports } = await supabase.from('air_reports').select('*');
+            if(!reports || !reports.length) return alert("No reports logged yet.");
+
+            let csvContent = "data:text/csv;charset=utf-8,ID,Timestamp_UTC,Latitude,Longitude,WindSpeed_kmh,WindDirection_Degrees,Pressure_hPa,UserComment\n" 
+                + reports.map(r => `${r.id},${r.created_at},${r.latitude},${r.longitude},${r.wind_speed},${r.wind_direction},${r.sea_level_pressure},"${(r.comment || '').replace(/"/g, '""')}"`).join("\n");
+            
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", "TraceTheToxin_Data.csv");
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        loadPins();
+    </script>
+</body>
+</html>
