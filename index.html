@@ -991,9 +991,13 @@ async function generateAllBackgroundTrails(reports) {
   clearBackgroundTrails();
   if (!reports || !reports.length) return;
 
-  // Process all pins concurrently
+// Process all pins concurrently
   reports.forEach(async (report) => {
     try {
+      // SKIP if the report is older than 24 hours
+      const reportAgeHours = (Date.now() - new Date(report.created_at)) / 3600000;
+      if (reportAgeHours > 24) return;
+
       const reportTime = new Date(report.created_at);
       const startTime = new Date(reportTime.getTime() - 6 * 3600000); // Strict 6 hours
       
@@ -1018,9 +1022,9 @@ async function generateAllBackgroundTrails(reports) {
 
       const latlngs = trail.map(p => [p.lat, p.lon]);
 
-      // Create a static, non-animated teal dotted line for the 6h background path
+      // Create a static, non-animated dotted line matching the pin's age color
       const tealTrail = L.polyline(latlngs, {
-        color: '#00a7b5', // Theme teal color
+        color: ageColor(report.created_at), // Dynamic color matching the pin
         weight: 2.5,
         opacity: 0.65,
         className: 'bg-trail-teal'
@@ -1120,20 +1124,6 @@ async function loadPinsByHours(hours){
   
   // Fire off the background teal lines generator
   generateAllBackgroundTrails(activeReports);
-}
-
-async function loadPinsByHours(hours){
-  if(hours!==undefined) currentHours=hours;
-  clearMarkers(); clearBacktrack();
-  const data=await fetchAll();
-  const cutoff=new Date(Date.now()-currentHours*3600000);
-  let n=0;
-  data.forEach(r=>{
-    if(new Date(r.created_at)<cutoff) return;
-    n++; renderPin(r);
-  });
-  document.getElementById('reportCount').textContent=n+' '+t('reportCount');
-  document.getElementById('updated').textContent=new Date().toLocaleTimeString();
 }
 
 /* ═══════════════════════════════════════════════════
