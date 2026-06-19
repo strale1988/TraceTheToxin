@@ -935,7 +935,7 @@ async function startBacktrack(lat,lon,createdAt){
 
     // animated dashes — reversed so flow goes from pin toward source
     const dashedLine=L.polyline([...latlngs].reverse(),{
-      color:'#ff8800', weight:3, opacity:.88, dashArray:'10 7'
+      color:'#ff8800', weight:3, opacity:.88, dashArray:'16 10'
     }).addTo(map);
     btLayers.push(dashedLine);
 
