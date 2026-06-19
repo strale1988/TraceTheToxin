@@ -1112,6 +1112,7 @@ async function downloadCSV(){
 ═══════════════════════════════════════════════════ */
 // Default view: today
 document.getElementById('filterSelect').value = 'd1';
+setLang('sr'); // <-- Add this line here to trigger the UI text update immediately
 loadPins(1);
 setInterval(()=>{
   const fv=document.getElementById('filterSelect').value;
