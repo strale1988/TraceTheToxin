@@ -840,6 +840,14 @@ startWindWhenReady();
    HELPERS
 ═══════════════════════════════════════════════════ */
 
+  function moveUpwind(lat,lon,windFromDeg,distKm){
+  const R=6371, br=(windFromDeg*Math.PI)/180, d=distKm/R;
+  const lat1=lat*Math.PI/180, lon1=lon*Math.PI/180;
+  const lat2=Math.asin(Math.sin(lat1)*Math.cos(d)+Math.cos(lat1)*Math.sin(d)*Math.cos(br));
+  const lon2=lon1+Math.atan2(Math.sin(br)*Math.sin(d)*Math.cos(lat1),Math.cos(d)-Math.sin(lat1)*Math.sin(lat2));
+  return { lat:lat2*180/Math.PI, lon:lon2*180/Math.PI };
+}
+  
 // 7 ageing stages
 function ageColor(createdAt){
   const h=(Date.now()-new Date(createdAt))/3600000;
@@ -883,13 +891,7 @@ function clearBacktrack(){
   if(btAnimFrame){ cancelAnimationFrame(btAnimFrame); btAnimFrame=null; }
 }
 
-function moveUpwind(lat,lon,windFromDeg,distKm){
-  const R=6371, br=(windFromDeg*Math.PI)/180, d=distKm/R;
-  const lat1=lat*Math.PI/180, lon1=lon*Math.PI/180;
-  const lat2=Math.asin(Math.sin(lat1)*Math.cos(d)+Math.cos(lat1)*Math.sin(d)*Math.cos(br));
-  const lon2=lon1+Math.atan2(Math.sin(br)*Math.sin(d)*Math.cos(lat1),Math.cos(d)-Math.sin(lat1)*Math.sin(lat2));
-  return { lat:lat2*180/Math.PI, lon:lon2*180/Math.PI };
-}
+
 
 async function fetchHistoricWind(lat,lon,isoStart,isoEnd){
   const daysDiff=(Date.now()-new Date(isoStart))/86400000;
@@ -1000,6 +1002,27 @@ function renderPin(report){
 <b>${t('popupNotes')}:</b> ${report.comment||t('popupNone')}
 </div>`;
 
+  // 1. Draw the ambient 6-hour static dotted line first (so it sits slightly behind the pin)
+  if (report.wind_speed && report.wind_direction) {
+    const totalDistKm = report.wind_speed * 6; // 6 hours total distance
+    const upwindEnd = moveUpwind(report.latitude, report.longitude, report.wind_direction, totalDistKm);
+    
+    const ambientLine = L.polyline(
+      [[report.latitude, report.longitude], [upwindEnd.lat, upwindEnd.lon]],
+      {
+        color: '#00a7b5',   // Beautiful Teal color to differentiate from the active orange track
+        weight: 2,          // Slightly thinner line
+        opacity: 0.6,       // Semi-transparent ambient look
+        dashArray: '6, 8',  // Dotted sequence
+        interactive: false  // Tapping the line won't interfere with tapping pins
+      }
+    ).addTo(map);
+    
+    // Crucial: Push to reportMarkers so it's auto-deleted when filters change
+    reportMarkers.push(ambientLine);
+  }
+
+  // 2. Draw the pin marker itself
   const marker=L.marker([report.latitude,report.longitude],{
     icon:makeIcon(color,report.wind_direction)
   }).addTo(map);
