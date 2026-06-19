@@ -1115,27 +1115,11 @@ async function downloadCSV(){
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
 }
 
-/* ═══════════════════════════════════════════════════
-   INIT
-═══════════════════════════════════════════════════ */
-// 1. Force state variables to Serbian first
-lang = 'sr';
-
-// 2. Run the language translation layout to rewrite all elements, optgroups, and options
-applyLang();
-
-// 3. Highlight the correct Serbian flag UI button natively
-document.querySelectorAll('.lang-btn').forEach(b => {
-  b.classList.toggle('active', b.getAttribute('onclick').includes("'sr'"));
-});
-
-// 4. Set the default filter selector target and boot up the map data points
+/ Default view: today
 document.getElementById('filterSelect').value = 'd1';
 loadPins(1);
-
-// 5. Keep live auto-refresh tracking working in background
-setInterval(() => {
-  const fv = document.getElementById('filterSelect').value;
+setInterval(()=>{
+  const fv=document.getElementById('filterSelect').value;
   if(fv) onFilterChange(fv);
 }, 60000);
 
