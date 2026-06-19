@@ -939,10 +939,10 @@ async function startBacktrack(lat,lon,createdAt){
     }).addTo(map);
     btLayers.push(dashedLine);
 
-    // 25% of previous speed: was 0.1, now 0.025
+    // speed
     let offset=0;
     function anim(){
-      offset=(offset-0.0012+1000)%17;
+      offset=(offset-0.0002+1000)%17;
       const el=dashedLine.getElement();
       if(el) el.style.strokeDashoffset=offset;
       btAnimFrame=requestAnimationFrame(anim);
