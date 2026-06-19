@@ -591,6 +591,9 @@ for(let i = 1; i < options.length; i++){
   const upd = document.getElementById('updated');
   if(['Loading...','Učitavanje...'].includes(upd.textContent))
     upd.textContent = t('loading');
+
+  document.getElementById('category').dispatchEvent(new Event('change'));
+  document.getElementById('intensity').dispatchEvent(new Event('change'));
 }
 
 /* ═══════════════════════════════════════════════════
