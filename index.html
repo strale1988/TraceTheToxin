@@ -1061,7 +1061,7 @@ function renderPin(report, index = 0){ // <-- Accept index
   const popupHtml=`<div class="popup-inner">
 <div class="popup-title">${t('popupTitle')}</div>
 <b>${t('popupCat')}:</b> ${report.category||'Unknown'}${intensity}<br>
-<b>${t('popupDate')}:</b> ${date.toLocaleString()}<br>
+<b>${t('popupDate')}:</b> ${date.toLocaleString('en-GB')}<br>
 <b>${t('popupWind')}:</b> ${report.wind_speed} km/h<br>
 <b>${t('popupDir')}:</b> ${report.wind_direction}° ${card}
   <span style="display:inline-block;transform:rotate(${rot}deg);font-size:15px;line-height:1;vertical-align:middle">↑</span><br>
