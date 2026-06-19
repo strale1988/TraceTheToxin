@@ -191,28 +191,30 @@ button{
   background:rgba(0,168,181,.95);
   color:white;
   border-radius:8px;
-  padding:4px 7px;
-  font-size:11px;
+  padding:5px 9px;
+  font-size:12px;
   font-weight:700;
   white-space:nowrap;
-  box-shadow:0 1px 6px rgba(0,0,0,.45);
+  box-shadow:0 2px 8px rgba(0,0,0,.5);
   pointer-events:none;
   text-align:center;
-  line-height:1.4;
+  line-height:1.5;
+  display:inline-block;
 }
 
 /* ── Possible source label ────────────────────────── */
 .source-label{
   background:#ff8800;
   color:white;
-  border-radius:7px;
-  padding:5px 9px;
+  border-radius:8px;
+  padding:6px 10px;
   font-size:12px;
   font-weight:700;
   white-space:nowrap;
-  box-shadow:0 2px 6px rgba(0,0,0,.5);
-  line-height:1.4;
+  box-shadow:0 2px 8px rgba(0,0,0,.55);
+  line-height:1.5;
   text-align:center;
+  display:inline-block;
 }
 </style>
 </head>
@@ -525,12 +527,12 @@ async function fetchLiveWind(lat,lon){
     const rot  = (dir+180)%360;   // arrow points TO direction
 
     const html = `<div class="wind-bubble">
-      <div style="font-size:15px;transform:rotate(${rot}deg);line-height:1;margin-bottom:1px">↑</div>
+      <div style="font-size:16px;transform:rotate(${rot}deg);line-height:1;margin-bottom:2px">↑</div>
       <div>${spd} km/h</div>
       <div style="font-size:10px;opacity:.85">${dir}° ${card}</div>
     </div>`;
 
-    const icon = L.divIcon({ className:'', html, iconAnchor:[32,12] });
+    const icon = L.divIcon({ className:'', html, iconAnchor:[-6,10] });
     if(!liveWindMarker){
       liveWindMarker = L.marker([lat,lon],{ icon, zIndexOffset:900, interactive:false }).addTo(map);
     } else {
@@ -655,10 +657,10 @@ async function startBacktrack(lat,lon,createdAt,hours=12){
     }).addTo(map);
     btLayers.push(dashedLine);
 
-    // animate: increase dashOffset → dashes move forward along path = toward pin
+    // animate: decrease dashOffset → dashes flow from pin toward source
     let offset=0;
     function anim(){
-      offset=(offset+0.4)%17;
+      offset=(offset-0.4+1000)%17;
       const el=dashedLine.getElement();
       if(el) el.style.strokeDashoffset=offset;
       btAnimFrame=requestAnimationFrame(anim);
@@ -686,7 +688,7 @@ async function startBacktrack(lat,lon,createdAt,hours=12){
         ${t('possSource')}<br>
         <span style="font-size:10px;opacity:.85;font-weight:600">${hours}h ${t('backtrack')}</span>
       </div>`,
-      iconAnchor:[-14,10]
+      iconAnchor:[0,10]
     });
     const srcMarker=L.marker([cLat,cLon],{icon:srcIcon,interactive:false}).addTo(map);
     btLayers.push(srcMarker);
