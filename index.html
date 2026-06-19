@@ -505,56 +505,74 @@ function applyLang(){
   document.getElementById('comment').placeholder        = t('commentPH');
   document.getElementById('filterLabel').textContent    = t('filterLabel');
 
-  // dropdowns placeholders
+  // Dropdowns main placeholders
   document.getElementById('category').options[0].text  = t('catPH');
   document.getElementById('intensity').options[0].text = t('intPH');
   document.getElementById('filterSelect').options[0].text = t('filterPH');
 
-  // filter optgroups
+  // Filter optgroups
   document.getElementById('fg-hours').label = t('fgHours');
   document.getElementById('fg-days').label  = t('fgDays');
 
-  // filter options
-  const fs = document.getElementById('filterSelect');
-  const hopts = ['Last 1h','Last 3h','Last 6h','Last 12h'];
-  const hoptsSR = ['Poslenji 1h','Poslednja 3h','Poslednjih 6h','Poslednjih 12h'];
-  const dopts = ['Today','Last 7 days','Last 30 days','All time'];
-  const doptsSR = ['Danas','Poslednjih 7 dana','Poslednjih 30 dana','Sve'];
-  // options[0]=placeholder, [1-4]=hours, [5-8]=days
-  for(let i=1;i<=4;i++) fs.options[i].text = lang==='sr'?hoptsSR[i-1]:hopts[i-1];
-  for(let i=5;i<=8;i++) fs.options[i].text = lang==='sr'?doptsSR[i-5]:dopts[i-5];
-
-  // intensity options
-  const intSel = document.getElementById('intensity');
-  const intLabels = {
-    en:['Barely noticeable','','','','Moderate','','','','','Overwhelming'],
-    sr:['Jedva primetno','','','','Umereno','','','','','Nepodnošljivo']
+  // Filter options mapped by Value attribute
+  const filterTranslations = {
+    h1:  { en: 'Last 1h',       sr: 'Poslednji 1h' },
+    h3:  { en: 'Last 3h',       sr: 'Poslednja 3h' },
+    h6:  { en: 'Last 6h',       sr: 'Poslednjih 6h' },
+    h12: { en: 'Last 12h',      sr: 'Poslednjih 12h' },
+    d1:  { en: 'Today',         sr: 'Danas' },
+    d7:  { en: 'Last 7 days',   sr: 'Poslednjih 7 dana' },
+    d30: { en: 'Last 30 days',  sr: 'Poslednjih 30 dana' },
+    d9999: { en: 'All time',    sr: 'Sve' }
   };
-  for(let i=1;i<=10;i++){
-    const lbl = intLabels[lang][i-1];
-    intSel.options[i].text = lbl ? `${i} – ${lbl}` : `${i}`;
-  }
+  Array.from(document.getElementById('filterSelect').options).forEach(opt => {
+    if (filterTranslations[opt.value]) {
+      opt.text = filterTranslations[opt.value][lang];
+    }
+  });
 
-  // category options
-  const catEl = document.getElementById('category');
-  const catEN = ['Chemical','Smoke','Sulfur','Sewage','Plastic','Dust','Unknown'];
-  const catSR = ['Hemijsko','Dim','Sumpor','Kanalizacija','Plastika','Prašina','Nepoznato'];
-  for(let i=1;i<=7;i++){
-    catEl.options[i].text = lang==='sr'?catSR[i-1]:catEN[i-1];
-  }
+  // Intensity options mapped by Value attribute
+  const intLabels = {
+    en: ['Barely noticeable','','','','Moderate','','','','','Overwhelming'],
+    sr: ['Jedva primetno','','','','Umereno','','','','','Nepodnošljivo']
+  };
+  Array.from(document.getElementById('intensity').options).forEach(opt => {
+    let val = parseInt(opt.value);
+    if (val >= 1 && val <= 10) {
+      const lbl = intLabels[lang][val - 1];
+      opt.text = lbl ? `${val} – ${lbl}` : `${val}`;
+    }
+  });
 
-  // legend
-  document.querySelectorAll('.leg').forEach(el=>{
+  // Category options mapped by Value attribute
+  const catTranslations = {
+    Chemical: { en: 'Chemical',  sr: 'Hemijsko' },
+    Smoke:    { en: 'Smoke',     sr: 'Dim' },
+    Sulfur:   { en: 'Sulfur',    sr: 'Sumpor' },
+    Sewage:   { en: 'Sewage',    sr: 'Kanalizacija' },
+    Plastic:  { en: 'Plastic',   sr: 'Plastika' },
+    Dust:     { en: 'Dust',      sr: 'Prašina' },
+    Unknown:  { en: 'Unknown',    sr: 'Nepoznato' }
+  };
+  Array.from(document.getElementById('category').options).forEach(opt => {
+    if (catTranslations[opt.value]) {
+      opt.text = catTranslations[opt.value][lang];
+    }
+  });
+
+  // Map Legend
+  document.querySelectorAll('.leg').forEach(el => {
     el.textContent = el.dataset[lang] || el.dataset.en;
   });
 
-  // GPS modal
+  // GPS modal text translation
   const gm = document.getElementById('gpsModal');
-  if(gm && gm.style.display!=='none') updateGpsModalText();
+  if(gm && gm.style.display !== 'none') updateGpsModalText();
 
   const upd = document.getElementById('updated');
-  if(['Loading...','Učitavanje...'].includes(upd.textContent))
+  if(['Loading...','Učitavanje...'].includes(upd.textContent)) {
     upd.textContent = t('loading');
+  }
 }
 
 /* ═══════════════════════════════════════════════════
