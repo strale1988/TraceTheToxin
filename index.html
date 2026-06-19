@@ -1162,9 +1162,17 @@ async function reportBadAir(){
       wind_direction:c.wind_direction_10m,
       sea_level_pressure:c.pressure_msl
     }]);
+    // ... code that inserts data into supabase ...
     if(error) throw error;
 
+    // Reset fields to default values
+    document.getElementById('category').selectedIndex = 0;
+    document.getElementById('intensity').selectedIndex = 0;
     document.getElementById('comment').value='';
+
+    // Disable button until fields are filled again
+    document.getElementById('reportBtn').disabled = true;
+
     alert(t('submitted'));
     const fv=document.getElementById('filterSelect').value;
     if(fv) onFilterChange(fv);
