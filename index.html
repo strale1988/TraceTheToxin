@@ -506,9 +506,17 @@ function applyLang(){
   document.getElementById('filterLabel').textContent    = t('filterLabel');
 
   // Dropdowns main placeholders
-  document.getElementById('category').options[0].text  = t('catPH');
-  document.getElementById('intensity').options[0].text = t('intPH');
-  document.getElementById('filterSelect').options[0].text = t('filterPH');
+  const catSel = document.getElementById('category');
+  const intSel = document.getElementById('intensity');
+  const filterSel = document.getElementById('filterSelect');
+
+  catSel.options[0].text  = t('catPH');
+  intSel.options[0].text = t('intPH');
+  filterSel.options[0].text = t('filterPH');
+
+  // Force the browser UI to display the newly translated placeholder text if nothing is chosen yet
+  if (catSel.selectedIndex === 0) catSel.value = "";
+  if (intSel.selectedIndex === 0) intSel.value = "";
 
   // Filter optgroups
   document.getElementById('fg-hours').label = t('fgHours');
