@@ -205,7 +205,12 @@ button{
   text-align:center; line-height:1.5;
   display:inline-block;
 }
-
+/* Style for the permanent 6-hour background trails */
+.bg-trail-teal {
+  stroke-dasharray: 6, 6;
+  pointer-events: none;
+}
+  
 /* ── Source label ─────────────────────────────────── */
 .source-label{
   background:#ff8800; color:white;
@@ -874,7 +879,8 @@ function makeIcon(color, windDeg){
 /* ═══════════════════════════════════════════════════
    BACKTRACK ENGINE (auto 24h on pin click)
 ═══════════════════════════════════════════════════ */
-let btLayers    = [];
+let btLayers    = []; // Keeps its current role (tracks the active 24h orange trail)
+let bgTrailLayers = []; // ADD THIS: tracks the permanent 6h teal trails
 let btAnimFrame = null;
 
 function clearBacktrack(){
@@ -973,7 +979,60 @@ async function startBacktrack(lat,lon,createdAt){
 
   } catch(err){ console.error('Backtrack:',err); }
 }
+// Clears all background 6h teal trails
+function clearBackgroundTrails() {
+  bgTrailLayers.forEach(l => map.removeLayer(l));
+  bgTrailLayers = [];
+}
 
+// Generates a 6-hour teal path for all loaded pins
+async function generateAllBackgroundTrails(reports) {
+  clearBackgroundTrails();
+  if (!reports || !reports.length) return;
+
+  // Process all pins concurrently
+  reports.forEach(async (report) => {
+    try {
+      const reportTime = new Date(report.created_at);
+      const startTime = new Date(reportTime.getTime() - 6 * 3600000); // Strict 6 hours
+      
+      const hourly = await fetchHistoricWind(report.latitude, report.longitude, startTime.toISOString(), reportTime.toISOString());
+      if (!hourly?.time?.length) return;
+
+      const steps = [];
+      for (let i = hourly.time.length - 1; i >= 0; i--) {
+        const ts = new Date(hourly.time[i]);
+        if (ts >= startTime && ts <= reportTime)
+          steps.push({ spd: hourly.wind_speed_10m[i], dir: hourly.wind_direction_10m[i] });
+      }
+      if (!steps.length) return;
+
+      const trail = [{ lat: report.latitude, lon: report.longitude }];
+      let cLat = report.latitude, cLon = report.longitude;
+      for (const s of steps) {
+        const m = moveUpwind(cLat, cLon, s.dir, s.spd * 1);
+        cLat = m.lat; cLon = m.lon;
+        trail.push({ lat: cLat, lon: cLon });
+      }
+
+      const latlngs = trail.map(p => [p.lat, p.lon]);
+
+      // Create a static, non-animated teal dotted line for the 6h background path
+      const tealTrail = L.polyline(latlngs, {
+        color: '#00a7b5', // Theme teal color
+        weight: 2.5,
+        opacity: 0.65,
+        className: 'bg-trail-teal'
+      }).addTo(map);
+
+      // Push to the background tracker so we can clear them on filter updates
+      bgTrailLayers.push(tealTrail);
+
+    } catch (err) {
+      console.error('Background trail error for report:', report.id, err);
+    }
+  });
+}
 /* ═══════════════════════════════════════════════════
    PINS
 ═══════════════════════════════════════════════════ */
@@ -1020,16 +1079,46 @@ async function fetchAll(){
 
 async function loadPins(days){
   if(days!==undefined) currentDays=days;
-  clearMarkers(); clearBacktrack();
+  clearMarkers(); clearBacktrack(); clearBackgroundTrails();
   const data=await fetchAll();
   const cutoff=new Date(); cutoff.setDate(cutoff.getDate()-currentDays);
   let n=0;
+  let activeReports = [];
+  
   data.forEach(r=>{
     if(currentDays!==9999 && new Date(r.created_at)<cutoff) return;
-    n++; renderPin(r);
+    n++; 
+    renderPin(r);
+    activeReports.push(r); // Track what's visible
   });
+  
   document.getElementById('reportCount').textContent=n+' '+t('reportCount');
   document.getElementById('updated').textContent=new Date().toLocaleTimeString();
+  
+  // Fire off the background teal lines generator
+  generateAllBackgroundTrails(activeReports);
+}
+
+async function loadPinsByHours(hours){
+  if(hours!==undefined) currentHours=hours;
+  clearMarkers(); clearBacktrack(); clearBackgroundTrails();
+  const data=await fetchAll();
+  const cutoff=new Date(Date.now()-currentHours*3600000);
+  let n=0;
+  let activeReports = [];
+  
+  data.forEach(r=>{
+    if(new Date(r.created_at)<cutoff) return;
+    n++; 
+    renderPin(r);
+    activeReports.push(r); // Track what's visible
+  });
+  
+  document.getElementById('reportCount').textContent=n+' '+t('reportCount');
+  document.getElementById('updated').textContent=new Date().toLocaleTimeString();
+  
+  // Fire off the background teal lines generator
+  generateAllBackgroundTrails(activeReports);
 }
 
 async function loadPinsByHours(hours){
