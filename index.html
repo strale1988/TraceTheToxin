@@ -550,22 +550,34 @@ for(let i = 1; i < options.length; i++){
 
   // intensity options
   const intSel = document.getElementById('intensity');
-  const intLabels = {
-    en:['Barely noticeable','','','','Moderate','','','','','Overwhelming'],
-    sr:['Jedva primetno','','','','Umereno','','','','','Nepodnošljivo']
-  };
-  for(let i=1;i<=10;i++){
-    const lbl = intLabels[lang][i-1];
-    intSel.options[i].text = lbl ? `${i} – ${lbl}` : `${i}`;
+  const intensityLabels = lang === 'sr'
+    ? {
+        1:'Jedva primetno',
+        5:'Umereno',
+        10:'Nepodnošljivo'
+      }
+    : {
+        1:'Barely noticeable',
+        5:'Moderate',
+        10:'Overwhelming'
+      };
+  
+  for(let i = 1; i <= 10; i++){
+    intSel.options[i].textContent =
+      intensityLabels[i]
+        ? `${i} – ${intensityLabels[i]}`
+        : `${i}`;
   }
 
   // category options
   const catEl = document.getElementById('category');
-  const catEN = ['Chemical','Smoke','Sulfur','Sewage','Plastic','Dust','Unknown'];
-  const catSR = ['Hemijsko','Dim','Sumpor','Kanalizacija','Plastika','Prašina','Nepoznato'];
-  for(let i=1;i<=7;i++){
-    catEl.options[i].text = lang==='sr'?catSR[i-1]:catEN[i-1];
-  }
+  const catLabels = lang === 'sr'
+    ? ['Hemijsko','Dim','Sumpor','Kanalizacija','Plastika','Prašina','Nepoznato']
+    : ['Chemical','Smoke','Sulfur','Sewage','Plastic','Dust','Unknown'];
+  
+  Array.from(catEl.options).slice(1).forEach((opt, i) => {
+    opt.textContent = catLabels[i];
+  });
 
   // legend
   document.querySelectorAll('.leg').forEach(el=>{
