@@ -734,11 +734,29 @@ function updateCompassNeedle(h){
 
 if(window.DeviceOrientationEvent){
   if(typeof DeviceOrientationEvent.requestPermission === 'function'){
-    map.once('click', ()=>{
-      DeviceOrientationEvent.requestPermission()
-        .then(s=>{ if(s==='granted') listenOrientation(); })
-        .catch(console.warn);
-    });
+    map.on('click', e => {
+  if (!pinMode) return;
+  
+  // IGNORE clicks if they landed on a marker instead of the map background
+  if (e.originalEvent.target.classList.contains('leaflet-marker-icon') || 
+      e.originalEvent.target.tagName === 'path') {
+    return;
+  }
+
+  manualCoords = { lat: e.latlng.lat, lon: e.latlng.lng };
+  if (manualMarker) {
+    manualMarker.setLatLng(e.latlng);
+  } else {
+    manualMarker = L.marker(e.latlng, {
+      icon: L.divIcon({
+        className: '',
+        html: `<div style="width:22px;height:22px;background:#f5a623;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,.5)"></div>`,
+        iconAnchor: [11, 22]
+      })
+    }).addTo(map);
+  }
+  checkFormReady();
+});
   } else {
     listenOrientation();
   }
