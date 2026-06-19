@@ -298,14 +298,12 @@ button{
   box-shadow:0 2px 10px rgba(0,0,0,.45);
   margin-bottom:4px;
 ">
-  <span id="legendLabel" style="color:#aaa;font-size:10px;font-weight:600;white-space:nowrap;">Age:</span>
   <span class="legend-item"><span class="legend-dot" style="background:#ff1a1a"></span><span class="leg" data-en="&lt;1h"  data-sr="&lt;1h"  style="color:#ddd;font-size:10px;">&lt;1h</span></span>
   <span class="legend-item"><span class="legend-dot" style="background:#ff6600"></span><span class="leg" data-en="1–2h"  data-sr="1–2h"   style="color:#ddd;font-size:10px;">1–2h</span></span>
   <span class="legend-item"><span class="legend-dot" style="background:#e09000"></span><span class="leg" data-en="2–6h"  data-sr="2–6h"   style="color:#ddd;font-size:10px;">2–6h</span></span>
   <span class="legend-item"><span class="legend-dot" style="background:#a0a000"></span><span class="leg" data-en="6–12h" data-sr="6–12h"  style="color:#ddd;font-size:10px;">6–12h</span></span>
   <span class="legend-item"><span class="legend-dot" style="background:#777"></span>   <span class="leg" data-en="12–24h" data-sr="12–24h" style="color:#ddd;font-size:10px;">12–24h</span></span>
-  <span class="legend-item"><span class="legend-dot" style="background:#555"></span>   <span class="leg" data-en="1–2d"  data-sr="1–2d"   style="color:#ddd;font-size:10px;">1–2d</span></span>
-  <span class="legend-item"><span class="legend-dot" style="background:#333;border:1px solid #555"></span><span class="leg" data-en="2d+" data-sr="2d+" style="color:#ddd;font-size:10px;">2d+</span></span>
+  <span class="legend-item"><span class="legend-dot" style="background:#444;border:1px solid #666"></span><span class="leg" data-en="24h+" data-sr="24h+" style="color:#ddd;font-size:10px;">24h+</span></span>
 </div>
 
 <!-- Compass + wind widget (top-right Leaflet control) -->
@@ -905,7 +903,7 @@ async function startBacktrack(lat,lon,createdAt){
     // 25% of previous speed: was 0.1, now 0.025
     let offset=0;
     function anim(){
-      offset=(offset-0.025+1000)%17;
+      offset=(offset-0.004+1000)%17;
       const el=dashedLine.getElement();
       if(el) el.style.strokeDashoffset=offset;
       btAnimFrame=requestAnimationFrame(anim);
