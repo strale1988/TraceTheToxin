@@ -1002,24 +1002,32 @@ function renderPin(report){
 <b>${t('popupNotes')}:</b> ${report.comment||t('popupNone')}
 </div>`;
 
-  // 1. Draw the ambient 6-hour static dotted line first (so it sits slightly behind the pin)
-  if (report.wind_speed && report.wind_direction) {
-    const totalDistKm = report.wind_speed * 6; // 6 hours total distance
-    const upwindEnd = moveUpwind(report.latitude, report.longitude, report.wind_direction, totalDistKm);
-    
-    const ambientLine = L.polyline(
-      [[report.latitude, report.longitude], [upwindEnd.lat, upwindEnd.lon]],
-      {
-        color: '#00a7b5',   // Beautiful Teal color to differentiate from the active orange track
-        weight: 2,          // Slightly thinner line
-        opacity: 0.6,       // Semi-transparent ambient look
-        dashArray: '6, 8',  // Dotted sequence
-        interactive: false  // Tapping the line won't interfere with tapping pins
-      }
-    ).addTo(map);
-    
-    // Crucial: Push to reportMarkers so it's auto-deleted when filters change
-    reportMarkers.push(ambientLine);
+  // 1. Draw the ambient 6-hour static dotted line first
+  if (report.wind_speed !== undefined && report.wind_direction !== undefined) {
+    // Force numbers just in case Supabase sends them as strings
+    const lat = Number(report.latitude);
+    const lon = Number(report.longitude);
+    const speed = Number(report.wind_speed);
+    const dir = Number(report.wind_direction);
+
+    if (!isNaN(lat) && !isNaN(lon) && !isNaN(speed) && !isNaN(dir)) {
+      const totalDistKm = speed * 6; 
+      const upwindEnd = moveUpwind(lat, lon, dir, totalDistKm);
+      
+      // Explicitly map using L.latLng to guarantee Leaflet reads it correctly
+      const p1 = L.latLng(lat, lon);
+      const p2 = L.latLng(upwindEnd.lat, upwindEnd.lon);
+
+      const ambientLine = L.polyline([p1, p2], {
+        color: '#00a7b5',   
+        weight: 3,          // Bumped up slightly to ensure visibility on dark backgrounds
+        opacity: 0.7,       
+        dashArray: '6, 8',  
+        interactive: false  
+      }).addTo(map);
+      
+      reportMarkers.push(ambientLine);
+    }
   }
 
   // 2. Draw the pin marker itself
@@ -1031,7 +1039,6 @@ function renderPin(report){
   marker.on('popupopen', ()=>startBacktrack(report.latitude,report.longitude,report.created_at));
   reportMarkers.push(marker);
 }
-
 /* ═══════════════════════════════════════════════════
    LOAD PINS
 ═══════════════════════════════════════════════════ */
