@@ -501,7 +501,8 @@ function applyLang(){
   document.getElementById('subtitle').textContent       = t('subtitle');
   document.getElementById('reportBtnLabel').textContent = t('reportBtn');
   document.getElementById('csvLabel').textContent       = t('csvLabel');
-  document.getElementById('legendLabel').textContent    = t('legendLabel');
+  const legendLabel = document.getElementById('legendLabel');
+  if (legendLabel) legendLabel.textContent = t('legendLabel');
   document.getElementById('comment').placeholder        = t('commentPH');
   document.getElementById('filterLabel').textContent    = t('filterLabel');
 
@@ -514,12 +515,35 @@ function applyLang(){
   document.getElementById('fg-hours').label = t('fgHours');
   document.getElementById('fg-days').label  = t('fgDays');
 
-  // filter options
   const fs = document.getElementById('filterSelect');
-  const hopts = ['Last 1h','Last 3h','Last 6h','Last 12h'];
-  const hoptsSR = ['Poslenji 1h','Poslednja 3h','Poslednjih 6h','Poslednjih 12h'];
-  const dopts = ['Today','Last 7 days','Last 30 days','All time'];
-  const doptsSR = ['Danas','Poslednjih 7 dana','Poslednjih 30 dana','Sve'];
+
+const labels = lang === 'sr'
+  ? [
+      'Poslednji 1h',
+      'Poslednja 3h',
+      'Poslednjih 6h',
+      'Poslednjih 12h',
+      'Danas',
+      'Poslednjih 7 dana',
+      'Poslednjih 30 dana',
+      'Sve'
+    ]
+  : [
+      'Last 1h',
+      'Last 3h',
+      'Last 6h',
+      'Last 12h',
+      'Today',
+      'Last 7 days',
+      'Last 30 days',
+      'All time'
+    ];
+
+const options = fs.querySelectorAll('option');
+
+for(let i = 1; i < options.length; i++){
+  options[i].textContent = labels[i - 1];
+}
   // options[0]=placeholder, [1-4]=hours, [5-8]=days
   for(let i=1;i<=4;i++) fs.options[i].text = lang==='sr'?hoptsSR[i-1]:hopts[i-1];
   for(let i=5;i<=8;i++) fs.options[i].text = lang==='sr'?doptsSR[i-5]:dopts[i-5];
