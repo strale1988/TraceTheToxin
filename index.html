@@ -517,36 +517,36 @@ function applyLang(){
 
   const fs = document.getElementById('filterSelect');
 
-const labels = lang === 'sr'
-  ? [
-      'Poslednji 1h',
-      'Poslednja 3h',
-      'Poslednjih 6h',
-      'Poslednjih 12h',
-      'Danas',
-      'Poslednjih 7 dana',
-      'Poslednjih 30 dana',
-      'Sve'
-    ]
-  : [
-      'Last 1h',
-      'Last 3h',
-      'Last 6h',
-      'Last 12h',
-      'Today',
-      'Last 7 days',
-      'Last 30 days',
-      'All time'
-    ];
-
-const options = fs.querySelectorAll('option');
-
-for(let i = 1; i < options.length; i++){
-  options[i].textContent = labels[i - 1];
-}
+  const labels = lang === 'sr'
+    ? [
+        'Poslednji 1h',
+        'Poslednja 3h',
+        'Poslednjih 6h',
+        'Poslednjih 12h',
+        'Danas',
+        'Poslednjih 7 dana',
+        'Poslednjih 30 dana',
+        'Sve'
+      ]
+    : [
+        'Last 1h',
+        'Last 3h',
+        'Last 6h',
+        'Last 12h',
+        'Today',
+        'Last 7 days',
+        'Last 30 days',
+        'All time'
+      ];
+  
+  const options = fs.querySelectorAll('option');
+  
+  for(let i = 1; i < options.length; i++){
+    options[i].textContent = labels[i - 1];
+  }
   // options[0]=placeholder, [1-4]=hours, [5-8]=days
-  for(let i=1;i<=4;i++) fs.options[i].text = lang==='sr'?hoptsSR[i-1]:hopts[i-1];
-  for(let i=5;i<=8;i++) fs.options[i].text = lang==='sr'?doptsSR[i-5]:dopts[i-5];
+  //for(let i=1;i<=4;i++) fs.options[i].text = lang==='sr'?hoptsSR[i-1]:hopts[i-1];
+  //for(let i=5;i<=8;i++) fs.options[i].text = lang==='sr'?doptsSR[i-5]:dopts[i-5];
 
   // intensity options
   const intSel = document.getElementById('intensity');
