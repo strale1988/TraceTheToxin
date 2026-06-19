@@ -282,33 +282,29 @@ button{
 
 <div id="map"></div>
 
-<!-- Legend overlay — bottom-center of map -->
-<div id="mapLegend" style="
-  position:absolute;
-  bottom:30px;
-  left:50%;
-  transform:translateX(-50%);
-  z-index:1000;
-  background:rgba(18,18,18,.82);
+<!-- Legend: adopted by Leaflet as bottomright control -->
+<div id="mapLegend" style="display:none;
+  background:rgba(18,18,18,.88);
   backdrop-filter:blur(4px);
   -webkit-backdrop-filter:blur(4px);
   border-radius:10px;
   padding:5px 10px;
   display:flex;
   align-items:center;
-  gap:7px;
+  gap:6px;
   flex-wrap:nowrap;
   pointer-events:none;
-  border:1px solid rgba(255,255,255,.08);
-  box-shadow:0 2px 10px rgba(0,0,0,.4);
+  border:1px solid rgba(255,255,255,.09);
+  box-shadow:0 2px 10px rgba(0,0,0,.45);
+  margin-bottom:4px;
 ">
   <span id="legendLabel" style="color:#aaa;font-size:10px;font-weight:600;white-space:nowrap;">Age:</span>
-  <span class="legend-item"><span class="legend-dot" style="background:#ff1a1a"></span><span class="leg" data-en="&lt;1h"  data-sr="&lt;1h" style="color:#ddd;font-size:10px;">&lt;1h</span></span>
-  <span class="legend-item"><span class="legend-dot" style="background:#ff6600"></span><span class="leg" data-en="1–2h"  data-sr="1–2h"  style="color:#ddd;font-size:10px;">1–2h</span></span>
-  <span class="legend-item"><span class="legend-dot" style="background:#e09000"></span><span class="leg" data-en="2–6h"  data-sr="2–6h"  style="color:#ddd;font-size:10px;">2–6h</span></span>
-  <span class="legend-item"><span class="legend-dot" style="background:#a0a000"></span><span class="leg" data-en="6–12h" data-sr="6–12h" style="color:#ddd;font-size:10px;">6–12h</span></span>
+  <span class="legend-item"><span class="legend-dot" style="background:#ff1a1a"></span><span class="leg" data-en="&lt;1h"  data-sr="&lt;1h"  style="color:#ddd;font-size:10px;">&lt;1h</span></span>
+  <span class="legend-item"><span class="legend-dot" style="background:#ff6600"></span><span class="leg" data-en="1–2h"  data-sr="1–2h"   style="color:#ddd;font-size:10px;">1–2h</span></span>
+  <span class="legend-item"><span class="legend-dot" style="background:#e09000"></span><span class="leg" data-en="2–6h"  data-sr="2–6h"   style="color:#ddd;font-size:10px;">2–6h</span></span>
+  <span class="legend-item"><span class="legend-dot" style="background:#a0a000"></span><span class="leg" data-en="6–12h" data-sr="6–12h"  style="color:#ddd;font-size:10px;">6–12h</span></span>
   <span class="legend-item"><span class="legend-dot" style="background:#777"></span>   <span class="leg" data-en="12–24h" data-sr="12–24h" style="color:#ddd;font-size:10px;">12–24h</span></span>
-  <span class="legend-item"><span class="legend-dot" style="background:#555"></span>   <span class="leg" data-en="1–2d"  data-sr="1–2d"  style="color:#ddd;font-size:10px;">1–2d</span></span>
+  <span class="legend-item"><span class="legend-dot" style="background:#555"></span>   <span class="leg" data-en="1–2d"  data-sr="1–2d"   style="color:#ddd;font-size:10px;">1–2d</span></span>
   <span class="legend-item"><span class="legend-dot" style="background:#333;border:1px solid #555"></span><span class="leg" data-en="2d+" data-sr="2d+" style="color:#ddd;font-size:10px;">2d+</span></span>
 </div>
 
@@ -356,7 +352,7 @@ button{
 
 <div class="panel">
 
-  <!-- Row 1: smell type + intensity + filter -->
+  <!-- Row 1: smell type + intensity -->
   <div class="row">
     <select id="category" onchange="checkFormReady()">
       <option value="" disabled selected>Select smell…</option>
@@ -369,7 +365,7 @@ button{
       <option value="Unknown"  data-sr="Nepoznato">Unknown</option>
     </select>
 
-    <select id="intensity" onchange="checkFormReady()" style="flex:0 0 auto;width:auto;">
+    <select id="intensity" onchange="checkFormReady()">
       <option value="" disabled selected>Intensity…</option>
       <option value="1">1 – Barely noticeable</option>
       <option value="2">2</option>
@@ -382,31 +378,32 @@ button{
       <option value="9">9</option>
       <option value="10">10 – Overwhelming</option>
     </select>
-
-    <div class="filter-wrap">
-      <div class="filter-label" id="filterLabel">Showing:</div>
-      <select id="filterSelect" onchange="onFilterChange(this.value)" style="flex:none;width:auto;">
-        <option value="" disabled selected>Filter…</option>
-        <optgroup id="fg-hours" label="Last hours">
-          <option value="h1">Last 1h</option>
-          <option value="h3">Last 3h</option>
-          <option value="h6">Last 6h</option>
-          <option value="h12">Last 12h</option>
-        </optgroup>
-        <optgroup id="fg-days" label="Last days">
-          <option value="d1">Today</option>
-          <option value="d7">Last 7 days</option>
-          <option value="d30">Last 30 days</option>
-          <option value="d9999">All time</option>
-        </optgroup>
-      </select>
-    </div>
   </div>
 
-  <!-- Row 2: notes -->
+  <!-- Row 2: filter — full width with label prefix inside select -->
+  <div class="row" style="align-items:center;gap:8px;">
+    <label id="filterLabel" for="filterSelect" style="font-size:11px;color:#888;white-space:nowrap;flex-shrink:0;">Showing:</label>
+    <select id="filterSelect" onchange="onFilterChange(this.value)" style="flex:1;width:100%;">
+      <option value="" disabled selected>Filter…</option>
+      <optgroup id="fg-hours" label="Last hours">
+        <option value="h1">Last 1h</option>
+        <option value="h3">Last 3h</option>
+        <option value="h6">Last 6h</option>
+        <option value="h12">Last 12h</option>
+      </optgroup>
+      <optgroup id="fg-days" label="Last days">
+        <option value="d1">Today</option>
+        <option value="d7">Last 7 days</option>
+        <option value="d30">Last 30 days</option>
+        <option value="d9999">All time</option>
+      </optgroup>
+    </select>
+  </div>
+
+  <!-- Row 3: notes -->
   <input id="comment" type="text" placeholder="Optional notes...">
 
-  <!-- Row 3: report + export -->
+  <!-- Row 4: report + export -->
   <div class="row" style="align-items:stretch;">
     <button class="report-btn" id="reportBtn" onclick="reportBadAir()"
             style="flex:0 0 80%;min-width:0;font-size:14px;" disabled>
@@ -678,6 +675,14 @@ const CompassControl = L.Control.extend({
 });
 new CompassControl().addTo(map);
 document.getElementById('compassWidget').style.display = 'flex';
+
+// Legend as Leaflet bottomright control
+const LegendControl = L.Control.extend({
+  options:{ position:'bottomright' },
+  onAdd(){ return document.getElementById('mapLegend'); }
+});
+new LegendControl().addTo(map);
+document.getElementById('mapLegend').style.display = 'flex';
 
 function updateCompassNeedle(h){
   const n = document.getElementById('compassNeedle');
