@@ -734,26 +734,13 @@ function updateCompassNeedle(h){
 
 if(window.DeviceOrientationEvent){
   if(typeof DeviceOrientationEvent.requestPermission === 'function'){
-    map.on('click', e => {
-  if (!pinMode) return;
-  
-  // IGNORE clicks if they landed on a marker instead of the map background
-  if (e.originalEvent.target.classList.contains('leaflet-marker-icon') || 
-      e.originalEvent.target.tagName === 'path') {
-    return;
-  }
-
-  manualCoords = { lat: e.latlng.lat, lon: e.latlng.lng };
-  if (manualMarker) {
+    map.on('click', e=>{
+  if(!pinMode) return;
+  manualCoords = { lat:e.latlng.lat, lon:e.latlng.lng };
+  if(manualMarker){
     manualMarker.setLatLng(e.latlng);
   } else {
-    manualMarker = L.marker(e.latlng, {
-      icon: L.divIcon({
-        className: '',
-        html: `<div style="width:22px;height:22px;background:#f5a623;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,.5)"></div>`,
-        iconAnchor: [11, 22]
-      })
-    }).addTo(map);
+    // ... code that creates the manual pin icon ...
   }
   checkFormReady();
 });
@@ -1064,7 +1051,7 @@ function clearMarkers(){
   reportMarkers=[];
 }
 
-function renderPin(report){
+function renderPin(report, index = 0){ // <-- Accept index
   const date  = new Date(report.created_at);
   const color = ageColor(report.created_at);
   const card  = degToCardinal(report.wind_direction);
@@ -1082,8 +1069,12 @@ function renderPin(report){
 <b>${t('popupNotes')}:</b> ${report.comment||t('popupNone')}
 </div>`;
 
+  // Calculate z-index: index 0 (newest) gets 10000, index 1 gets 9999, etc.
+  const zIndexPriority = 10000 - index;
+
   const marker=L.marker([report.latitude,report.longitude],{
-    icon:makeIcon(color,report.wind_direction)
+    icon:makeIcon(color,report.wind_direction),
+    zIndexOffset: zIndexPriority // <-- Add this line to stack them correctly
   }).addTo(map);
 
   marker.bindPopup(popupHtml,{ maxWidth:250, minWidth:200 });
@@ -1108,11 +1099,11 @@ async function loadPins(days){
   let n=0;
   let activeReports = [];
   
-  data.forEach(r=>{
-    if(currentDays!==9999 && new Date(r.created_at)<cutoff) return;
+  data.forEach((r, index) => {
+    if(new Date(r.created_at)<cutoff) return;
     n++; 
-    renderPin(r);
-    activeReports.push(r); // Track what's visible
+    renderPin(r, index); // <-- Add index here
+    activeReports.push(r);
   });
   
   document.getElementById('reportCount').textContent=n+' '+t('reportCount');
@@ -1130,11 +1121,11 @@ async function loadPinsByHours(hours){
   let n=0;
   let activeReports = [];
   
-  data.forEach(r=>{
+  data.forEach((r, index) => {
     if(new Date(r.created_at)<cutoff) return;
     n++; 
-    renderPin(r);
-    activeReports.push(r); // Track what's visible
+    renderPin(r, index); // <-- Add index here
+    activeReports.push(r);
   });
   
   document.getElementById('reportCount').textContent=n+' '+t('reportCount');
