@@ -942,7 +942,7 @@ async function startBacktrack(lat,lon,createdAt){
     // 25% of previous speed: was 0.1, now 0.025
     let offset=0;
     function anim(){
-      offset=(offset-0.004+1000)%17;
+      offset=(offset-0.0012+1000)%17;
       const el=dashedLine.getElement();
       if(el) el.style.strokeDashoffset=offset;
       btAnimFrame=requestAnimationFrame(anim);
