@@ -1002,34 +1002,65 @@ function renderPin(report){
 <b>${t('popupNotes')}:</b> ${report.comment||t('popupNone')}
 </div>`;
 
-  // 1. Draw the ambient 6-hour static dotted line first
-  if (report.wind_speed !== undefined && report.wind_direction !== undefined) {
-    // Force numbers just in case Supabase sends them as strings
-    const lat = Number(report.latitude);
-    const lon = Number(report.longitude);
-    const speed = Number(report.wind_speed);
-    const dir = Number(report.wind_direction);
+  // 1. Draw the pin marker itself
+  const marker=L.marker([report.latitude,report.longitude],{
+    icon:makeIcon(color,report.wind_direction)
+  }).addTo(map);
 
-    if (!isNaN(lat) && !isNaN(lon) && !isNaN(speed) && !isNaN(dir)) {
-      const totalDistKm = speed * 6; 
-      const upwindEnd = moveUpwind(lat, lon, dir, totalDistKm);
-      
-      // Explicitly map using L.latLng to guarantee Leaflet reads it correctly
-      const p1 = L.latLng(lat, lon);
-      const p2 = L.latLng(upwindEnd.lat, upwindEnd.lon);
+  marker.bindPopup(popupHtml,{ maxWidth:250, minWidth:200 });
+  marker.on('popupopen', ()=>startBacktrack(report.latitude,report.longitude,report.created_at));
+  reportMarkers.push(marker);
 
-      const ambientLine = L.polyline([p1, p2], {
-        color: '#00a7b5',   
-        weight: 3,          // Bumped up slightly to ensure visibility on dark backgrounds
-        opacity: 0.7,       
-        dashArray: '6, 8',  
-        interactive: false  
-      }).addTo(map);
-      
-      reportMarkers.push(ambientLine);
+  // 2. NEW: Trigger the true curved ambient backtrack (6 hours)
+  drawAmbientBacktrack(report.latitude, report.longitude, report.created_at);
+}
+async function drawAmbientBacktrack(lat, lon, createdAt) {
+  const HOURS = 6; // Limit ambient lines to 6 hours
+  try {
+    const reportTime = new Date(createdAt);
+    const startTime = new Date(reportTime.getTime() - HOURS * 3600000);
+    
+    // Reuse your existing historic wind fetching function
+    const hourly = await fetchHistoricWind(lat, lon, startTime.toISOString(), reportTime.toISOString());
+    if (!hourly?.time?.length) return;
+
+    const steps = [];
+    for (let i = hourly.time.length - 1; i >= 0; i--) {
+      const ts = new Date(hourly.time[i]);
+      if (ts >= startTime && ts <= reportTime)
+        steps.push({ spd: hourly.wind_speed_10m[i], dir: hourly.wind_direction_10m[i] });
     }
-  }
+    if (!steps.length) return;
 
+    const trail = [{ lat, lon }];
+    let cLat = Number(lat);
+    let cLon = Number(lon);
+    
+    for (const s of steps) {
+      const m = moveUpwind(cLat, cLon, s.dir, s.spd * 1);
+      cLat = m.lat; 
+      cLon = m.lon;
+      trail.push({ lat: cLat, lon: cLon });
+    }
+
+    const latlngs = trail.map(p => [p.lat, p.lon]);
+
+    // Draw the true curved path in Teal
+    const ambientCurve = L.polyline(latlngs, {
+      color: '#00a7b5',   // Teal ambient path
+      weight: 2.5,
+      opacity: 0.55,
+      dashArray: '5, 8',  // Dotted look
+      interactive: false
+    }).addTo(map);
+
+    // Push it to reportMarkers so it gets wiped cleanly on filter updates
+    reportMarkers.push(ambientCurve);
+
+  } catch (err) {
+    console.warn('Ambient backtrack failed silently for a pin:', err);
+  }
+}
   // 2. Draw the pin marker itself
   const marker=L.marker([report.latitude,report.longitude],{
     icon:makeIcon(color,report.wind_direction)
