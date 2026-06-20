@@ -340,7 +340,9 @@ button{
   <span class="legend-item"><span class="legend-dot" style="background:#444;border:1px solid #666"></span><span class="leg" data-en="24h+" data-sr="24h+" style="color:#ddd;font-size:10px;">24h+</span></span>
 </div>
 
-<div id="compassWidget" style="display:none; flex-direction: column; align-items: center; gap: 4px;">
+<!-- Wind Dashboard Box  Mini-Compass Container (top-right Leaflet control) -->
+<div id="compassWidget" style="display:none; flex-direction: column; align-items: center; gap: 6px;">
+  <!-- Expanded Live Wind Data Box (Always on Top) -->
   <div id="compassWindBox" style="
     background:rgba(20,20,20,.88);
     border:1px solid #3a3a3a;
@@ -359,12 +361,29 @@ button{
     <div id="compassWindDir" style="font-size:9.5px;opacity:.75;font-weight:600;">--° --</div>
   </div>
 
-  <div class="compass-wrap" title="Compass">
-    <svg viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg">
-      <text x="22" y="8" text-anchor="middle" fill="#ff4b4b" font-size="7.5" font-weight="900" letter-spacing="0.2">N</text>
+  <!-- Original Styled Compass - Compact Scale (Placed Below Box) -->
+  <div class="compass-wrap" style="
+    background: rgba(20, 20, 20, 0.85);
+    border: 1px solid #3a3a3a;
+    width: 46px; 
+    height: 46px; 
+    border-radius: 50%; 
+    display: flex; 
+    align-items: center; 
+    justify-content: center;
+    position: relative;
+    user-select: none;
+  " title="Compass">
+    <svg viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg" style="width: 40px; height: 40px;">
+      <!-- Subtle outer dial rim -->
+      <circle cx="22" cy="22" r="20" fill="none" stroke="#333" stroke-width="1"/>
+      
+      <text x="22" y="9" text-anchor="middle" fill="#ff4b4b" font-size="6.5" font-weight="900">N</text>
+      
+      <!-- Needle Structure -->
       <g id="compassNeedle" style="transform-origin:22px 22px; transition: transform 0.15s ease-out;">
-        <polygon points="22,10 19,22 22,20 25,22" fill="#ff4b4b"/>
-        <polygon points="22,34 19,22 22,24 25,22" fill="#777"/>
+        <polygon points="22,11 19,22 22,20 25,22" fill="#ff4b4b"/>
+        <polygon points="22,33 19,22 22,24 25,22" fill="#555"/>
         <circle cx="22" cy="22" r="1.5" fill="#fff"/>
       </g>
     </svg>
