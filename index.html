@@ -10,7 +10,7 @@
   <meta http-equiv="Expires" content="0">
   
   <link rel="icon" type="image/png" href="favicon.png">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <style>
 *{ margin:0; padding:0; box-sizing:border-box; }
 
@@ -18,7 +18,7 @@ body{
   font-family:-apple-system,BlinkMacSystemFont,sans-serif;
   background:#111;
   color:white;
-  height: 100svh;
+  height: 100svh; /* Changed from 100dvh to 100svh */
   display:flex;
   flex-direction:column;
 }
@@ -70,56 +70,17 @@ header p{ font-size:11px; opacity:.7; margin-top:2px; }
 
 #map {
   flex: 1;
-  height: 0;      
-  min-height: 0;  
+  height: 0;      /* Crucial: lets Leaflet shrink to let the panel fit */
+  min-height: 0;  /* Prevents it forcing structural layout over the panel */
   position: relative;
   overflow: hidden;
-}
-
-/* Sleek custom slider styling */
-.custom-slider {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 100%;
-  height: 4px;
-  background: #2e2e2e;
-  border-radius: 2px;
-  outline: none;
-  cursor: pointer;
-}
-
-.custom-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: #00a7b5;
-  border: 2px solid #181818;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.4);
-  transition: transform 0.1s ease;
-}
-.custom-slider::-webkit-slider-thumb:active {
-  transform: scale(1.2);
-}
-
-.custom-slider::-moz-range-thumb {
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: #00a7b5;
-  border: 2px solid #181818;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.4);
-  transition: transform 0.1s ease;
-}
-.custom-slider::-moz-range-thumb:active {
-  transform: scale(1.2);
 }
 
 /* ── Panel ────────────────────────────────────────── */
 .panel{
   background:#181818;
   padding:10px 12px;
+  /* Add safe-area padding to elevate buttons safely above phone borders */
   padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)); 
   display:flex;
   flex-direction:column;
@@ -140,13 +101,28 @@ select{
   font-size:13px;
   -webkit-appearance:none;
   appearance:none;
+  /* custom chevron */
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23888' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
   background-repeat:no-repeat;
   background-position:right 10px center;
   padding-right:28px;
 }
 
-input[type="text"]{
+/* filter label above select */
+.filter-wrap{
+  display:flex;
+  flex-direction:column;
+  gap:3px;
+  flex:0 0 auto;
+}
+.filter-label{
+  font-size:10px;
+  color:#888;
+  padding-left:2px;
+  letter-spacing:.3px;
+}
+
+input{
   width:100%;
   padding:11px 10px;
   border:none;
@@ -203,17 +179,14 @@ button{
 .popup-inner b{ color:#222; }
 .popup-title{ font-size:14px; font-weight:700; margin-bottom:8px; color:#111; }
 
-/* ── Compass ──────────────────────────────────────── */
+/* ── Minimalist Compass ────────────────────────────── */
 .compass-wrap{
-  background:rgba(20,20,20,.88);
-  border-radius:50%;
-  width:56px; height:56px;
+  background:transparent;
+  width:40px; height:40px;
   display:flex; align-items:center; justify-content:center;
-  box-shadow:0 2px 8px rgba(0,0,0,.55);
-  border:1px solid #3a3a3a;
   cursor:default; user-select:none;
 }
-.compass-wrap svg{ width:44px; height:44px; }
+.compass-wrap svg{ width:36px; height:36px; }
 
 /* ── Manual pin button (bottom-left) ─────────────── */
 .pin-map-btn{
@@ -231,19 +204,7 @@ button{
 }
 .pin-map-btn.active{ background:#f5a623; border-color:#f5a623; }
 
-/* ── Live wind bubble ─────────────────────────────── */
-.wind-bubble{
-  background:rgba(0,168,181,.95);
-  color:white;
-  border-radius:8px;
-  padding:5px 9px;
-  font-size:12px; font-weight:700;
-  white-space:nowrap;
-  box-shadow:0 2px 8px rgba(0,0,0,.5);
-  pointer-events:none;
-  text-align:center; line-height:1.5;
-  display:inline-block;
-}
+/* Style for the permanent 6-hour background trails */
 .bg-trail-teal {
   stroke-dasharray: 6, 6;
   pointer-events: none;
@@ -267,32 +228,72 @@ button{
   display:flex; align-items:center; justify-content:center;
   z-index:9999;
   padding:20px;
+  /* iOS Safari fix */
   -webkit-overflow-scrolling:touch;
 }
 .gps-modal{
   background:#1e1e1e; color:white;
   border-radius:18px;
-  padding:24px 20px;
+  padding:28px 22px 22px;
   max-width:320px; width:100%;
   text-align:center;
   box-shadow:0 16px 48px rgba(0,0,0,.8);
   max-height:90vh; overflow-y:auto;
+  /* prevent tap-through on iOS */
   pointer-events:all;
 }
-.gps-modal-icon{ font-size:38px; margin-bottom:8px; }
-.gps-modal h2{ font-size:17px; font-weight:700; margin-bottom:8px; }
-.gps-modal p{ font-size:13px; line-height:1.6; color:#ccc; margin-bottom:16px; }
+.gps-modal-icon{ font-size:44px; margin-bottom:12px; }
+.gps-modal h2{ font-size:18px; font-weight:700; margin-bottom:10px; }
+.gps-modal p{ font-size:14px; line-height:1.7; color:#bbb; margin-bottom:8px; }
+.gps-modal-steps{
+  background:#2a2a2a; border-radius:10px;
+  padding:12px 14px; margin:14px 0 20px;
+  text-align:left; font-size:12px; color:#ccc; line-height:1.8;
+}
+.gps-modal-steps b{ color:#fff; }
 .gps-modal-close{
   background:#333; color:#eee;
   border:1px solid #555; border-radius:10px;
-  padding:12px;
-  font-size:14px; font-weight:600;
+  padding:14px 24px;
+  font-size:15px; font-weight:600;
   cursor:pointer; width:100%;
   -webkit-tap-highlight-color:transparent;
   touch-action:manipulation;
-  min-height:44px;
+  /* large tap target */
+  min-height:50px;
 }
 .gps-modal-close:active{ background:#444; }
+
+/* Inline Slider Row */
+.filter-container {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  margin-top: 4px;
+}
+
+/* Fixed width container for labels (scaled to maximum text length) */
+.slider-label {
+  width: 82px; 
+  font-size: 13px;
+  font-weight: bold;
+  color: #ffaa00;
+  text-align: right;
+  flex-shrink: 0; /* Keeps it from compressing */
+}
+
+/* Slider track takes up all remaining space */
+#filterSlider {
+  flex-grow: 1;
+  width: 100%;
+  accent-color: #ffaa00; /* Custom color match for modern browsers */
+  cursor: pointer;
+  height: 6px;
+  background: #333;
+  border-radius: 3px;
+}
+
 </style>
 </head>
 <body>
@@ -304,44 +305,17 @@ button{
       <p id="subtitle">Community Air Reporting Network</p>
     </div>
     <div class="lang-toggle">
-      <button class="lang-btn"        onclick="setLang('en')">🇬🇧 EN</button>
-      <button class="lang-btn active" onclick="setLang('sr')">🇷🇸 SR</button> 
+  <button class="lang-btn"        onclick="setLang('en')">🇬🇧 EN</button>
+  <button class="lang-btn active" onclick="setLang('sr')">🇷🇸 SR</button> 
     </div>
+  </div>
+  <div class="stats">
+    <span id="reportCount">0 Reports</span>
+    <span id="updated">...</span>
   </div>
 </header>
 
 <div id="map"></div>
-
-<div style="background:#181818; padding: 6px 16px 10px 16px; border-bottom:1px solid #333; flex-shrink:0;">
-  <div style="display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; margin-bottom: 5px;">
-    
-    <div style="justify-self: start;">
-      <span id="sliderValue" style="font-size: 11px; font-weight: 700; color: #00a7b5; background: rgba(0, 167, 181, 0.15); padding: 2px 7px; border-radius: 4px; letter-spacing: 0.5px;">1d</span>
-    </div>
-    
-    <div style="justify-self: center;">
-      <span class="leg" id="sliderTitle" data-en="Time Filter" data-sr="Filter vremena" style="color: #666; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Filter vremena</span>
-    </div>
-    
-    <div style="justify-self: end;">
-      <span id="reportCount" style="font-size: 11px; color: #aaa; font-weight: 700; letter-spacing: 0.3px;">0 Reports</span>
-    </div>
-
-  </div>
-  
-  <div style="display: flex; align-items: center; width: 100%;">
-    <input 
-      type="range" 
-      id="filterSlider" 
-      min="0" 
-      max="10" 
-      value="4" 
-      step="1" 
-      oninput="onSliderChange(this.value)"
-      class="custom-slider"
-    >
-  </div>
-</div>
 
 <div id="mapLegend" style="display:none;
   background:rgba(18,18,18,.88);
@@ -366,45 +340,41 @@ button{
   <span class="legend-item"><span class="legend-dot" style="background:#444;border:1px solid #666"></span><span class="leg" data-en="24h+" data-sr="24h+" style="color:#ddd;font-size:10px;">24h+</span></span>
 </div>
 
-<div id="compassWidget" style="display:none;">
-  <div class="compass-wrap" title="Compass">
-    <svg viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="22" cy="22" r="21" fill="none" stroke="#3a3a3a" stroke-width="1.2"/>
-      <text x="22" y="7.5" text-anchor="middle" fill="#fff" font-size="6.5" font-weight="700">N</text>
-      <text x="22" y="41"  text-anchor="middle" fill="#666" font-size="5.5">S</text>
-      <text x="40" y="24"  text-anchor="middle" fill="#666" font-size="5.5">E</text>
-      <text x="4"  y="24"  text-anchor="middle" fill="#666" font-size="5.5">W</text>
-      <g id="compassNeedle" style="transform-origin:22px 22px">
-        <polygon points="22,5 19,22 22,19 25,22" fill="#ff4b4b"/>
-        <polygon points="22,39 19,22 22,25 25,22" fill="#999"/>
-        <circle cx="22" cy="22" r="2" fill="#fff"/>
-      </g>
-    </svg>
-  </div>
+<div id="compassWidget" style="display:none; flex-direction: column; align-items: center; gap: 4px;">
   <div id="compassWindBox" style="
-    margin-top:4px;
     background:rgba(20,20,20,.88);
     border:1px solid #3a3a3a;
     border-radius:8px;
-    padding:5px 7px;
+    padding:6px 10px;
     text-align:center;
-    font-size:11px;
+    font-size:12px;
     font-weight:700;
     color:#fff;
     line-height:1.4;
     box-shadow:0 2px 8px rgba(0,0,0,.55);
-    min-width:56px;
-    display:none;
+    min-width:72px;
   ">
-    <div id="compassWindArrow" style="font-size:18px;line-height:1;margin-bottom:1px;">↑</div>
-    <div id="compassWindSpeed"></div>
-    <div id="compassWindDir" style="font-size:9px;opacity:.75;"></div>
+    <div id="compassWindArrow" style="font-size:18px;line-height:1;margin-bottom:2px; display:inline-block; transition: transform 0.2s;">↑</div>
+    <div id="compassWindSpeed">-- km/h</div>
+    <div id="compassWindDir" style="font-size:9.5px;opacity:.75;font-weight:600;">--° --</div>
+  </div>
+
+  <div class="compass-wrap" title="Compass">
+    <svg viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg">
+      <text x="22" y="8" text-anchor="middle" fill="#ff4b4b" font-size="7.5" font-weight="900" letter-spacing="0.2">N</text>
+      <g id="compassNeedle" style="transform-origin:22px 22px; transition: transform 0.15s ease-out;">
+        <polygon points="22,10 19,22 22,20 25,22" fill="#ff4b4b"/>
+        <polygon points="22,34 19,22 22,24 25,22" fill="#777"/>
+        <circle cx="22" cy="22" r="1.5" fill="#fff"/>
+      </g>
+    </svg>
   </div>
 </div>
 
 <div id="pinMapBtn" class="pin-map-btn" style="display:none" title="Set location manually" onclick="togglePinMode()">📍</div>
 
 <div class="panel">
+
   <div class="row">
     <select id="category" onchange="checkFormReady()">
       <option value="" disabled selected>Select smell…</option>
@@ -432,6 +402,22 @@ button{
     </select>
   </div>
 
+  <div class="row" style="align-items:center;">
+    <div style="display: flex; align-items: center; gap: 12px; width: 100%;">
+      <span id="sliderValue" style="width: 82px; font-size: 13px; font-weight: bold; color: #00a7b5; text-align: right; flex-shrink: 0;">24h</span>
+      <input 
+        type="range" 
+        id="filterSlider" 
+        min="0" 
+        max="10" 
+        value="4" 
+        step="1" 
+        oninput="onSliderChange(this.value)"
+        style="flex-grow: 1; width: 100%; accent-color: #00a7b5; cursor: pointer;"
+      >
+    </div>
+  </div>
+
   <input id="comment" type="text" placeholder="Optional notes...">
 
   <div class="row" style="align-items:stretch;">
@@ -444,14 +430,22 @@ button{
       <span id="csvLabel">CSV</span>
     </button>
   </div>
+
+
 </div>
 
 <div id="gpsModal" class="gps-modal-overlay" style="display:none">
   <div class="gps-modal">
     <div class="gps-modal-icon">📍</div>
-    <h2 id="gpsModalTitle">Location Disabled</h2>
-    <p id="gpsModalBody">Please enable location permissions to report air quality at your current position, or drop a pin manually using the map button.</p>
-    <button class="gps-modal-close" onclick="hideGpsModal()" id="gpsModalBtn">Zatvori</button>
+    <h2 id="gpsModalTitle">GPS Not Enabled</h2>
+    <p id="gpsModalBody">Location access is turned off. To report bad air at your location, enable it in your settings:</p>
+    <div class="gps-modal-steps" id="gpsModalSteps">
+      <b>Android Chrome:</b> Settings → Site settings → Location<br>
+      <b>iPhone Safari:</b> Settings → Privacy → Location Services<br>
+      <b>Desktop Chrome:</b> Click 🔒 in the address bar
+    </div>
+    <p id="gpsModalAlt" style="font-size:12px;color:#999;margin-bottom:16px;">Or use the 📍 button on the map to drop a pin manually.</p>
+    <button class="gps-modal-close" onclick="hideGpsModal()" id="gpsModalBtn">Got it</button>
   </div>
 </div>
 
@@ -459,16 +453,24 @@ button{
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 <script>
 
+/* ═══════════════════════════════════════════════════
+   SUPABASE
+═══════════════════════════════════════════════════ */
 const SUPABASE_URL = 'https://fnkqmwweljsupbmerbkh.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZua3Ftd3dlbGpzdXBibWVyYmtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE3OTcwODUsImV4cCI6MjA5NzM3MzA4NX0.eX3mxnSpGmJ6Ebw7Y4F_jHiJarPH4ri9WNYXwmLi16I';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+/* ═══════════════════════════════════════════════════
+   i18n
+═══════════════════════════════════════════════════ */
+
+// Map the slider positions (0 to 10) to your backend values and translation keys
 const sliderSteps = [
   { value: 'h1',  labelSr: '1h',       labelEn: '1h' },
   { value: 'h2',  labelSr: '2h',       labelEn: '2h' },
   { value: 'h6',  labelSr: '6h',       labelEn: '6h' },
   { value: 'h12', labelSr: '12h',      labelEn: '12h' },
-  { value: 'd1',  labelSr: '1d',       labelEn: '1d' }, 
+  { value: 'd1',  labelSr: '24h',      labelEn: '24h' }, // Default value (index 4)
   { value: 'd2',  labelSr: '2d',       labelEn: '2d' },
   { value: 'd4',  labelSr: '4d',       labelEn: '4d' },
   { value: 'd6',  labelSr: '6d',       labelEn: '6d' },
@@ -477,13 +479,19 @@ const sliderSteps = [
   { value: 'all', labelSr: 'Sve vreme', labelEn: 'All Time' }
 ];
 
+// Function called whenever the user drags the slider
 function onSliderChange(index) {
   const step = sliderSteps[index];
   const labelElement = document.getElementById('sliderValue');
+  
+  // Update the text badge above the slider based on current language
   labelElement.innerText = (lang === 'sr') ? step.labelSr : step.labelEn;
+  
+  // Call your existing filter logic with the new mapped time value (e.g., 'd1')
   onFilterChange(step.value);
 }
 
+// Add this to your existing applyLang() function so the text updates if a user switches languages
 function updateSliderLabelLanguage() {
   const slider = document.getElementById('filterSlider');
   if (slider) {
@@ -515,13 +523,19 @@ const T = {
   popupNone:    { en:'None',                             sr:'Nema' },
   possSource:   { en:'⚠ Possible sources',               sr:'⚠ Mogući izvori' },
   backtrack:    { en:'backtrack',                        sr:'unazad' },
+  filterLabel:  { en:'Filter:',                          sr:'Filter:' },
+  fgHours:      { en:'Last hours',                       sr:'Poslednjih sati' },
+  fgDays:       { en:'Last days',                        sr:'Poslednjih dana' },
   catPH:        { en:'Select smell…',                    sr:'Izaberi miris…' },
   intPH:        { en:'Intensity…',                       sr:'Intenzitet…' },
+  filterPH:     { en:'Filter…',                          sr:'Filter…' },
   pinModeOn:    { en:'Tap map to place pin',             sr:'Tapni kartu za pin' },
   pinModeOff:   { en:'Set location manually',            sr:'Ručna lokacija' },
-  gpsTitle:     { en:'Location Disabled',                sr:'Lokacija onemogućena' },
-  gpsBody:      { en:'Please enable location permissions to report air quality at your position, or drop a pin manually using the 📍 button on the map.', sr:'Molimo omogućite pristup lokaciji da biste prijavili vazduh na vašoj poziciji, ili postavite pin ručno koristeći dugme 📍 na karti.' },
-  gpsBtn:       { en:'Close',                            sr:'Zatvori' },
+  gpsTitle:     { en:'GPS Not Enabled',                  sr:'GPS nije uključen' },
+  gpsBody:      { en:'Location access is turned off. To report bad air at your location, enable it in your settings:', sr:'Pristup lokaciji je isključen. Da biste prijavili loš vazduh, omogućite ga u podešavanjima:' },
+  gpsStepsEn:   { en:'<b>Android Chrome:</b> Settings → Site settings → Location<br><b>iPhone Safari:</b> Settings → Privacy → Location Services<br><b>Desktop Chrome:</b> Click 🔒 in the address bar', sr:'<b>Android Chrome:</b> Podešavanja → Podešavanja sajta → Lokacija<br><b>iPhone Safari:</b> Podešavanja → Privatnost → Lokacijske usluge<br><b>Desktop Chrome:</b> Klikni 🔒 u adresnoj traci' },
+  gpsAlt:       { en:'Or use the 📍 button on the map to drop a pin manually.', sr:'Ili koristite dugme 📍 na karti da ručno postavite pin.' },
+  gpsBtn:       { en:'Got it',                           sr:'Razumem' },
   noReports:    { en:'No reports in current map view.',  sr:'Nema prijava u vidljivoj oblasti.' },
 };
 
@@ -533,28 +547,50 @@ function setLang(l){
     b.classList.toggle('active', b.getAttribute('onclick').includes("'"+l+"'"));
   });
   applyLang();
-  const slider = document.getElementById('filterSlider');
-  if(slider) onFilterChange(sliderSteps[slider.value].value);
+  const fv = document.getElementById('filterSelect');
+  if(fv && fv.value) onFilterChange(fv.value);
 }
 
-function applyLang() {
+function applyLang(){
   document.getElementById('subtitle').textContent       = t('subtitle');
   document.getElementById('reportBtnLabel').textContent = t('reportBtn');
   document.getElementById('csvLabel').textContent       = t('csvLabel');
+  const legendLabel = document.getElementById('legendLabel');
+  if (legendLabel) legendLabel.textContent = t('legendLabel');
   document.getElementById('comment').placeholder        = t('commentPH');
 
+  // dropdowns placeholders
   document.getElementById('category').options[0].text  = t('catPH');
   document.getElementById('intensity').options[0].text = t('intPH');
+  
+  const fs = document.getElementById('filterSelect');
+  if (fs) {
+    fs.options[0].text = t('filterPH');
+    document.getElementById('fg-hours').label = t('fgHours');
+    document.getElementById('fg-days').label  = t('fgDays');
 
+    const labels = lang === 'sr'
+      ? ['Poslednji 1h','Poslednja 3h','Poslednjih 6h','Poslednjih 12h','Danas','Poslednjih 7 dana','Poslednjih 30 dana','Sve']
+      : ['Last 1h','Last 3h','Last 6h','Last 12h','Today','Last 7 days','Last 30 days','All time'];
+    
+    const options = fs.querySelectorAll('option');
+    for(let i = 1; i < options.length; i++){
+      options[i].textContent = labels[i - 1];
+    }
+  }
+
+  // intensity options
   const intSel = document.getElementById('intensity');
   const intensityLabels = lang === 'sr'
     ? { 1:'Jedva primetno', 5:'Umereno', 10:'Nepodnošljivo' }
     : { 1:'Barely noticeable', 5:'Moderate', 10:'Overwhelming' };
   
   for(let i = 1; i <= 10; i++){
-    intSel.options[i].textContent = intensityLabels[i] ? `${i} – ${intensityLabels[i]}` : `${i}`;
+    intSel.options[i].textContent =
+      intensityLabels[i] ? `${i} – ${intensityLabels[i]}` : `${i}`;
   }
 
+  // category options
   const catEl = document.getElementById('category');
   const catLabels = lang === 'sr'
     ? ['Hemijsko','Dim','Sumpor','Kanalizacija','Plastika','Prašina','Nepoznato']
@@ -564,19 +600,26 @@ function applyLang() {
     opt.textContent = catLabels[i];
   });
 
+  // legend
   document.querySelectorAll('.leg').forEach(el=>{
     el.textContent = el.dataset[lang] || el.dataset.en;
   });
 
+  // GPS modal
   const gm = document.getElementById('gpsModal');
   if(gm && gm.style.display!=='none') updateGpsModalText();
 
-  updateSliderLabelLanguage();
+  const upd = document.getElementById('updated');
+  if(['Loading...','Učitavanje...'].includes(upd.textContent))
+    upd.textContent = t('loading');
 
   document.getElementById('category').dispatchEvent(new Event('change'));
   document.getElementById('intensity').dispatchEvent(new Event('change'));
 }
 
+/* ═══════════════════════════════════════════════════
+   MAP
+═══════════════════════════════════════════════════ */
 const map = L.map('map').setView([45.25,19.85],11);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
   attribution:'© OpenStreetMap'
@@ -591,10 +634,15 @@ let manualMarker  = null;
 let currentDays   = null;
 let currentHours  = null;
 
+/* ═══════════════════════════════════════════════════
+   GPS MODAL
+═══════════════════════════════════════════════════ */
 function updateGpsModalText(){
   const el = id => document.getElementById(id);
   if(el('gpsModalTitle')) el('gpsModalTitle').textContent  = t('gpsTitle');
   if(el('gpsModalBody'))  el('gpsModalBody').textContent   = t('gpsBody');
+  if(el('gpsModalSteps')) el('gpsModalSteps').innerHTML    = t('gpsStepsEn');
+  if(el('gpsModalAlt'))   el('gpsModalAlt').textContent    = t('gpsAlt');
   if(el('gpsModalBtn'))   el('gpsModalBtn').textContent    = t('gpsBtn');
 }
 
@@ -603,6 +651,7 @@ function showGpsModal(){
   if(!modal) return;
   updateGpsModalText();
   modal.style.display = 'flex';
+  // iOS: force repaint so modal is actually visible
   modal.offsetHeight;
 }
 
@@ -611,6 +660,9 @@ function hideGpsModal(){
   if(modal) modal.style.display = 'none';
 }
 
+/* ═══════════════════════════════════════════════════
+   GPS INIT
+═══════════════════════════════════════════════════ */
 function checkFormReady(){
   const cat    = document.getElementById('category').value;
   const intVal = document.getElementById('intensity').value;
@@ -635,7 +687,7 @@ function startWatching(){
       checkFormReady();
     },
     err => {
-      if(err.code === 1) showGpsModal(); 
+      if(err.code === 1) showGpsModal(); // PERMISSION_DENIED
       else setTimeout(()=>{ if(!userCoords) showGpsModal(); }, 5000);
     },
     { enableHighAccuracy:true, timeout:12000 }
@@ -644,12 +696,14 @@ function startWatching(){
 
 function initGps(){
   if(!navigator.geolocation){ showGpsModal(); return; }
+
   if(navigator.permissions && navigator.permissions.query){
     navigator.permissions.query({ name:'geolocation' }).then(result=>{
       if(result.state === 'denied'){
         showGpsModal();
       } else {
         startWatching();
+        // if user dismisses native browser prompt — show modal after 9s
         if(result.state === 'prompt')
           setTimeout(()=>{ if(!userCoords) showGpsModal(); }, 9000);
       }
@@ -662,6 +716,7 @@ function initGps(){
       setTimeout(()=>{ if(!userCoords) showGpsModal(); }, 10000);
     });
   } else {
+    // No Permissions API (e.g. Firefox, older Safari)
     startWatching();
     setTimeout(()=>{ if(!userCoords) showGpsModal(); }, 10000);
   }
@@ -669,6 +724,9 @@ function initGps(){
 
 initGps();
 
+/* ═══════════════════════════════════════════════════
+   COMPASS (top-right Leaflet control)
+═══════════════════════════════════════════════════ */
 const CompassControl = L.Control.extend({
   options:{ position:'topright' },
   onAdd(){ return document.getElementById('compassWidget'); }
@@ -676,6 +734,7 @@ const CompassControl = L.Control.extend({
 new CompassControl().addTo(map);
 document.getElementById('compassWidget').style.display = 'flex';
 
+// Legend as Leaflet bottomright control
 const LegendControl = L.Control.extend({
   options:{ position:'bottomright' },
   onAdd(){ return document.getElementById('mapLegend'); }
@@ -690,14 +749,7 @@ function updateCompassNeedle(h){
 
 if(window.DeviceOrientationEvent){
   if(typeof DeviceOrientationEvent.requestPermission === 'function'){
-    map.on('click', e=>{
-      if(!pinMode) return;
-      manualCoords = { lat:e.latlng.lat, lon:e.latlng.lng };
-      if(manualMarker){
-        manualMarker.setLatLng(e.latlng);
-      }
-      checkFormReady();
-    });
+    // Permissions checked dynamically
   } else {
     listenOrientation();
   }
@@ -713,6 +765,9 @@ function handleOri(e){
   if(h!==null) updateCompassNeedle(h);
 }
 
+/* ═══════════════════════════════════════════════════
+   MANUAL PIN (bottom-left Leaflet control)
+═══════════════════════════════════════════════════ */
 const PinControl = L.Control.extend({
   options:{ position:'bottomleft' },
   onAdd(){ return document.getElementById('pinMapBtn'); }
@@ -729,6 +784,8 @@ function togglePinMode(){
     if(manualMarker){ map.removeLayer(manualMarker); manualMarker=null; }
     manualCoords = null;
     checkFormReady();
+    // Revert back to reading GPS wind data when custom pin is cleared
+    triggerWindUpdate();
   }
 }
 
@@ -747,61 +804,64 @@ map.on('click', e=>{
     }).addTo(map);
   }
   checkFormReady();
+  // Immediately query wind patterns at the precise pin coordinates dropped by the user
+  fetchLiveWind(manualCoords.lat, manualCoords.lon);
 });
 
-let liveWindMarker = null;
-
+/* ═══════════════════════════════════════════════════
+   LIVE WIND SYSTEM
+═══════════════════════════════════════════════════ */
 async function fetchLiveWind(lat,lon){
   try{
     const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=wind_speed_10m,wind_direction_10m`);
     const d = await r.json();
     const spd=d.current.wind_speed_10m, dir=d.current.wind_direction_10m;
-    const rot=(dir+180)%360; 
+    const rot=(dir+180)%360; // arrow points TO direction
     const card=degToCardinal(dir);
 
-    const bubbleHtml=`<div class="wind-bubble">
-      <div style="font-size:16px;transform:rotate(${rot}deg);line-height:1;margin-bottom:2px">↑</div>
-      <div>${spd} km/h</div>
-      <div style="font-size:10px;opacity:.85">${dir}° ${card}</div>
-    </div>`;
-    const icon=L.divIcon({ className:'', html:bubbleHtml, iconAnchor:[-6,10] });
-    if(!liveWindMarker){
-      liveWindMarker=L.marker([lat,lon],{ icon, zIndexOffset:900, interactive:false }).addTo(map);
-    } else {
-      liveWindMarker.setLatLng([lat,lon]);
-      liveWindMarker.setIcon(icon);
-    }
-
-    const box   = document.getElementById('compassWindBox');
+    // ── Compass wind box (top-right) ──
     const arrow = document.getElementById('compassWindArrow');
     const speed = document.getElementById('compassWindSpeed');
     const dirEl = document.getElementById('compassWindDir');
-    if(box){
-      box.style.display = 'block';
-      arrow.style.transform = `rotate(${rot}deg)`;
-      speed.textContent = spd + ' km/h';
-      dirEl.textContent = dir + '° ' + card;
-    }
-  } catch(e){ console.warn('Wind fetch:',e); }
+    
+    if(arrow)  arrow.style.transform = `rotate(${rot}deg)`;
+    if(speed)  speed.textContent = spd + ' km/h';
+    if(dirEl)  dirEl.textContent = dir + '° ' + card;
+  } catch(e){ console.warn('Wind fetch error:',e); }
+}
+
+function triggerWindUpdate() {
+  const activeLoc = (pinMode && manualCoords) ? manualCoords : userCoords;
+  if(activeLoc) {
+    fetchLiveWind(activeLoc.lat, activeLoc.lon);
+  }
 }
 
 function startWindWhenReady(){
-  if(userCoords){
-    fetchLiveWind(userCoords.lat,userCoords.lon);
-    setInterval(()=>{ if(userCoords) fetchLiveWind(userCoords.lat,userCoords.lon); },5*60*1000);
-  } else { setTimeout(startWindWhenReady,1000); }
+  const activeLoc = (pinMode && manualCoords) ? manualCoords : userCoords;
+  if(activeLoc){
+    triggerWindUpdate();
+    setInterval(triggerWindUpdate, 5*60*1000);
+  } else { 
+    setTimeout(startWindWhenReady,1000); 
+  }
 }
 startWindWhenReady();
 
+/* ═══════════════════════════════════════════════════
+   HELPERS
+═══════════════════════════════════════════════════ */
+
+// 7 ageing stages
 function ageColor(createdAt){
   const h=(Date.now()-new Date(createdAt))/3600000;
-  if(h<1)   return '#ff1a1a'; 
-  if(h<2)   return '#ff6600'; 
-  if(h<6)   return '#e09000'; 
-  if(h<12)  return '#a0a000'; 
-  if(h<24)  return '#777777'; 
-  if(h<48)  return '#555555'; 
-  return     '#333333';        
+  if(h<1)   return '#ff1a1a'; // <1h   vivid red
+  if(h<2)   return '#ff6600'; // 1–2h  orange-red
+  if(h<6)   return '#e09000'; // 2–6h  amber
+  if(h<12)  return '#a0a000'; // 6–12h yellow-olive
+  if(h<24)  return '#777777'; // 12–24h mid gray
+  if(h<48)  return '#555555'; // 1–2d  dark gray
+  return     '#333333';        // 2d+   very dark
 }
 
 function degToCardinal(deg){
@@ -823,8 +883,11 @@ function makeIcon(color, windDeg){
   return L.divIcon({ className:'', html:svg, iconSize:[28,36], iconAnchor:[14,36], popupAnchor:[0,-38] });
 }
 
-let btLayers    = []; 
-let bgTrailLayers = []; 
+/* ═══════════════════════════════════════════════════
+   BACKTRACK ENGINE (auto 24h on pin click)
+═══════════════════════════════════════════════════ */
+let btLayers    = []; // Keeps its current role (tracks the active 24h orange trail)
+let bgTrailLayers = []; // ADD THIS: tracks the permanent 6h teal trails
 let btAnimFrame = null;
 
 function clearBacktrack(){
@@ -854,7 +917,7 @@ async function fetchHistoricWind(lat,lon,isoStart,isoEnd){
 
 async function startBacktrack(lat,lon,createdAt){
   clearBacktrack();
-  const HOURS = 24; 
+  const HOURS = 24; // always 24h
   try{
     const reportTime=new Date(createdAt);
     const startTime=new Date(reportTime.getTime()-HOURS*3600000);
@@ -879,26 +942,35 @@ async function startBacktrack(lat,lon,createdAt){
 
     const latlngs=trail.map(p=>[p.lat,p.lon]);
 
+    // pale underline (source→pin order)
     const under=L.polyline(latlngs,{ color:'#ff8800', weight:4, opacity:.18 }).addTo(map);
     btLayers.push(under);
 
+    // animated dashes — reversed so flow goes from pin toward source
     const dashedLine=L.polyline([...latlngs].reverse(),{
       color:'#ff8800', weight:4, opacity:.88, dashArray:'50 10'
     }).addTo(map);
     btLayers.push(dashedLine);
 
+    // speed
     let offset = 0;
     function anim(){
+      // Decrementing by 0.5 to 1 per frame creates a beautiful, smooth crawl
       offset = (offset - 0.6); 
+      
+      // Keep the offset bound tightly to the pattern length (50 dash + 10 gap = 60)
       if (offset < -60) offset = 0; 
+      
       const el = dashedLine.getElement();
       if (el) {
+        // Crucial: Append 'px' unit so browsers don't ignore it as invalid CSS
         el.style.strokeDashoffset = offset + 'px'; 
       }
       btAnimFrame = requestAnimationFrame(anim);
     }
     anim();
 
+    // hourly dots along trail
     trail.slice(1,-1).forEach(p=>{
       const dot=L.circleMarker([p.lat,p.lon],{
         radius:3.5, color:'#ff8800', fillColor:'#fff', fillOpacity:.9, weight:1.5
@@ -906,11 +978,13 @@ async function startBacktrack(lat,lon,createdAt){
       btLayers.push(dot);
     });
 
+    // source circle
     const srcCircle=L.circleMarker([cLat,cLon],{
       radius:12, color:'#ff8800', fillColor:'#ff8800', fillOpacity:.18, weight:2.5
     }).addTo(map);
     btLayers.push(srcCircle);
 
+    // source label
     const srcIcon=L.divIcon({
       className:'',
       html:`<div class="source-label">${t('possSource')}<br><span style="font-size:10px;opacity:.85;font-weight:600">${HOURS}h ${t('backtrack')}</span></div>`,
@@ -920,23 +994,26 @@ async function startBacktrack(lat,lon,createdAt){
 
   } catch(err){ console.error('Backtrack:',err); }
 }
-
+// Clears all background 6h teal trails
 function clearBackgroundTrails() {
   bgTrailLayers.forEach(l => map.removeLayer(l));
   bgTrailLayers = [];
 }
 
+// Generates a 6-hour teal path for all loaded pins
 async function generateAllBackgroundTrails(reports) {
   clearBackgroundTrails();
   if (!reports || !reports.length) return;
 
+// Process all pins concurrently
   reports.forEach(async (report) => {
     try {
+      // SKIP if the report is older than 24 hours
       const reportAgeHours = (Date.now() - new Date(report.created_at)) / 3600000;
       if (reportAgeHours > 24) return;
 
       const reportTime = new Date(report.created_at);
-      const startTime = new Date(reportTime.getTime() - 6 * 3600000); 
+      const startTime = new Date(reportTime.getTime() - 6 * 3600000); // Strict 6 hours
       
       const hourly = await fetchHistoricWind(report.latitude, report.longitude, startTime.toISOString(), reportTime.toISOString());
       if (!hourly?.time?.length) return;
@@ -959,13 +1036,15 @@ async function generateAllBackgroundTrails(reports) {
 
       const latlngs = trail.map(p => [p.lat, p.lon]);
 
+      // Create a static, non-animated dotted line matching the pin's age color
       const tealTrail = L.polyline(latlngs, {
-        color: ageColor(report.created_at), 
+        color: ageColor(report.created_at), // Dynamic color matching the pin
         weight: 2.5,
         opacity: 0.65,
         className: 'bg-trail-teal'
       }).addTo(map);
 
+      // Push to the background tracker so we can clear them on filter updates
       bgTrailLayers.push(tealTrail);
 
     } catch (err) {
@@ -973,13 +1052,15 @@ async function generateAllBackgroundTrails(reports) {
     }
   });
 }
-
+/* ═══════════════════════════════════════════════════
+   PINS
+═══════════════════════════════════════════════════ */
 function clearMarkers(){
   reportMarkers.forEach(m=>map.removeLayer(m));
   reportMarkers=[];
 }
 
-function renderPin(report, index = 0){ 
+function renderPin(report, index = 0){ // <-- Accept index
   const date  = new Date(report.created_at);
   const color = ageColor(report.created_at);
   const card  = degToCardinal(report.wind_direction);
@@ -997,11 +1078,12 @@ function renderPin(report, index = 0){
 <b>${t('popupNotes')}:</b> ${report.comment||t('popupNone')}
 </div>`;
 
+  // Calculate z-index: index 0 (newest) gets 10000, index 1 gets 9999, etc.
   const zIndexPriority = 10000 - index;
 
   const marker=L.marker([report.latitude,report.longitude],{
     icon:makeIcon(color,report.wind_direction),
-    zIndexOffset: zIndexPriority 
+    zIndexOffset: zIndexPriority // <-- Add this line to stack them correctly
   }).addTo(map);
 
   marker.bindPopup(popupHtml,{ maxWidth:250, minWidth:200 });
@@ -1009,6 +1091,9 @@ function renderPin(report, index = 0){
   reportMarkers.push(marker);
 }
 
+/* ═══════════════════════════════════════════════════
+   LOAD PINS
+═══════════════════════════════════════════════════ */
 async function fetchAll(){
   const {data,error}=await sb.from('air_reports').select('*').order('created_at',{ascending:false});
   if(error){ console.error(error); return []; }
@@ -1026,11 +1111,15 @@ async function loadPins(days){
   data.forEach((r, index) => {
     if(new Date(r.created_at)<cutoff) return;
     n++; 
-    renderPin(r, index); 
+    renderPin(r, index); // <-- Add index here
     activeReports.push(r);
   });
   
-  document.getElementById('reportCount').textContent=n+' '+t('reportCount');
+  const rcEl = document.getElementById('reportCount');
+  if(rcEl) rcEl.textContent=n+' '+t('reportCount');
+  document.getElementById('updated').textContent=new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+  
+  // Fire off the background teal lines generator
   generateAllBackgroundTrails(activeReports);
 }
 
@@ -1045,14 +1134,21 @@ async function loadPinsByHours(hours){
   data.forEach((r, index) => {
     if(new Date(r.created_at)<cutoff) return;
     n++; 
-    renderPin(r, index); 
+    renderPin(r, index); // <-- Add index here
     activeReports.push(r);
   });
   
-  document.getElementById('reportCount').textContent=n+' '+t('reportCount');
+  const rcEl = document.getElementById('reportCount');
+  if(rcEl) rcEl.textContent=n+' '+t('reportCount');
+  document.getElementById('updated').textContent=new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+  
+  // Fire off the background teal lines generator
   generateAllBackgroundTrails(activeReports);
 }
 
+/* ═══════════════════════════════════════════════════
+   FILTER
+═══════════════════════════════════════════════════ */
 function onFilterChange(val){
   if(!val) return;
   if(val.startsWith('h')){
@@ -1064,6 +1160,9 @@ function onFilterChange(val){
   }
 }
 
+/* ═══════════════════════════════════════════════════
+   REPORT
+═══════════════════════════════════════════════════ */
 async function reportBadAir(){
   const coords=pinMode&&manualCoords ? manualCoords : userCoords;
   if(!coords){ alert(t('waitGps')); return; }
@@ -1083,26 +1182,35 @@ async function reportBadAir(){
       wind_direction:c.wind_direction_10m,
       sea_level_pressure:c.pressure_msl
     }]);
+    
     if(error) throw error;
 
+    // Reset fields to default values
     document.getElementById('category').selectedIndex = 0;
     document.getElementById('intensity').selectedIndex = 0;
     document.getElementById('comment').value='';
+
+    // Disable button until fields are filled again
     document.getElementById('reportBtn').disabled = true;
 
     alert(t('submitted'));
-    const slider = document.getElementById('filterSlider');
-    if(slider) onFilterChange(sliderSteps[slider.value].value);
+    
+    const sliderIndex = document.getElementById('filterSlider').value;
+    const activeValue = sliderSteps[sliderIndex].value;
+    if (activeValue) onFilterChange(activeValue);
 
   } catch(err){ alert(err.message); }
 }
 
+/* ═══════════════════════════════════════════════════
+   CSV (bounds + active time filter)
+═══════════════════════════════════════════════════ */
 async function downloadCSV(){
   const data=await fetchAll();
   if(!data.length) return;
 
-  const slider = document.getElementById('filterSlider');
-  const filterVal = sliderSteps[slider.value].value;
+  const sliderIndex = document.getElementById('filterSlider').value;
+  const filterVal = sliderSteps[sliderIndex].value;
   let timeCutoff=null;
   if(filterVal.startsWith('h')){
     timeCutoff=new Date(Date.now()-parseInt(filterVal.slice(1))*3600000);
@@ -1131,11 +1239,18 @@ async function downloadCSV(){
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
 }
 
+/* ═══════════════════════════════════════════════════
+   INIT
+═══════════════════════════════════════════════════ */
+// Set initial slider position to index 4 (which maps to 'd1' / 24h)
 document.getElementById('filterSlider').value = 4;
 applyLang(); 
+updateSliderLabelLanguage();
 
+// Load the initial dataset using the mapped value at index 4 ('d1')
 loadPins(sliderSteps[4].value);
 
+// Auto-refresh interval using the slider's active value
 setInterval(() => {
   const sliderIndex = document.getElementById('filterSlider').value;
   const activeValue = sliderSteps[sliderIndex].value;
