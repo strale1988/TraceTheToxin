@@ -327,7 +327,7 @@ button{
   </div>
   <div class="stats">
     <span id="reportCount">0 Reports</span>
-    <span id="updated">Loading...</span>
+    <span id="updated">...</span>
   </div>
 </header>
 
@@ -593,64 +593,16 @@ function applyLang(){
   // dropdowns placeholders
   document.getElementById('category').options[0].text  = t('catPH');
   document.getElementById('intensity').options[0].text = t('intPH');
-  document.getElementById('filterSelect').options[0].text = t('filterPH');
-
-  // filter optgroups
-  document.getElementById('fg-hours').label = t('fgHours');
-  document.getElementById('fg-days').label  = t('fgDays');
-
-  const fs = document.getElementById('filterSelect');
-
-  const labels = lang === 'sr'
-    ? [
-        'Poslednji 1h',
-        'Poslednja 3h',
-        'Poslednjih 6h',
-        'Poslednjih 12h',
-        'Danas',
-        'Poslednjih 7 dana',
-        'Poslednjih 30 dana',
-        'Sve'
-      ]
-    : [
-        'Last 1h',
-        'Last 3h',
-        'Last 6h',
-        'Last 12h',
-        'Today',
-        'Last 7 days',
-        'Last 30 days',
-        'All time'
-      ];
-  
-  const options = fs.querySelectorAll('option');
-  
-  for(let i = 1; i < options.length; i++){
-    options[i].textContent = labels[i - 1];
-  }
-  // options[0]=placeholder, [1-4]=hours, [5-8]=days
-  //for(let i=1;i<=4;i++) fs.options[i].text = lang==='sr'?hoptsSR[i-1]:hopts[i-1];
-  //for(let i=5;i<=8;i++) fs.options[i].text = lang==='sr'?doptsSR[i-5]:dopts[i-5];
 
   // intensity options
   const intSel = document.getElementById('intensity');
   const intensityLabels = lang === 'sr'
-    ? {
-        1:'Jedva primetno',
-        5:'Umereno',
-        10:'Nepodnošljivo'
-      }
-    : {
-        1:'Barely noticeable',
-        5:'Moderate',
-        10:'Overwhelming'
-      };
+    ? { 1:'Jedva primetno', 5:'Umereno', 10:'Nepodnošljivo' }
+    : { 1:'Barely noticeable', 5:'Moderate', 10:'Overwhelming' };
   
   for(let i = 1; i <= 10; i++){
     intSel.options[i].textContent =
-      intensityLabels[i]
-        ? `${i} – ${intensityLabels[i]}`
-        : `${i}`;
+      intensityLabels[i] ? `${i} – ${intensityLabels[i]}` : `${i}`;
   }
 
   // category options
@@ -675,6 +627,9 @@ function applyLang(){
   const upd = document.getElementById('updated');
   if(['Loading...','Učitavanje...'].includes(upd.textContent))
     upd.textContent = t('loading');
+
+  // Update slider label text for the active language
+  updateSliderLabelLanguage();
 
   document.getElementById('category').dispatchEvent(new Event('change'));
   document.getElementById('intensity').dispatchEvent(new Event('change'));
@@ -1282,14 +1237,15 @@ async function downloadCSV(){
   const data=await fetchAll();
   if(!data.length) return;
 
-  const filterVal=document.getElementById('filterSelect').value;
-  let timeCutoff=null;
-  if(filterVal.startsWith('h')){
-    timeCutoff=new Date(Date.now()-parseInt(filterVal.slice(1))*3600000);
-  } else if(filterVal.startsWith('d')){
-    const days=parseInt(filterVal.slice(1));
-    if(days!==9999){ timeCutoff=new Date(); timeCutoff.setDate(timeCutoff.getDate()-days); }
-  }
+  const sliderIndex = document.getElementById('filterSlider').value;
+const filterVal = sliderSteps[sliderIndex].value;
+let timeCutoff=null;
+if(filterVal.startsWith('h')){
+  timeCutoff=new Date(Date.now()-parseInt(filterVal.slice(1))*3600000);
+} else if(filterVal.startsWith('d')){
+  const days=parseInt(filterVal.slice(1));
+  timeCutoff=new Date(); timeCutoff.setDate(timeCutoff.getDate()-days);
+}
 
   const bounds=map.getBounds();
   const visible=data.filter(r=>{
@@ -1319,14 +1275,13 @@ document.getElementById('filterSlider').value = 4;
 applyLang(); 
 updateSliderLabelLanguage();
 
-// Load the initial dataset using the mapped value at index 4 ('d1')
-loadPins(sliderSteps[4].value);
+// FIX: Route through onSliderChange(4) so all elements and active values align
+onSliderChange(4);
 
 // Auto-refresh interval using the slider's active value
 setInterval(() => {
   const sliderIndex = document.getElementById('filterSlider').value;
-  const activeValue = sliderSteps[sliderIndex].value;
-  if (activeValue) onFilterChange(activeValue);
+onSliderChange(sliderIndex);
 }, 60000);
 
 </script>
