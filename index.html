@@ -618,10 +618,6 @@ function applyLang(){
   const gm = document.getElementById('gpsModal');
   if(gm && gm.style.display!=='none') updateGpsModalText();
 
-  const upd = document.getElementById('updated');
-  if(['Loading...','Učitavanje...'].includes(upd.textContent))
-    upd.textContent = t('loading');
-
   updateSliderLabelLanguage();
   document.getElementById('category').dispatchEvent(new Event('change'));
   document.getElementById('intensity').dispatchEvent(new Event('change'));
@@ -1232,30 +1228,22 @@ async function downloadCSV(){
 }
 
 /* ═══════════════════════════════════════════════════
-   INIT (Wrapped safely in an onload window event)
+   INIT
 ═══════════════════════════════════════════════════ */
-window.addEventListener('DOMContentLoaded', () => {
-  // 1. Position the range slider explicitly at index 4 ('d1')
-  document.getElementById('filterSlider').value = 4;
-  
-  // 2. Set structural typography/languages
-  applyLang(); 
-  
-  // 3. Clean up the application layout loop logic
-  updateSliderLabelLanguage();
+// Set initial slider position to index 4 (maps to 'd1' / 1d)
+document.getElementById('filterSlider').value = 4;
+applyLang(); 
+updateSliderLabelLanguage();
 
-  // 4. Force safe direct call execution route now that DOM is verified ready
-  onFilterChange('d1'); 
+// Trigger the orchestrator directly with 'd1' instead of passing raw config strings
+onFilterChange('d1');
 
-  // 5. Native heartbeat database synchronization loop
-  setInterval(() => {
-    const slider = document.getElementById('filterSlider');
-    if (slider) {
-      const activeValue = sliderSteps[slider.value].value;
-      if (activeValue) onFilterChange(activeValue);
-    }
-  }, 60000);
-});
+// Auto-refresh layout datasets
+setInterval(() => {
+  const sliderIndex = document.getElementById('filterSlider').value;
+  const activeValue = sliderSteps[sliderIndex].value;
+  if (activeValue) onFilterChange(activeValue);
+}, 60000);
 
 </script>
 </body>
