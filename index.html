@@ -16,6 +16,7 @@ body{
   height:100vh;
   display:flex;
   flex-direction:column;
+  overflow: hidden; /* Prevent bouncing/accidental scrolling */
 }
 
 header{
@@ -63,7 +64,12 @@ header p{ font-size:11px; opacity:.7; margin-top:2px; }
 }
 .lang-btn.active{ background:#00a7b5; color:white; }
 
-#map{ flex:1; position:relative; overflow:hidden; }
+#map{ 
+  flex:1; 
+  min-height: 0; /* Allows the map to shrink gracefully on tiny screens */
+  position:relative; 
+  overflow:hidden; 
+}
 
 /* ── Panel ────────────────────────────────────────── */
 .panel{
@@ -73,6 +79,7 @@ header p{ font-size:11px; opacity:.7; margin-top:2px; }
   flex-direction:column;
   gap:8px;
   border-top:1px solid #333;
+  flex-shrink: 0; /* Ensures the control panel never gets cut off */
 }
 
 .row{ display:flex; gap:8px; }
@@ -952,22 +959,22 @@ async function startBacktrack(lat,lon,createdAt){
     btLayers.push(dashedLine);
 
     // speed
-let offset = 0;
-function anim(){
-  // Decrementing by 0.5 to 1 per frame creates a beautiful, smooth crawl
-  offset = (offset - 0.6); 
-  
-  // Keep the offset bound tightly to the pattern length (50 dash + 10 gap = 60)
-  if (offset < -60) offset = 0; 
-  
-  const el = dashedLine.getElement();
-  if (el) {
-    // Crucial: Append 'px' unit so browsers don't ignore it as invalid CSS
-    el.style.strokeDashoffset = offset + 'px'; 
-  }
-  btAnimFrame = requestAnimationFrame(anim);
-}
-anim();
+    let offset = 0;
+    function anim(){
+      // Decrementing by 0.5 to 1 per frame creates a beautiful, smooth crawl
+      offset = (offset - 0.6); 
+      
+      // Keep the offset bound tightly to the pattern length (50 dash + 10 gap = 60)
+      if (offset < -60) offset = 0; 
+      
+      const el = dashedLine.getElement();
+      if (el) {
+        // Crucial: Append 'px' unit so browsers don't ignore it as invalid CSS
+        el.style.strokeDashoffset = offset + 'px'; 
+      }
+      btAnimFrame = requestAnimationFrame(anim);
+    }
+    anim();
 
     // hourly dots along trail
     trail.slice(1,-1).forEach(p=>{
