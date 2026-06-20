@@ -291,8 +291,8 @@ button{
       <p id="subtitle">Community Air Reporting Network</p>
     </div>
     <div class="lang-toggle">
-      <button class="lang-btn active" onclick="setLang('en')">🇬🇧 EN</button>
-      <button class="lang-btn"        onclick="setLang('sr')">🇷🇸 SR</button>
+  <button class="lang-btn"        onclick="setLang('en')">🇬🇧 EN</button>
+  <button class="lang-btn active" onclick="setLang('sr')">🇷🇸 SR</button> 
     </div>
   </div>
   <div class="stats">
@@ -1251,8 +1251,8 @@ async function downloadCSV(){
 /* ═══════════════════════════════════════════════════
    INIT
 ═══════════════════════════════════════════════════ */
-// Default view: today
 document.getElementById('filterSelect').value = 'd1';
+applyLang(); // <-- Add this line here so translations apply immediately
 loadPins(1);
 setInterval(()=>{
   const fv=document.getElementById('filterSelect').value;
