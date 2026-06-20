@@ -1079,7 +1079,7 @@ function renderPin(report, index = 0){
 }
 
 /* ═══════════════════════════════════════════════════
-   LOAD PINS
+   LOAD PINS (Fixed Date Timestamps & Removed Crashes)
 ═══════════════════════════════════════════════════ */
 async function fetchAll(){
   const {data,error}=await sb.from('air_reports').select('*').order('created_at',{ascending:false});
@@ -1091,12 +1091,20 @@ async function loadPins(days){
   if(days!==undefined) currentDays=days;
   clearMarkers(); clearBacktrack(); clearBackgroundTrails();
   const data=await fetchAll();
-  const cutoff=new Date(); cutoff.setDate(cutoff.getDate()-currentDays);
+  
+  // Convert cutoff to a clean numerical timestamp
+  const cutoff=new Date(); 
+  cutoff.setDate(cutoff.getDate() - currentDays);
+  const cutoffTimestamp = cutoff.getTime(); 
+  
   let n=0;
   let activeReports = [];
   
   data.forEach((r, index) => {
-    if(new Date(r.created_at)<cutoff) return;
+    // Safely parse the database date string to a timestamp
+    const reportTimestamp = new Date(r.created_at).getTime();
+    if(reportTimestamp < cutoffTimestamp) return;
+    
     n++; 
     renderPin(r, index); 
     activeReports.push(r);
@@ -1104,7 +1112,6 @@ async function loadPins(days){
   
   const rcEl = document.getElementById('reportCount');
   if(rcEl) rcEl.textContent = n + ' ' + (n === 1 ? t('reportCount1') : t('reportCount'));
-  document.getElementById('updated').textContent=new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
   
   generateAllBackgroundTrails(activeReports);
 }
@@ -1113,12 +1120,17 @@ async function loadPinsByHours(hours){
   if(hours!==undefined) currentHours=hours;
   clearMarkers(); clearBacktrack(); clearBackgroundTrails();
   const data=await fetchAll();
-  const cutoff=new Date(Date.now()-currentHours*3600000);
+  
+  // Calculate historical hours window as a solid timestamp
+  const cutoffTimestamp = Date.now() - (currentHours * 3600000);
+  
   let n=0;
   let activeReports = [];
   
   data.forEach((r, index) => {
-    if(new Date(r.created_at)<cutoff) return;
+    const reportTimestamp = new Date(r.created_at).getTime();
+    if(reportTimestamp < cutoffTimestamp) return;
+    
     n++; 
     renderPin(r, index); 
     activeReports.push(r);
@@ -1126,7 +1138,6 @@ async function loadPinsByHours(hours){
   
   const rcEl = document.getElementById('reportCount');
   if(rcEl) rcEl.textContent = n + ' ' + (n === 1 ? t('reportCount1') : t('reportCount'));
-  document.getElementById('updated').textContent=new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
   
   generateAllBackgroundTrails(activeReports);
 }
@@ -1144,7 +1155,6 @@ function onFilterChange(val){
     loadPins(currentDays);
   }
 }
-
 /* ═══════════════════════════════════════════════════
    REPORT
 ═══════════════════════════════════════════════════ */
@@ -1222,22 +1232,30 @@ async function downloadCSV(){
 }
 
 /* ═══════════════════════════════════════════════════
-   INIT
+   INIT (Wrapped safely in an onload window event)
 ═══════════════════════════════════════════════════ */
-// Set initial slider position to index 4 (maps to 'd1' / 1d)
-document.getElementById('filterSlider').value = 4;
-applyLang(); 
-updateSliderLabelLanguage();
+window.addEventListener('DOMContentLoaded', () => {
+  // 1. Position the range slider explicitly at index 4 ('d1')
+  document.getElementById('filterSlider').value = 4;
+  
+  // 2. Set structural typography/languages
+  applyLang(); 
+  
+  // 3. Clean up the application layout loop logic
+  updateSliderLabelLanguage();
 
-// Load data using the initial 'd1' mapped configuration value
-loadPins(sliderSteps[4].value);
+  // 4. Force safe direct call execution route now that DOM is verified ready
+  onFilterChange('d1'); 
 
-// Auto-refresh layout datasets
-setInterval(() => {
-  const sliderIndex = document.getElementById('filterSlider').value;
-  const activeValue = sliderSteps[sliderIndex].value;
-  if (activeValue) onFilterChange(activeValue);
-}, 60000);
+  // 5. Native heartbeat database synchronization loop
+  setInterval(() => {
+    const slider = document.getElementById('filterSlider');
+    if (slider) {
+      const activeValue = sliderSteps[slider.value].value;
+      if (activeValue) onFilterChange(activeValue);
+    }
+  }, 60000);
+});
 
 </script>
 </body>
