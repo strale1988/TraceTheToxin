@@ -21,7 +21,6 @@ body{
   height: 100svh; /* Changed from 100dvh to 100svh */
   display:flex;
   flex-direction:column;
-  //overflow: hidden; 
 }
 
 header{
@@ -280,6 +279,37 @@ button{
   min-height:50px;
 }
 .gps-modal-close:active{ background:#444; }
+
+/* Inline Slider Row */
+.filter-container {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  margin-top: 4px;
+}
+
+/* Fixed width container for labels (scaled to maximum text length) */
+.slider-label {
+  width: 82px; 
+  font-size: 13px;
+  font-weight: bold;
+  color: #ffaa00;
+  text-align: right;
+  flex-shrink: 0; /* Keeps it from compressing */
+}
+
+/* Slider track takes up all remaining space */
+#filterSlider {
+  flex-grow: 1;
+  width: 100%;
+  accent-color: #ffaa00; /* Custom color match for modern browsers */
+  cursor: pointer;
+  height: 6px;
+  background: #333;
+  border-radius: 3px;
+}
+
 </style>
 </head>
 <body>
@@ -399,24 +429,21 @@ button{
     </select>
   </div>
 
-  <!-- Row 2: filter — full width with label prefix inside select -->
-  <div class="row" style="align-items:center;gap:8px;">
-    <label id="filterLabel" for="filterSelect" style="font-size:11px;color:#888;white-space:nowrap;flex-shrink:0;">Filter:</label>
-    <select id="filterSelect" onchange="onFilterChange(this.value)" style="flex:1;width:100%;">
-      <option value="" disabled selected>Filter…</option>
-      <optgroup id="fg-hours" label="Last hours">
-        <option value="h1">Last 1h</option>
-        <option value="h3">Last 3h</option>
-        <option value="h6">Last 6h</option>
-        <option value="h12">Last 12h</option>
-      </optgroup>
-      <optgroup id="fg-days" label="Last days">
-        <option value="d1">Today</option>
-        <option value="d7">Last 7 days</option>
-        <option value="d30">Last 30 days</option>
-        <option value="d9999">All time</option>
-      </optgroup>
-    </select>
+  <!-- Row 2: filter — horizontal inline slider -->
+  <div class="row" style="align-items:center;">
+    <div style="display: flex; align-items: center; gap: 12px; width: 100%;">
+      <span id="sliderValue" style="width: 82px; font-size: 13px; font-weight: bold; color: #00a7b5; text-align: right; flex-shrink: 0;">24h</span>
+      <input 
+        type="range" 
+        id="filterSlider" 
+        min="0" 
+        max="10" 
+        value="4" 
+        step="1" 
+        oninput="onSliderChange(this.value)"
+        style="flex-grow: 1; width: 100%; accent-color: #00a7b5; cursor: pointer;"
+      >
+    </div>
   </div>
 
   <!-- Row 3: notes -->
@@ -467,6 +494,43 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 /* ═══════════════════════════════════════════════════
    i18n
 ═══════════════════════════════════════════════════ */
+
+// Map the slider positions (0 to 10) to your backend values and translation keys
+const sliderSteps = [
+  { value: 'h1',  labelSr: '1h',       labelEn: '1h' },
+  { value: 'h2',  labelSr: '2h',       labelEn: '2h' },
+  { value: 'h6',  labelSr: '6h',       labelEn: '6h' },
+  { value: 'h12', labelSr: '12h',      labelEn: '12h' },
+  { value: 'd1',  labelSr: '24h',      labelEn: '24h' }, // Default value (index 4)
+  { value: 'd2',  labelSr: '2d',       labelEn: '2d' },
+  { value: 'd4',  labelSr: '4d',       labelEn: '4d' },
+  { value: 'd6',  labelSr: '6d',       labelEn: '6d' },
+  { value: 'd15', labelSr: '15d',      labelEn: '15d' },
+  { value: 'd30', labelSr: '30d',      labelEn: '30d' },
+  { value: 'all', labelSr: 'Sve vreme', labelEn: 'All Time' }
+];
+
+// Function called whenever the user drags the slider
+function onSliderChange(index) {
+  const step = sliderSteps[index];
+  const labelElement = document.getElementById('sliderValue');
+  
+  // Update the text badge above the slider based on current language
+  labelElement.innerText = (lang === 'sr') ? step.labelSr : step.labelEn;
+  
+  // Call your existing filter logic with the new mapped time value (e.g., 'd1')
+  onFilterChange(step.value);
+}
+
+// Add this to your existing applyLang() function so the text updates if a user switches languages
+function updateSliderLabelLanguage() {
+  const slider = document.getElementById('filterSlider');
+  if (slider) {
+    const step = sliderSteps[slider.value];
+    document.getElementById('sliderValue').innerText = (lang === 'sr') ? step.labelSr : step.labelEn;
+  }
+}
+
 let lang = 'sr';
 
 const T = {
@@ -525,7 +589,6 @@ function applyLang(){
   const legendLabel = document.getElementById('legendLabel');
   if (legendLabel) legendLabel.textContent = t('legendLabel');
   document.getElementById('comment').placeholder        = t('commentPH');
-  document.getElementById('filterLabel').textContent    = t('filterLabel');
 
   // dropdowns placeholders
   document.getElementById('category').options[0].text  = t('catPH');
@@ -1251,12 +1314,19 @@ async function downloadCSV(){
 /* ═══════════════════════════════════════════════════
    INIT
 ═══════════════════════════════════════════════════ */
-document.getElementById('filterSelect').value = 'd1';
-applyLang(); // <-- Add this line here so translations apply immediately
-loadPins(1);
-setInterval(()=>{
-  const fv=document.getElementById('filterSelect').value;
-  if(fv) onFilterChange(fv);
+// Set initial slider position to index 4 (which maps to 'd1' / 24h)
+document.getElementById('filterSlider').value = 4;
+applyLang(); 
+updateSliderLabelLanguage();
+
+// Load the initial dataset using the mapped value at index 4 ('d1')
+loadPins(sliderSteps[4].value);
+
+// Auto-refresh interval using the slider's active value
+setInterval(() => {
+  const sliderIndex = document.getElementById('filterSlider').value;
+  const activeValue = sliderSteps[sliderIndex].value;
+  if (activeValue) onFilterChange(activeValue);
 }, 60000);
 
 </script>
