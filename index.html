@@ -40,8 +40,8 @@ header p{ font-size:11px; opacity:.7; margin-top:2px; }
 
 .stats{
   display:flex;
-  justify-content:space-between;
-  margin-top:8px;
+  justify-content:flex-end;
+  margin-top:4px;
   font-size:12px;
   opacity:.8;
 }
@@ -76,16 +76,52 @@ header p{ font-size:11px; opacity:.7; margin-top:2px; }
   overflow: hidden;
 }
 
+/* ── New Filter Row Layout ────────────────────────── */
+.filter-label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px 4px 14px;
+  background: #181818;
+  font-size: 11px;
+  font-weight: bold;
+}
+
+.filter-title {
+  color: #888;
+  letter-spacing: .3px;
+  text-transform: uppercase;
+  font-size: 10px;
+}
+
+#sliderValue {
+  color: #00a7b5;
+  font-size: 13px;
+  width: 60px;
+}
+
+#reportCount {
+  color: #aaa;
+  font-size: 12px;
+  text-align: right;
+  width: 80px;
+}
+
+.filter-slider-row {
+  background: #181818;
+  padding: 0 12px 12px 12px;
+  border-bottom: 1px solid #292929;
+}
+
 /* ── Panel ────────────────────────────────────────── */
 .panel{
   background:#181818;
-  padding:10px 12px;
+  padding:12px 12px;
   /* Add safe-area padding to elevate buttons safely above phone borders */
   padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)); 
   display:flex;
   flex-direction:column;
   gap:8px;
-  border-top:1px solid #333;
   flex-shrink: 0; 
 }
 
@@ -122,7 +158,7 @@ select{
   letter-spacing:.3px;
 }
 
-input{
+input[type="text"]{
   width:100%;
   padding:11px 10px;
   border:none;
@@ -264,34 +300,16 @@ button{
 }
 .gps-modal-close:active{ background:#444; }
 
-/* Inline Slider Row */
-.filter-container {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  margin-top: 4px;
-}
-
 /* Fixed width container for labels (scaled to maximum text length) */
-.slider-label {
-  width: 82px; 
-  font-size: 13px;
-  font-weight: bold;
-  color: #ffaa00;
-  text-align: right;
-  flex-shrink: 0; /* Keeps it from compressing */
-}
-
-/* Slider track takes up all remaining space */
 #filterSlider {
-  flex-grow: 1;
   width: 100%;
-  accent-color: #ffaa00; /* Custom color match for modern browsers */
+  accent-color: #00a7b5; /* Custom color match for modern browsers */
   cursor: pointer;
   height: 6px;
   background: #333;
   border-radius: 3px;
+  -webkit-appearance: none;
+  appearance: none;
 }
 
 </style>
@@ -309,13 +327,28 @@ button{
   <button class="lang-btn active" onclick="setLang('sr')">🇷🇸 SR</button> 
     </div>
   </div>
-  <div class="stats">
-    <span id="reportCount">0 Reports</span>
-    <span id="updated">...</span>
-  </div>
+
 </header>
 
 <div id="map"></div>
+
+<div class="filter-label-row">
+  <span id="sliderValue">1d</span>
+  <span class="filter-title" id="filterTitleLabel">Time Filter</span>
+  <span id="reportCount">0 Reports</span>
+</div>
+
+<div class="filter-slider-row">
+  <input 
+    type="range" 
+    id="filterSlider" 
+    min="0" 
+    max="10" 
+    value="4" 
+    step="1" 
+    oninput="onSliderChange(this.value)"
+  >
+</div>
 
 <div id="mapLegend" style="display:none;
   background:rgba(18,18,18,.88);
@@ -340,9 +373,7 @@ button{
   <span class="legend-item"><span class="legend-dot" style="background:#444;border:1px solid #666"></span><span class="leg" data-en="24h+" data-sr="24h+" style="color:#ddd;font-size:10px;">24h+</span></span>
 </div>
 
-<!-- Wind Dashboard Box  Mini-Compass Container (top-right Leaflet control) -->
 <div id="compassWidget" style="display:none; flex-direction: column; align-items: center; gap: 6px;">
-  <!-- Expanded Live Wind Data Box (Always on Top) -->
   <div id="compassWindBox" style="
     background:rgba(20,20,20,.88);
     border:1px solid #3a3a3a;
@@ -361,7 +392,6 @@ button{
     <div id="compassWindDir" style="font-size:9.5px;opacity:.75;font-weight:600;">--° --</div>
   </div>
 
-  <!-- Original Styled Compass - Compact Scale (Placed Below Box) -->
   <div class="compass-wrap" style="
     background: rgba(20, 20, 20, 0.85);
     border: 1px solid #3a3a3a;
@@ -375,12 +405,10 @@ button{
     user-select: none;
   " title="Compass">
     <svg viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg" style="width: 40px; height: 40px;">
-      <!-- Subtle outer dial rim -->
       <circle cx="22" cy="22" r="20" fill="none" stroke="#333" stroke-width="1"/>
       
       <text x="22" y="9" text-anchor="middle" fill="#ff4b4b" font-size="6.5" font-weight="900">N</text>
       
-      <!-- Needle Structure -->
       <g id="compassNeedle" style="transform-origin:22px 22px; transition: transform 0.15s ease-out;">
         <polygon points="22,11 19,22 22,20 25,22" fill="#ff4b4b"/>
         <polygon points="22,33 19,22 22,24 25,22" fill="#555"/>
@@ -421,22 +449,6 @@ button{
     </select>
   </div>
 
-  <div class="row" style="align-items:center;">
-    <div style="display: flex; align-items: center; gap: 12px; width: 100%;">
-      <span id="sliderValue" style="width: 82px; font-size: 13px; font-weight: bold; color: #00a7b5; text-align: right; flex-shrink: 0;">24h</span>
-      <input 
-        type="range" 
-        id="filterSlider" 
-        min="0" 
-        max="10" 
-        value="4" 
-        step="1" 
-        oninput="onSliderChange(this.value)"
-        style="flex-grow: 1; width: 100%; accent-color: #00a7b5; cursor: pointer;"
-      >
-    </div>
-  </div>
-
   <input id="comment" type="text" placeholder="Optional notes...">
 
   <div class="row" style="align-items:stretch;">
@@ -449,7 +461,6 @@ button{
       <span id="csvLabel">CSV</span>
     </button>
   </div>
-
 
 </div>
 
@@ -484,7 +495,7 @@ const sliderSteps = [
   { value: 'h2',  labelSr: '2h',       labelEn: '2h' },
   { value: 'h6',  labelSr: '6h',       labelEn: '6h' },
   { value: 'h12', labelSr: '12h',      labelEn: '12h' },
-  { value: 'd1',  labelSr: '24h',      labelEn: '24h' }, // Default value (index 4)
+  { value: 'd1',  labelSr: '1d',       labelEn: '1d' }, // Mapped 24h -> 1d
   { value: 'd2',  labelSr: '2d',       labelEn: '2d' },
   { value: 'd4',  labelSr: '4d',       labelEn: '4d' },
   { value: 'd6',  labelSr: '6d',       labelEn: '6d' },
@@ -519,6 +530,7 @@ let lang = 'sr';
 const T = {
   subtitle:     { en:'Community Air Reporting Network',  sr:'Mreža za prijavu kvaliteta vazduha' },
   reportCount:  { en:'Reports',                          sr:'Prijava' },
+  reportCount1: { en:'Report',                           sr:'Prijava' },
   loading:      { en:'Loading...',                       sr:'Učitavanje...' },
   reportBtn:    { en:'REPORT BAD AIR',                   sr:'PRIJAVI LOŠ VAZDUH' },
   csvLabel:     { en:'CSV',                              sr:'CSV' },
@@ -537,7 +549,7 @@ const T = {
   popupNone:    { en:'None',                             sr:'Nema' },
   possSource:   { en:'⚠ Possible sources',               sr:'⚠ Mogući izvori' },
   backtrack:    { en:'backtrack',                        sr:'unazad' },
-  filterLabel:  { en:'Filter:',                          sr:'Filter:' },
+  timeFilter:   { en:'Time Filter',                      sr:'Filter vremena' },
   fgHours:      { en:'Last hours',                       sr:'Poslednjih sati' },
   fgDays:       { en:'Last days',                        sr:'Poslednjih dana' },
   catPH:        { en:'Select smell…',                    sr:'Izaberi miris…' },
@@ -560,37 +572,21 @@ function setLang(l){
     b.classList.toggle('active', b.getAttribute('onclick').includes("'"+l+"'"));
   });
   applyLang();
-  const fv = document.getElementById('filterSelect');
-  if(fv && fv.value) onFilterChange(fv.value);
+  // Sync map counts and labels via active slider index
+  const slider = document.getElementById('filterSlider');
+  if(slider) onSliderChange(slider.value);
 }
 
 function applyLang(){
   document.getElementById('subtitle').textContent       = t('subtitle');
   document.getElementById('reportBtnLabel').textContent = t('reportBtn');
   document.getElementById('csvLabel').textContent       = t('csvLabel');
-  const legendLabel = document.getElementById('legendLabel');
-  if (legendLabel) legendLabel.textContent = t('legendLabel');
+  document.getElementById('filterTitleLabel').textContent = t('timeFilter');
   document.getElementById('comment').placeholder        = t('commentPH');
 
   // dropdowns placeholders
   document.getElementById('category').options[0].text  = t('catPH');
   document.getElementById('intensity').options[0].text = t('intPH');
-  
-  const fs = document.getElementById('filterSelect');
-  if (fs) {
-    fs.options[0].text = t('filterPH');
-    document.getElementById('fg-hours').label = t('fgHours');
-    document.getElementById('fg-days').label  = t('fgDays');
-
-    const labels = lang === 'sr'
-      ? ['Poslednji 1h','Poslednja 3h','Poslednjih 6h','Poslednjih 12h','Danas','Poslednjih 7 dana','Poslednjih 30 dana','Sve']
-      : ['Last 1h','Last 3h','Last 6h','Last 12h','Today','Last 7 days','Last 30 days','All time'];
-    
-    const options = fs.querySelectorAll('option');
-    for(let i = 1; i < options.length; i++){
-      options[i].textContent = labels[i - 1];
-    }
-  }
 
   // intensity options
   const intSel = document.getElementById('intensity');
@@ -626,6 +622,7 @@ function applyLang(){
   if(['Loading...','Učitavanje...'].includes(upd.textContent))
     upd.textContent = t('loading');
 
+  updateSliderLabelLanguage();
   document.getElementById('category').dispatchEvent(new Event('change'));
   document.getElementById('intensity').dispatchEvent(new Event('change'));
 }
@@ -654,7 +651,6 @@ function updateGpsModalText(){
   const el = id => document.getElementById(id);
   if(el('gpsModalTitle')) el('gpsModalTitle').textContent  = t('gpsTitle');
   if(el('gpsModalBody'))  el('gpsModalBody').textContent   = t('gpsBody');
-  if(el('gpsModalSteps')) el('gpsModalSteps').innerHTML    = t('gpsStepsEn');
   if(el('gpsModalAlt'))   el('gpsModalAlt').textContent    = t('gpsAlt');
   if(el('gpsModalBtn'))   el('gpsModalBtn').textContent    = t('gpsBtn');
 }
@@ -716,7 +712,6 @@ function initGps(){
         showGpsModal();
       } else {
         startWatching();
-        // if user dismisses native browser prompt — show modal after 9s
         if(result.state === 'prompt')
           setTimeout(()=>{ if(!userCoords) showGpsModal(); }, 9000);
       }
@@ -729,7 +724,6 @@ function initGps(){
       setTimeout(()=>{ if(!userCoords) showGpsModal(); }, 10000);
     });
   } else {
-    // No Permissions API (e.g. Firefox, older Safari)
     startWatching();
     setTimeout(()=>{ if(!userCoords) showGpsModal(); }, 10000);
   }
@@ -797,7 +791,6 @@ function togglePinMode(){
     if(manualMarker){ map.removeLayer(manualMarker); manualMarker=null; }
     manualCoords = null;
     checkFormReady();
-    // Revert back to reading GPS wind data when custom pin is cleared
     triggerWindUpdate();
   }
 }
@@ -817,7 +810,6 @@ map.on('click', e=>{
     }).addTo(map);
   }
   checkFormReady();
-  // Immediately query wind patterns at the precise pin coordinates dropped by the user
   fetchLiveWind(manualCoords.lat, manualCoords.lon);
 });
 
@@ -829,10 +821,9 @@ async function fetchLiveWind(lat,lon){
     const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=wind_speed_10m,wind_direction_10m`);
     const d = await r.json();
     const spd=d.current.wind_speed_10m, dir=d.current.wind_direction_10m;
-    const rot=(dir+180)%360; // arrow points TO direction
+    const rot=(dir+180)%360; 
     const card=degToCardinal(dir);
 
-    // ── Compass wind box (top-right) ──
     const arrow = document.getElementById('compassWindArrow');
     const speed = document.getElementById('compassWindSpeed');
     const dirEl = document.getElementById('compassWindDir');
@@ -865,16 +856,15 @@ startWindWhenReady();
    HELPERS
 ═══════════════════════════════════════════════════ */
 
-// 7 ageing stages
 function ageColor(createdAt){
   const h=(Date.now()-new Date(createdAt))/3600000;
-  if(h<1)   return '#ff1a1a'; // <1h   vivid red
-  if(h<2)   return '#ff6600'; // 1–2h  orange-red
-  if(h<6)   return '#e09000'; // 2–6h  amber
-  if(h<12)  return '#a0a000'; // 6–12h yellow-olive
-  if(h<24)  return '#777777'; // 12–24h mid gray
-  if(h<48)  return '#555555'; // 1–2d  dark gray
-  return     '#333333';        // 2d+   very dark
+  if(h<1)   return '#ff1a1a'; 
+  if(h<2)   return '#ff6600'; 
+  if(h<6)   return '#e09000'; 
+  if(h<12)  return '#a0a000'; 
+  if(h<24)  return '#777777'; 
+  if(h<48)  return '#555555'; 
+  return     '#333333';        
 }
 
 function degToCardinal(deg){
@@ -899,8 +889,8 @@ function makeIcon(color, windDeg){
 /* ═══════════════════════════════════════════════════
    BACKTRACK ENGINE (auto 24h on pin click)
 ═══════════════════════════════════════════════════ */
-let btLayers    = []; // Keeps its current role (tracks the active 24h orange trail)
-let bgTrailLayers = []; // ADD THIS: tracks the permanent 6h teal trails
+let btLayers    = []; 
+let bgTrailLayers = []; 
 let btAnimFrame = null;
 
 function clearBacktrack(){
@@ -930,7 +920,7 @@ async function fetchHistoricWind(lat,lon,isoStart,isoEnd){
 
 async function startBacktrack(lat,lon,createdAt){
   clearBacktrack();
-  const HOURS = 24; // always 24h
+  const HOURS = 24; 
   try{
     const reportTime=new Date(createdAt);
     const startTime=new Date(reportTime.getTime()-HOURS*3600000);
@@ -955,35 +945,26 @@ async function startBacktrack(lat,lon,createdAt){
 
     const latlngs=trail.map(p=>[p.lat,p.lon]);
 
-    // pale underline (source→pin order)
     const under=L.polyline(latlngs,{ color:'#ff8800', weight:4, opacity:.18 }).addTo(map);
     btLayers.push(under);
 
-    // animated dashes — reversed so flow goes from pin toward source
     const dashedLine=L.polyline([...latlngs].reverse(),{
       color:'#ff8800', weight:4, opacity:.88, dashArray:'50 10'
     }).addTo(map);
     btLayers.push(dashedLine);
 
-    // speed
     let offset = 0;
     function anim(){
-      // Decrementing by 0.5 to 1 per frame creates a beautiful, smooth crawl
       offset = (offset - 0.6); 
-      
-      // Keep the offset bound tightly to the pattern length (50 dash + 10 gap = 60)
       if (offset < -60) offset = 0; 
-      
       const el = dashedLine.getElement();
       if (el) {
-        // Crucial: Append 'px' unit so browsers don't ignore it as invalid CSS
         el.style.strokeDashoffset = offset + 'px'; 
       }
       btAnimFrame = requestAnimationFrame(anim);
     }
     anim();
 
-    // hourly dots along trail
     trail.slice(1,-1).forEach(p=>{
       const dot=L.circleMarker([p.lat,p.lon],{
         radius:3.5, color:'#ff8800', fillColor:'#fff', fillOpacity:.9, weight:1.5
@@ -991,13 +972,11 @@ async function startBacktrack(lat,lon,createdAt){
       btLayers.push(dot);
     });
 
-    // source circle
     const srcCircle=L.circleMarker([cLat,cLon],{
       radius:12, color:'#ff8800', fillColor:'#ff8800', fillOpacity:.18, weight:2.5
     }).addTo(map);
     btLayers.push(srcCircle);
 
-    // source label
     const srcIcon=L.divIcon({
       className:'',
       html:`<div class="source-label">${t('possSource')}<br><span style="font-size:10px;opacity:.85;font-weight:600">${HOURS}h ${t('backtrack')}</span></div>`,
@@ -1007,26 +986,23 @@ async function startBacktrack(lat,lon,createdAt){
 
   } catch(err){ console.error('Backtrack:',err); }
 }
-// Clears all background 6h teal trails
+
 function clearBackgroundTrails() {
   bgTrailLayers.forEach(l => map.removeLayer(l));
   bgTrailLayers = [];
 }
 
-// Generates a 6-hour teal path for all loaded pins
 async function generateAllBackgroundTrails(reports) {
   clearBackgroundTrails();
   if (!reports || !reports.length) return;
 
-// Process all pins concurrently
   reports.forEach(async (report) => {
     try {
-      // SKIP if the report is older than 24 hours
       const reportAgeHours = (Date.now() - new Date(report.created_at)) / 3600000;
       if (reportAgeHours > 24) return;
 
       const reportTime = new Date(report.created_at);
-      const startTime = new Date(reportTime.getTime() - 6 * 3600000); // Strict 6 hours
+      const startTime = new Date(reportTime.getTime() - 6 * 3600000); 
       
       const hourly = await fetchHistoricWind(report.latitude, report.longitude, startTime.toISOString(), reportTime.toISOString());
       if (!hourly?.time?.length) return;
@@ -1049,15 +1025,13 @@ async function generateAllBackgroundTrails(reports) {
 
       const latlngs = trail.map(p => [p.lat, p.lon]);
 
-      // Create a static, non-animated dotted line matching the pin's age color
       const tealTrail = L.polyline(latlngs, {
-        color: ageColor(report.created_at), // Dynamic color matching the pin
+        color: ageColor(report.created_at), 
         weight: 2.5,
         opacity: 0.65,
         className: 'bg-trail-teal'
       }).addTo(map);
 
-      // Push to the background tracker so we can clear them on filter updates
       bgTrailLayers.push(tealTrail);
 
     } catch (err) {
@@ -1065,6 +1039,7 @@ async function generateAllBackgroundTrails(reports) {
     }
   });
 }
+
 /* ═══════════════════════════════════════════════════
    PINS
 ═══════════════════════════════════════════════════ */
@@ -1073,7 +1048,7 @@ function clearMarkers(){
   reportMarkers=[];
 }
 
-function renderPin(report, index = 0){ // <-- Accept index
+function renderPin(report, index = 0){ 
   const date  = new Date(report.created_at);
   const color = ageColor(report.created_at);
   const card  = degToCardinal(report.wind_direction);
@@ -1091,12 +1066,11 @@ function renderPin(report, index = 0){ // <-- Accept index
 <b>${t('popupNotes')}:</b> ${report.comment||t('popupNone')}
 </div>`;
 
-  // Calculate z-index: index 0 (newest) gets 10000, index 1 gets 9999, etc.
   const zIndexPriority = 10000 - index;
 
   const marker=L.marker([report.latitude,report.longitude],{
     icon:makeIcon(color,report.wind_direction),
-    zIndexOffset: zIndexPriority // <-- Add this line to stack them correctly
+    zIndexOffset: zIndexPriority 
   }).addTo(map);
 
   marker.bindPopup(popupHtml,{ maxWidth:250, minWidth:200 });
@@ -1124,15 +1098,14 @@ async function loadPins(days){
   data.forEach((r, index) => {
     if(new Date(r.created_at)<cutoff) return;
     n++; 
-    renderPin(r, index); // <-- Add index here
+    renderPin(r, index); 
     activeReports.push(r);
   });
   
   const rcEl = document.getElementById('reportCount');
-  if(rcEl) rcEl.textContent=n+' '+t('reportCount');
+  if(rcEl) rcEl.textContent = n + ' ' + (n === 1 ? t('reportCount1') : t('reportCount'));
   document.getElementById('updated').textContent=new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
   
-  // Fire off the background teal lines generator
   generateAllBackgroundTrails(activeReports);
 }
 
@@ -1147,15 +1120,14 @@ async function loadPinsByHours(hours){
   data.forEach((r, index) => {
     if(new Date(r.created_at)<cutoff) return;
     n++; 
-    renderPin(r, index); // <-- Add index here
+    renderPin(r, index); 
     activeReports.push(r);
   });
   
   const rcEl = document.getElementById('reportCount');
-  if(rcEl) rcEl.textContent=n+' '+t('reportCount');
+  if(rcEl) rcEl.textContent = n + ' ' + (n === 1 ? t('reportCount1') : t('reportCount'));
   document.getElementById('updated').textContent=new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
   
-  // Fire off the background teal lines generator
   generateAllBackgroundTrails(activeReports);
 }
 
@@ -1198,12 +1170,9 @@ async function reportBadAir(){
     
     if(error) throw error;
 
-    // Reset fields to default values
     document.getElementById('category').selectedIndex = 0;
     document.getElementById('intensity').selectedIndex = 0;
     document.getElementById('comment').value='';
-
-    // Disable button until fields are filled again
     document.getElementById('reportBtn').disabled = true;
 
     alert(t('submitted'));
@@ -1255,15 +1224,15 @@ async function downloadCSV(){
 /* ═══════════════════════════════════════════════════
    INIT
 ═══════════════════════════════════════════════════ */
-// Set initial slider position to index 4 (which maps to 'd1' / 24h)
+// Set initial slider position to index 4 (maps to 'd1' / 1d)
 document.getElementById('filterSlider').value = 4;
 applyLang(); 
 updateSliderLabelLanguage();
 
-// Load the initial dataset using the mapped value at index 4 ('d1')
+// Load data using the initial 'd1' mapped configuration value
 loadPins(sliderSteps[4].value);
 
-// Auto-refresh interval using the slider's active value
+// Auto-refresh layout datasets
 setInterval(() => {
   const sliderIndex = document.getElementById('filterSlider').value;
   const activeValue = sliderSteps[sliderIndex].value;
