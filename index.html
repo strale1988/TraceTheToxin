@@ -308,18 +308,27 @@ button{
       <button class="lang-btn active" onclick="setLang('sr')">🇷🇸 SR</button> 
     </div>
   </div>
-  <div class="stats">
-    <span id="reportCount">0 Reports</span>
-  </div>
 </header>
 
 <div id="map"></div>
 
 <div style="background:#181818; padding: 6px 16px 10px 16px; border-bottom:1px solid #333; flex-shrink:0;">
-  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
-    <span id="sliderValue" style="font-size: 11px; font-weight: 700; color: #00a7b5; background: rgba(0, 167, 181, 0.15); padding: 2px 7px; border-radius: 4px; letter-spacing: 0.5px;">1d</span>
-    <span style="font-size: 9px; color: #666; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;" class="leg" id="sliderTitle" data-en="Time Filter" data-sr="Filter vremena">Time Filter</span>
+  <div style="display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; margin-bottom: 5px;">
+    
+    <div style="justify-self: start;">
+      <span id="sliderValue" style="font-size: 11px; font-weight: 700; color: #00a7b5; background: rgba(0, 167, 181, 0.15); padding: 2px 7px; border-radius: 4px; letter-spacing: 0.5px;">1d</span>
+    </div>
+    
+    <div style="justify-self: center;">
+      <span class="leg" id="sliderTitle" data-en="Time Filter" data-sr="Filter vremena" style="color: #666; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Filter vremena</span>
+    </div>
+    
+    <div style="justify-self: end;">
+      <span id="reportCount" style="font-size: 11px; color: #aaa; font-weight: 700; letter-spacing: 0.3px;">0 Reports</span>
+    </div>
+
   </div>
+  
   <div style="display: flex; align-items: center; width: 100%;">
     <input 
       type="range" 
