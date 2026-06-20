@@ -10,7 +10,7 @@
   <meta http-equiv="Expires" content="0">
   
   <link rel="icon" type="image/png" href="favicon.png">
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <style>
 *{ margin:0; padding:0; box-sizing:border-box; }
 
@@ -18,7 +18,7 @@ body{
   font-family:-apple-system,BlinkMacSystemFont,sans-serif;
   background:#111;
   color:white;
-  height: 100svh; /* Changed from 100dvh to 100svh */
+  height: 100svh;
   display:flex;
   flex-direction:column;
 }
@@ -70,17 +70,56 @@ header p{ font-size:11px; opacity:.7; margin-top:2px; }
 
 #map {
   flex: 1;
-  height: 0;      /* Crucial: lets Leaflet shrink to let the panel fit */
-  min-height: 0;  /* Prevents it forcing structural layout over the panel */
+  height: 0;      
+  min-height: 0;  
   position: relative;
   overflow: hidden;
+}
+
+/* Sleek custom slider styling */
+.custom-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  background: #2e2e2e;
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+
+.custom-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #00a7b5;
+  border: 2px solid #181818;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+  transition: transform 0.1s ease;
+}
+.custom-slider::-webkit-slider-thumb:active {
+  transform: scale(1.2);
+}
+
+.custom-slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #00a7b5;
+  border: 2px solid #181818;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+  transition: transform 0.1s ease;
+}
+.custom-slider::-moz-range-thumb:active {
+  transform: scale(1.2);
 }
 
 /* ── Panel ────────────────────────────────────────── */
 .panel{
   background:#181818;
   padding:10px 12px;
-  /* Add safe-area padding to elevate buttons safely above phone borders */
   padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)); 
   display:flex;
   flex-direction:column;
@@ -101,28 +140,13 @@ select{
   font-size:13px;
   -webkit-appearance:none;
   appearance:none;
-  /* custom chevron */
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23888' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
   background-repeat:no-repeat;
   background-position:right 10px center;
   padding-right:28px;
 }
 
-/* filter label above select */
-.filter-wrap{
-  display:flex;
-  flex-direction:column;
-  gap:3px;
-  flex:0 0 auto;
-}
-.filter-label{
-  font-size:10px;
-  color:#888;
-  padding-left:2px;
-  letter-spacing:.3px;
-}
-
-input{
+input[type="text"]{
   width:100%;
   padding:11px 10px;
   border:none;
@@ -220,7 +244,6 @@ button{
   text-align:center; line-height:1.5;
   display:inline-block;
 }
-/* Style for the permanent 6-hour background trails */
 .bg-trail-teal {
   stroke-dasharray: 6, 6;
   pointer-events: none;
@@ -244,75 +267,32 @@ button{
   display:flex; align-items:center; justify-content:center;
   z-index:9999;
   padding:20px;
-  /* iOS Safari fix */
   -webkit-overflow-scrolling:touch;
 }
 .gps-modal{
   background:#1e1e1e; color:white;
   border-radius:18px;
-  padding:28px 22px 22px;
+  padding:24px 20px;
   max-width:320px; width:100%;
   text-align:center;
   box-shadow:0 16px 48px rgba(0,0,0,.8);
   max-height:90vh; overflow-y:auto;
-  /* prevent tap-through on iOS */
   pointer-events:all;
 }
-.gps-modal-icon{ font-size:44px; margin-bottom:12px; }
-.gps-modal h2{ font-size:18px; font-weight:700; margin-bottom:10px; }
-.gps-modal p{ font-size:14px; line-height:1.7; color:#bbb; margin-bottom:8px; }
-.gps-modal-steps{
-  background:#2a2a2a; border-radius:10px;
-  padding:12px 14px; margin:14px 0 20px;
-  text-align:left; font-size:12px; color:#ccc; line-height:1.8;
-}
-.gps-modal-steps b{ color:#fff; }
+.gps-modal-icon{ font-size:38px; margin-bottom:8px; }
+.gps-modal h2{ font-size:17px; font-weight:700; margin-bottom:8px; }
+.gps-modal p{ font-size:13px; line-height:1.6; color:#ccc; margin-bottom:16px; }
 .gps-modal-close{
   background:#333; color:#eee;
   border:1px solid #555; border-radius:10px;
-  padding:14px 24px;
-  font-size:15px; font-weight:600;
+  padding:12px;
+  font-size:14px; font-weight:600;
   cursor:pointer; width:100%;
   -webkit-tap-highlight-color:transparent;
   touch-action:manipulation;
-  /* large tap target */
-  min-height:50px;
+  min-height:44px;
 }
 .gps-modal-close:active{ background:#444; }
-
-/* Inline Slider Row */
-.filter-container {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  margin-top: 4px;
-}
-
-/* Fixed width container for labels (scaled to maximum text length) */
-.slider-label {
-  width: 82px; 
-  font-size: 13px;
-  font-weight: bold;
-  color: #ffaa00;
-  text-align: right;
-  flex-shrink: 0; /* Keeps it from compressing */
-}
-
-/* Slider track takes up all remaining space */
-#filterSlider {
-  flex-grow: 1;
-  width: 100%;
-  accent-color: #ffaa00; /* Custom color match for modern browsers */
-  cursor: pointer;
-  height: 6px;
-  background: #333;
-  border-radius: 3px;
-}
-#updated {
-  display: none !important;
-}
-
 </style>
 </head>
 <body>
@@ -324,17 +304,35 @@ button{
       <p id="subtitle">Community Air Reporting Network</p>
     </div>
     <div class="lang-toggle">
-  <button class="lang-btn"        onclick="setLang('en')">🇬🇧 EN</button>
-  <button class="lang-btn active" onclick="setLang('sr')">🇷🇸 SR</button> 
+      <button class="lang-btn"        onclick="setLang('en')">🇬🇧 EN</button>
+      <button class="lang-btn active" onclick="setLang('sr')">🇷🇸 SR</button> 
     </div>
   </div>
   <div class="stats">
     <span id="reportCount">0 Reports</span>
-    <span id="updated">...</span>
   </div>
 </header>
 
 <div id="map"></div>
+
+<div style="background:#181818; padding: 6px 16px 10px 16px; border-bottom:1px solid #333; flex-shrink:0;">
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+    <span id="sliderValue" style="font-size: 11px; font-weight: 700; color: #00a7b5; background: rgba(0, 167, 181, 0.15); padding: 2px 7px; border-radius: 4px; letter-spacing: 0.5px;">1d</span>
+    <span style="font-size: 9px; color: #666; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;" class="leg" id="sliderTitle" data-en="Time Filter" data-sr="Filter vremena">Time Filter</span>
+  </div>
+  <div style="display: flex; align-items: center; width: 100%;">
+    <input 
+      type="range" 
+      id="filterSlider" 
+      min="0" 
+      max="10" 
+      value="4" 
+      step="1" 
+      oninput="onSliderChange(this.value)"
+      class="custom-slider"
+    >
+  </div>
+</div>
 
 <div id="mapLegend" style="display:none;
   background:rgba(18,18,18,.88);
@@ -398,26 +396,7 @@ button{
 <div id="pinMapBtn" class="pin-map-btn" style="display:none" title="Set location manually" onclick="togglePinMode()">📍</div>
 
 <div class="panel">
-
-
-
-  <div class="row" style="align-items:center;">
-    <div style="display: flex; align-items: center; gap: 12px; width: 100%;">
-      <span id="sliderValue" style="width: 82px; font-size: 13px; font-weight: bold; color: #00a7b5; text-align: right; flex-shrink: 0;">1d</span>
-      <input 
-        type="range" 
-        id="filterSlider" 
-        min="0" 
-        max="10" 
-        value="4" 
-        step="1" 
-        oninput="onSliderChange(this.value)"
-        style="flex-grow: 1; width: 100%; accent-color: #00a7b5; cursor: pointer;"
-      >
-    </div>
-  </div>
-
-    <div class="row">
+  <div class="row">
     <select id="category" onchange="checkFormReady()">
       <option value="" disabled selected>Select smell…</option>
       <option value="Chemical" data-sr="Hemijsko">Chemical</option>
@@ -443,7 +422,7 @@ button{
       <option value="10">10 – Overwhelming</option>
     </select>
   </div>
-  
+
   <input id="comment" type="text" placeholder="Optional notes...">
 
   <div class="row" style="align-items:stretch;">
@@ -456,17 +435,14 @@ button{
       <span id="csvLabel">CSV</span>
     </button>
   </div>
-
-
 </div>
 
 <div id="gpsModal" class="gps-modal-overlay" style="display:none">
   <div class="gps-modal">
     <div class="gps-modal-icon">📍</div>
-    <h2 id="gpsModalTitle">GPS Not Enabled</h2>
-    <p id="gpsModalBody">Location access is turned off. To report bad air at your location, enable it in your settings.</p>
-    <p id="gpsModalAlt" style="font-size:12px;color:#999;margin-bottom:16px;">Or use the 📍 button on the map to drop a pin manually.</p>
-    <button class="gps-modal-close" onclick="hideGpsModal()" id="gpsModalBtn">Got it</button>
+    <h2 id="gpsModalTitle">Location Disabled</h2>
+    <p id="gpsModalBody">Please enable location permissions to report air quality at your current position, or drop a pin manually using the map button.</p>
+    <button class="gps-modal-close" onclick="hideGpsModal()" id="gpsModalBtn">Zatvori</button>
   </div>
 </div>
 
@@ -474,24 +450,16 @@ button{
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 <script>
 
-/* ═══════════════════════════════════════════════════
-   SUPABASE
-═══════════════════════════════════════════════════ */
 const SUPABASE_URL = 'https://fnkqmwweljsupbmerbkh.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZua3Ftd3dlbGpzdXBibWVyYmtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE3OTcwODUsImV4cCI6MjA5NzM3MzA4NX0.eX3mxnSpGmJ6Ebw7Y4F_jHiJarPH4ri9WNYXwmLi16I';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-/* ═══════════════════════════════════════════════════
-   i18n
-═══════════════════════════════════════════════════ */
-
-// Map the slider positions (0 to 10) to your backend values and translation keys
 const sliderSteps = [
   { value: 'h1',  labelSr: '1h',       labelEn: '1h' },
   { value: 'h2',  labelSr: '2h',       labelEn: '2h' },
   { value: 'h6',  labelSr: '6h',       labelEn: '6h' },
   { value: 'h12', labelSr: '12h',      labelEn: '12h' },
-  { value: 'd1',  labelSr: '1d',       labelEn: '1d' },
+  { value: 'd1',  labelSr: '1d',       labelEn: '1d' }, 
   { value: 'd2',  labelSr: '2d',       labelEn: '2d' },
   { value: 'd4',  labelSr: '4d',       labelEn: '4d' },
   { value: 'd6',  labelSr: '6d',       labelEn: '6d' },
@@ -500,19 +468,13 @@ const sliderSteps = [
   { value: 'all', labelSr: 'Sve vreme', labelEn: 'All Time' }
 ];
 
-// Function called whenever the user drags the slider
 function onSliderChange(index) {
   const step = sliderSteps[index];
   const labelElement = document.getElementById('sliderValue');
-  
-  // Update the text badge above the slider based on current language
   labelElement.innerText = (lang === 'sr') ? step.labelSr : step.labelEn;
-  
-  // Call your existing filter logic with the new mapped time value (e.g., 'd1')
   onFilterChange(step.value);
 }
 
-// Add this to your existing applyLang() function so the text updates if a user switches languages
 function updateSliderLabelLanguage() {
   const slider = document.getElementById('filterSlider');
   if (slider) {
@@ -544,18 +506,13 @@ const T = {
   popupNone:    { en:'None',                             sr:'Nema' },
   possSource:   { en:'⚠ Possible sources',               sr:'⚠ Mogući izvori' },
   backtrack:    { en:'backtrack',                        sr:'unazad' },
-  filterLabel:  { en:'Filter:',                          sr:'Filter:' },
-  fgHours:      { en:'Last hours',                       sr:'Poslednjih sati' },
-  fgDays:       { en:'Last days',                        sr:'Poslednjih dana' },
   catPH:        { en:'Select smell…',                    sr:'Izaberi miris…' },
   intPH:        { en:'Intensity…',                       sr:'Intenzitet…' },
-  filterPH:     { en:'Filter…',                          sr:'Filter…' },
   pinModeOn:    { en:'Tap map to place pin',             sr:'Tapni kartu za pin' },
   pinModeOff:   { en:'Set location manually',            sr:'Ručna lokacija' },
-  gpsTitle:     { en:'GPS Not Enabled',                  sr:'GPS nije uključen' },
-  gpsBody:      { en:'Location access is turned off. To report bad air at your location, enable it in your settings.', sr:'Pristup lokaciji je isključen. Da biste prijavili loš vazduh, omogućite ga u podešavanjima.' },
-  gpsAlt:       { en:'Or use the 📍 button on the map to drop a pin manually.', sr:'Ili koristite dugme 📍 na karti da ručno postavite pin.' },
-  gpsBtn:       { en:'Got it',                           sr:'Razumem' },
+  gpsTitle:     { en:'Location Disabled',                sr:'Lokacija onemogućena' },
+  gpsBody:      { en:'Please enable location permissions to report air quality at your position, or drop a pin manually using the 📍 button on the map.', sr:'Molimo omogućite pristup lokaciji da biste prijavili vazduh na vašoj poziciji, ili postavite pin ručno koristeći dugme 📍 na karti.' },
+  gpsBtn:       { en:'Close',                            sr:'Zatvori' },
   noReports:    { en:'No reports in current map view.',  sr:'Nema prijava u vidljivoj oblasti.' },
 };
 
@@ -567,39 +524,28 @@ function setLang(l){
     b.classList.toggle('active', b.getAttribute('onclick').includes("'"+l+"'"));
   });
   applyLang();
-  
-  // FIXED: No more filterSelect. Get active code from slider configuration array instead
-  const sliderIndex = document.getElementById('filterSlider').value;
-  const fv = sliderSteps[sliderIndex].value;
-  if(fv) onFilterChange(fv);
+  const slider = document.getElementById('filterSlider');
+  if(slider) onFilterChange(sliderSteps[slider.value].value);
 }
 
-function applyLang(){
+function applyLang() {
   document.getElementById('subtitle').textContent       = t('subtitle');
   document.getElementById('reportBtnLabel').textContent = t('reportBtn');
   document.getElementById('csvLabel').textContent       = t('csvLabel');
-  const legendLabel = document.getElementById('legendLabel');
-  if (legendLabel) legendLabel.textContent = t('legendLabel');
   document.getElementById('comment').placeholder        = t('commentPH');
 
-  // dropdowns placeholders
   document.getElementById('category').options[0].text  = t('catPH');
   document.getElementById('intensity').options[0].text = t('intPH');
 
-  // FIXED: Removed all old filterSelect option loops and group labels that crashed layout
-
-  // intensity options
   const intSel = document.getElementById('intensity');
   const intensityLabels = lang === 'sr'
     ? { 1:'Jedva primetno', 5:'Umereno', 10:'Nepodnošljivo' }
     : { 1:'Barely noticeable', 5:'Moderate', 10:'Overwhelming' };
   
   for(let i = 1; i <= 10; i++){
-    intSel.options[i].textContent =
-      intensityLabels[i] ? `${i} – ${intensityLabels[i]}` : `${i}`;
+    intSel.options[i].textContent = intensityLabels[i] ? `${i} – ${intensityLabels[i]}` : `${i}`;
   }
 
-  // category options
   const catEl = document.getElementById('category');
   const catLabels = lang === 'sr'
     ? ['Hemijsko','Dim','Sumpor','Kanalizacija','Plastika','Prašina','Nepoznato']
@@ -609,29 +555,19 @@ function applyLang(){
     opt.textContent = catLabels[i];
   });
 
-  // legend
   document.querySelectorAll('.leg').forEach(el=>{
     el.textContent = el.dataset[lang] || el.dataset.en;
   });
 
-  // GPS modal
   const gm = document.getElementById('gpsModal');
   if(gm && gm.style.display!=='none') updateGpsModalText();
 
-  const upd = document.getElementById('updated');
-  if(['Loading...','Učitavanje...'].includes(upd.textContent))
-    upd.textContent = t('loading');
-
-  // FIXED: Sync text representation on slider layout updates
   updateSliderLabelLanguage();
 
   document.getElementById('category').dispatchEvent(new Event('change'));
   document.getElementById('intensity').dispatchEvent(new Event('change'));
 }
 
-/* ═══════════════════════════════════════════════════
-   MAP
-═══════════════════════════════════════════════════ */
 const map = L.map('map').setView([45.25,19.85],11);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
   attribution:'© OpenStreetMap'
@@ -646,15 +582,10 @@ let manualMarker  = null;
 let currentDays   = null;
 let currentHours  = null;
 
-/* ═══════════════════════════════════════════════════
-   GPS MODAL
-═══════════════════════════════════════════════════ */
 function updateGpsModalText(){
   const el = id => document.getElementById(id);
   if(el('gpsModalTitle')) el('gpsModalTitle').textContent  = t('gpsTitle');
   if(el('gpsModalBody'))  el('gpsModalBody').textContent   = t('gpsBody');
-  if(el('gpsModalSteps')) el('gpsModalSteps').innerHTML    = t('gpsStepsEn');
-  if(el('gpsModalAlt'))   el('gpsModalAlt').textContent    = t('gpsAlt');
   if(el('gpsModalBtn'))   el('gpsModalBtn').textContent    = t('gpsBtn');
 }
 
@@ -671,9 +602,6 @@ function hideGpsModal(){
   if(modal) modal.style.display = 'none';
 }
 
-/* ═══════════════════════════════════════════════════
-   GPS INIT
-═══════════════════════════════════════════════════ */
 function checkFormReady(){
   const cat    = document.getElementById('category').value;
   const intVal = document.getElementById('intensity').value;
@@ -698,7 +626,7 @@ function startWatching(){
       checkFormReady();
     },
     err => {
-      if(err.code === 1) showGpsModal();
+      if(err.code === 1) showGpsModal(); 
       else setTimeout(()=>{ if(!userCoords) showGpsModal(); }, 5000);
     },
     { enableHighAccuracy:true, timeout:12000 }
@@ -707,7 +635,6 @@ function startWatching(){
 
 function initGps(){
   if(!navigator.geolocation){ showGpsModal(); return; }
-
   if(navigator.permissions && navigator.permissions.query){
     navigator.permissions.query({ name:'geolocation' }).then(result=>{
       if(result.state === 'denied'){
@@ -733,9 +660,6 @@ function initGps(){
 
 initGps();
 
-/* ═══════════════════════════════════════════════════
-   COMPASS (top-right Leaflet control)
-═══════════════════════════════════════════════════ */
 const CompassControl = L.Control.extend({
   options:{ position:'topright' },
   onAdd(){ return document.getElementById('compassWidget'); }
@@ -760,6 +684,9 @@ if(window.DeviceOrientationEvent){
     map.on('click', e=>{
       if(!pinMode) return;
       manualCoords = { lat:e.latlng.lat, lon:e.latlng.lng };
+      if(manualMarker){
+        manualMarker.setLatLng(e.latlng);
+      }
       checkFormReady();
     });
   } else {
@@ -777,9 +704,6 @@ function handleOri(e){
   if(h!==null) updateCompassNeedle(h);
 }
 
-/* ═══════════════════════════════════════════════════
-   MANUAL PIN (bottom-left Leaflet control)
-═══════════════════════════════════════════════════ */
 const PinControl = L.Control.extend({
   options:{ position:'bottomleft' },
   onAdd(){ return document.getElementById('pinMapBtn'); }
@@ -816,9 +740,6 @@ map.on('click', e=>{
   checkFormReady();
 });
 
-/* ═══════════════════════════════════════════════════
-   LIVE WIND at GPS dot
-═══════════════════════════════════════════════════ */
 let liveWindMarker = null;
 
 async function fetchLiveWind(lat,lon){
@@ -826,7 +747,7 @@ async function fetchLiveWind(lat,lon){
     const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=wind_speed_10m,wind_direction_10m`);
     const d = await r.json();
     const spd=d.current.wind_speed_10m, dir=d.current.wind_direction_10m;
-    const rot=(dir+180)%360;
+    const rot=(dir+180)%360; 
     const card=degToCardinal(dir);
 
     const bubbleHtml=`<div class="wind-bubble">
@@ -863,18 +784,15 @@ function startWindWhenReady(){
 }
 startWindWhenReady();
 
-/* ═══════════════════════════════════════════════════
-   HELPERS
-═══════════════════════════════════════════════════ */
 function ageColor(createdAt){
   const h=(Date.now()-new Date(createdAt))/3600000;
-  if(h<1)   return '#ff1a1a';
-  if(h<2)   return '#ff6600';
-  if(h<6)   return '#e09000';
-  if(h<12)  return '#a0a000';
-  if(h<24)  return '#777777';
-  if(h<48)  return '#555555';
-  return     '#333333';
+  if(h<1)   return '#ff1a1a'; 
+  if(h<2)   return '#ff6600'; 
+  if(h<6)   return '#e09000'; 
+  if(h<12)  return '#a0a000'; 
+  if(h<24)  return '#777777'; 
+  if(h<48)  return '#555555'; 
+  return     '#333333';        
 }
 
 function degToCardinal(deg){
@@ -896,11 +814,8 @@ function makeIcon(color, windDeg){
   return L.divIcon({ className:'', html:svg, iconSize:[28,36], iconAnchor:[14,36], popupAnchor:[0,-38] });
 }
 
-/* ═══════════════════════════════════════════════════
-   BACKTRACK ENGINE (auto 24h on pin click)
-═══════════════════════════════════════════════════ */
-let btLayers    = [];
-let bgTrailLayers = [];
+let btLayers    = []; 
+let bgTrailLayers = []; 
 let btAnimFrame = null;
 
 function clearBacktrack(){
@@ -930,7 +845,7 @@ async function fetchHistoricWind(lat,lon,isoStart,isoEnd){
 
 async function startBacktrack(lat,lon,createdAt){
   clearBacktrack();
-  const HOURS = 24;
+  const HOURS = 24; 
   try{
     const reportTime=new Date(createdAt);
     const startTime=new Date(reportTime.getTime()-HOURS*3600000);
@@ -953,7 +868,7 @@ async function startBacktrack(lat,lon,createdAt){
       trail.push({lat:cLat,lon:cLon});
     }
 
-    const latlngs = trail.map(p=>[p.lat,p.lon]);
+    const latlngs=trail.map(p=>[p.lat,p.lon]);
 
     const under=L.polyline(latlngs,{ color:'#ff8800', weight:4, opacity:.18 }).addTo(map);
     btLayers.push(under);
@@ -1012,7 +927,7 @@ async function generateAllBackgroundTrails(reports) {
       if (reportAgeHours > 24) return;
 
       const reportTime = new Date(report.created_at);
-      const startTime = new Date(reportTime.getTime() - 6 * 3600000);
+      const startTime = new Date(reportTime.getTime() - 6 * 3600000); 
       
       const hourly = await fetchHistoricWind(report.latitude, report.longitude, startTime.toISOString(), reportTime.toISOString());
       if (!hourly?.time?.length) return;
@@ -1036,7 +951,7 @@ async function generateAllBackgroundTrails(reports) {
       const latlngs = trail.map(p => [p.lat, p.lon]);
 
       const tealTrail = L.polyline(latlngs, {
-        color: ageColor(report.created_at),
+        color: ageColor(report.created_at), 
         weight: 2.5,
         opacity: 0.65,
         className: 'bg-trail-teal'
@@ -1050,15 +965,12 @@ async function generateAllBackgroundTrails(reports) {
   });
 }
 
-/* ═══════════════════════════════════════════════════
-   PINS
-═══════════════════════════════════════════════════ */
 function clearMarkers(){
   reportMarkers.forEach(m=>map.removeLayer(m));
   reportMarkers=[];
 }
 
-function renderPin(report, index = 0){
+function renderPin(report, index = 0){ 
   const date  = new Date(report.created_at);
   const color = ageColor(report.created_at);
   const card  = degToCardinal(report.wind_direction);
@@ -1080,7 +992,7 @@ function renderPin(report, index = 0){
 
   const marker=L.marker([report.latitude,report.longitude],{
     icon:makeIcon(color,report.wind_direction),
-    zIndexOffset: zIndexPriority
+    zIndexOffset: zIndexPriority 
   }).addTo(map);
 
   marker.bindPopup(popupHtml,{ maxWidth:250, minWidth:200 });
@@ -1088,9 +1000,6 @@ function renderPin(report, index = 0){
   reportMarkers.push(marker);
 }
 
-/* ═══════════════════════════════════════════════════
-   LOAD PINS
-═══════════════════════════════════════════════════ */
 async function fetchAll(){
   const {data,error}=await sb.from('air_reports').select('*').order('created_at',{ascending:false});
   if(error){ console.error(error); return []; }
@@ -1101,27 +1010,18 @@ async function loadPins(days){
   if(days!==undefined) currentDays=days;
   clearMarkers(); clearBacktrack(); clearBackgroundTrails();
   const data=await fetchAll();
-  
-  // FIXED: Handles 'all' string scenario gracefully so date calculation doesn't throw NaN
-  let cutoff = null;
-  if (currentDays !== 'all') {
-    cutoff = new Date(); 
-    cutoff.setDate(cutoff.getDate() - currentDays);
-  }
-  
+  const cutoff=new Date(); cutoff.setDate(cutoff.getDate()-currentDays);
   let n=0;
   let activeReports = [];
   
   data.forEach((r, index) => {
-    if(cutoff && new Date(r.created_at)<cutoff) return;
+    if(new Date(r.created_at)<cutoff) return;
     n++; 
-    renderPin(r, index);
+    renderPin(r, index); 
     activeReports.push(r);
   });
   
   document.getElementById('reportCount').textContent=n+' '+t('reportCount');
-  document.getElementById('updated').textContent=new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-  
   generateAllBackgroundTrails(activeReports);
 }
 
@@ -1136,19 +1036,14 @@ async function loadPinsByHours(hours){
   data.forEach((r, index) => {
     if(new Date(r.created_at)<cutoff) return;
     n++; 
-    renderPin(r, index);
+    renderPin(r, index); 
     activeReports.push(r);
   });
   
   document.getElementById('reportCount').textContent=n+' '+t('reportCount');
-  document.getElementById('updated').textContent=new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-  
   generateAllBackgroundTrails(activeReports);
 }
 
-/* ═══════════════════════════════════════════════════
-   FILTER
-═══════════════════════════════════════════════════ */
 function onFilterChange(val){
   if(!val) return;
   if(val.startsWith('h')){
@@ -1157,15 +1052,9 @@ function onFilterChange(val){
   } else if(val.startsWith('d')){
     currentDays=parseInt(val.slice(1)); currentHours=null;
     loadPins(currentDays);
-  } else if(val === 'all'){
-    currentDays='all'; currentHours=null;
-    loadPins(currentDays);
   }
 }
 
-/* ═══════════════════════════════════════════════════
-   REPORT
-═══════════════════════════════════════════════════ */
 async function reportBadAir(){
   const coords=pinMode&&manualCoords ? manualCoords : userCoords;
   if(!coords){ alert(t('waitGps')); return; }
@@ -1193,30 +1082,24 @@ async function reportBadAir(){
     document.getElementById('reportBtn').disabled = true;
 
     alert(t('submitted'));
-    
-    // FIXED: Form submit triggers refresh using slider value tracker hierarchy
-    const sliderIndex = document.getElementById('filterSlider').value;
-    onSliderChange(sliderIndex);
+    const slider = document.getElementById('filterSlider');
+    if(slider) onFilterChange(sliderSteps[slider.value].value);
 
   } catch(err){ alert(err.message); }
 }
 
-/* ═══════════════════════════════════════════════════
-   CSV (bounds + active time filter)
-═══════════════════════════════════════════════════ */
 async function downloadCSV(){
   const data=await fetchAll();
   if(!data.length) return;
 
-  // FIXED: Calculate CSV boundaries safely out of slider indexes
-  const sliderIndex = document.getElementById('filterSlider').value;
-  const filterVal = sliderSteps[sliderIndex].value;
+  const slider = document.getElementById('filterSlider');
+  const filterVal = sliderSteps[slider.value].value;
   let timeCutoff=null;
   if(filterVal.startsWith('h')){
     timeCutoff=new Date(Date.now()-parseInt(filterVal.slice(1))*3600000);
   } else if(filterVal.startsWith('d')){
     const days=parseInt(filterVal.slice(1));
-    timeCutoff=new Date(); timeCutoff.setDate(timeCutoff.getDate()-days);
+    if(days!==9999){ timeCutoff=new Date(); timeCutoff.setDate(timeCutoff.getDate()-days); }
   }
 
   const bounds=map.getBounds();
@@ -1239,22 +1122,15 @@ async function downloadCSV(){
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
 }
 
-/* ═══════════════════════════════════════════════════
-   INIT
-═══════════════════════════════════════════════════ */
-// 1. Set initial slider position configuration to index 4 (maps to 'd1' / 24h)
 document.getElementById('filterSlider').value = 4;
-
-// 2. Set up initial localized language structures smoothly
 applyLang(); 
 
-// 3. FIXED: Fire onSliderChange(4) on boot. This ensures perfect sync and loads data cleanly
-onSliderChange(4);
+loadPins(sliderSteps[4].value);
 
-// Auto-refresh interval using the slider's active value
 setInterval(() => {
   const sliderIndex = document.getElementById('filterSlider').value;
-  onSliderChange(sliderIndex);
+  const activeValue = sliderSteps[sliderIndex].value;
+  if (activeValue) onFilterChange(activeValue);
 }, 60000);
 
 </script>
