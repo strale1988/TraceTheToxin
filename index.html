@@ -728,7 +728,7 @@ function initGps(){
 initGps();
 
 /* ═══════════════════════════════════════════════════
-   COMPASS (top-right Leaflet control)
+   COMPASS (top-right Leaflet control) & SMOOTH ENGINE
 ═══════════════════════════════════════════════════ */
 const CompassControl = L.Control.extend({
   options:{ position:'topright' },
@@ -745,9 +745,31 @@ const LegendControl = L.Control.extend({
 new LegendControl().addTo(map);
 document.getElementById('mapLegend').style.display = 'flex';
 
-function updateCompassNeedle(h){
+// Smooth rotation tracking variables
+let currentNeedleRotation = 0; 
+let lastRawHeading = null;
+
+function updateCompassNeedle(rawHeading) {
   const n = document.getElementById('compassNeedle');
-  if(n) n.style.transform = `rotate(${-h}deg)`;
+  if (!n) return;
+
+  // Inverse heading so the needle dynamically locks onto true North
+  let targetRotation = -rawHeading; 
+
+  if (lastRawHeading !== null) {
+    // Calculate the shortest visual delta between angles to prevent the 0/360 spin snap
+    let diff = (targetRotation - currentNeedleRotation) % 360;
+    
+    if (diff > 180)  diff -= 360;
+    if (diff < -180) diff += 360;
+
+    currentNeedleRotation += diff;
+  } else {
+    currentNeedleRotation = targetRotation;
+  }
+
+  lastRawHeading = rawHeading;
+  n.style.transform = `rotate(${currentNeedleRotation}deg)`;
 }
 
 if(window.DeviceOrientationEvent){
@@ -767,7 +789,6 @@ function handleOri(e){
   else if(e.webkitCompassHeading!==undefined) h=e.webkitCompassHeading;
   if(h!==null) updateCompassNeedle(h);
 }
-
 /* ═══════════════════════════════════════════════════
    MANUAL PIN (bottom-left Leaflet control)
 ═══════════════════════════════════════════════════ */
