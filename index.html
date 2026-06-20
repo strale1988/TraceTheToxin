@@ -1,10 +1,15 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>TraceTheToxin</title>
-<link rel="icon" type="image/png" href="favicon.png">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>TraceTheToxin</title>
+  
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  
+  <link rel="icon" type="image/png" href="favicon.png">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <style>
 *{ margin:0; padding:0; box-sizing:border-box; }
@@ -13,9 +18,10 @@ body{
   font-family:-apple-system,BlinkMacSystemFont,sans-serif;
   background:#111;
   color:white;
-  height:100vh;
+  height: 100svh; /* Changed from 100dvh to 100svh */
   display:flex;
   flex-direction:column;
+  overflow: hidden; 
 }
 
 header{
@@ -63,16 +69,25 @@ header p{ font-size:11px; opacity:.7; margin-top:2px; }
 }
 .lang-btn.active{ background:#00a7b5; color:white; }
 
-#map{ flex:1; position:relative; overflow:hidden; }
+#map {
+  flex: 1;
+  height: 0;      /* Crucial: lets Leaflet shrink to let the panel fit */
+  min-height: 0;  /* Prevents it forcing structural layout over the panel */
+  position: relative;
+  overflow: hidden;
+}
 
 /* ── Panel ────────────────────────────────────────── */
 .panel{
   background:#181818;
   padding:10px 12px;
+  /* Add safe-area padding to elevate buttons safely above phone borders */
+  padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)); 
   display:flex;
   flex-direction:column;
   gap:8px;
   border-top:1px solid #333;
+  flex-shrink: 0; 
 }
 
 .row{ display:flex; gap:8px; }
