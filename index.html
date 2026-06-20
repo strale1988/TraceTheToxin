@@ -309,6 +309,9 @@ button{
   background: #333;
   border-radius: 3px;
 }
+#updated {
+  display: none !important;
+}
 
 </style>
 </head>
@@ -396,7 +399,25 @@ button{
 
 <div class="panel">
 
-  <div class="row">
+
+
+  <div class="row" style="align-items:center;">
+    <div style="display: flex; align-items: center; gap: 12px; width: 100%;">
+      <span id="sliderValue" style="width: 82px; font-size: 13px; font-weight: bold; color: #00a7b5; text-align: right; flex-shrink: 0;">1d</span>
+      <input 
+        type="range" 
+        id="filterSlider" 
+        min="0" 
+        max="10" 
+        value="4" 
+        step="1" 
+        oninput="onSliderChange(this.value)"
+        style="flex-grow: 1; width: 100%; accent-color: #00a7b5; cursor: pointer;"
+      >
+    </div>
+  </div>
+
+    <div class="row">
     <select id="category" onchange="checkFormReady()">
       <option value="" disabled selected>Select smell…</option>
       <option value="Chemical" data-sr="Hemijsko">Chemical</option>
@@ -422,23 +443,7 @@ button{
       <option value="10">10 – Overwhelming</option>
     </select>
   </div>
-
-  <div class="row" style="align-items:center;">
-    <div style="display: flex; align-items: center; gap: 12px; width: 100%;">
-      <span id="sliderValue" style="width: 82px; font-size: 13px; font-weight: bold; color: #00a7b5; text-align: right; flex-shrink: 0;">24h</span>
-      <input 
-        type="range" 
-        id="filterSlider" 
-        min="0" 
-        max="10" 
-        value="4" 
-        step="1" 
-        oninput="onSliderChange(this.value)"
-        style="flex-grow: 1; width: 100%; accent-color: #00a7b5; cursor: pointer;"
-      >
-    </div>
-  </div>
-
+  
   <input id="comment" type="text" placeholder="Optional notes...">
 
   <div class="row" style="align-items:stretch;">
@@ -486,7 +491,7 @@ const sliderSteps = [
   { value: 'h2',  labelSr: '2h',       labelEn: '2h' },
   { value: 'h6',  labelSr: '6h',       labelEn: '6h' },
   { value: 'h12', labelSr: '12h',      labelEn: '12h' },
-  { value: 'd1',  labelSr: '24h',      labelEn: '24h' }, // Default value (index 4)
+  { value: 'd1',  labelSr: '1d',       labelEn: '1d' },
   { value: 'd2',  labelSr: '2d',       labelEn: '2d' },
   { value: 'd4',  labelSr: '4d',       labelEn: '4d' },
   { value: 'd6',  labelSr: '6d',       labelEn: '6d' },
