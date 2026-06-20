@@ -947,19 +947,27 @@ async function startBacktrack(lat,lon,createdAt){
 
     // animated dashes — reversed so flow goes from pin toward source
     const dashedLine=L.polyline([...latlngs].reverse(),{
-      color:'#ff8800', weight:4, opacity:.88, dashArray:'50 25'
+      color:'#ff8800', weight:4, opacity:.88, dashArray:'50 10'
     }).addTo(map);
     btLayers.push(dashedLine);
 
     // speed
-    let offset=0;
-    function anim(){
-      offset=(offset-0.00005+1000)%20;
-      const el=dashedLine.getElement();
-      if(el) el.style.strokeDashoffset=offset;
-      btAnimFrame=requestAnimationFrame(anim);
-    }
-    anim();
+let offset = 0;
+function anim(){
+  // Decrementing by 0.5 to 1 per frame creates a beautiful, smooth crawl
+  offset = (offset - 0.6); 
+  
+  // Keep the offset bound tightly to the pattern length (50 dash + 10 gap = 60)
+  if (offset < -60) offset = 0; 
+  
+  const el = dashedLine.getElement();
+  if (el) {
+    // Crucial: Append 'px' unit so browsers don't ignore it as invalid CSS
+    el.style.strokeDashoffset = offset + 'px'; 
+  }
+  btAnimFrame = requestAnimationFrame(anim);
+}
+anim();
 
     // hourly dots along trail
     trail.slice(1,-1).forEach(p=>{
