@@ -38,12 +38,33 @@ header{
 header h1{ font-size:19px; }
 header p{ font-size:11px; opacity:.7; margin-top:2px; }
 
-.stats{
-  display:flex;
-  justify-content:flex-end;
-  margin-top:4px;
-  font-size:12px;
-  opacity:.8;
+/* ── Active Event Banner ──────────────────────────── */
+.alert-banner {
+  background: #ff8800;
+  color: white;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  display: none;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  animation: slideDown 0.3s ease-out;
+}
+@keyframes slideDown {
+  from { transform: translateY(-100%); }
+  to { transform: translateY(0); }
+}
+.alert-btn {
+  background: white;
+  color: #ff8800;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-weight: bold;
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
 }
 
 .lang-toggle{
@@ -76,7 +97,6 @@ header p{ font-size:11px; opacity:.7; margin-top:2px; }
   overflow: hidden;
 }
 
-/* ── New Filter Row Layout ────────────────────────── */
 .filter-label-row {
   display: flex;
   justify-content: space-between;
@@ -125,7 +145,6 @@ header p{ font-size:11px; opacity:.7; margin-top:2px; }
   font-weight: bold;
 }
 
-/* ── Panel ────────────────────────────────────────── */
 .panel{
   background:#181818;
   padding:12px 12px;
@@ -179,7 +198,6 @@ button{
 .report-btn:disabled{ opacity:.35; cursor:not-allowed; }
 .export-btn{ background:#00a7b5; color:white; width:100%; }
 
-/* Legend */
 .legend{
   display:flex;
   gap:8px;
@@ -191,7 +209,6 @@ button{
 .legend-item{ display:flex; align-items:center; gap:3px; }
 .legend-dot{ width:9px; height:9px; border-radius:50%; display:inline-block; flex-shrink:0; }
 
-/* ── Popup styles ─────────────────────────────────── */
 .leaflet-popup-content-wrapper{
   border-radius:10px !important;
   padding:0 !important;
@@ -211,7 +228,6 @@ button{
 .popup-inner b{ color:#222; }
 .popup-title{ font-size:14px; font-weight:700; margin-bottom:8px; color:#111; }
 
-/* ── Minimalist Compass ────────────────────────────── */
 .compass-wrap{
   background:transparent;
   width:40px; height:40px;
@@ -220,7 +236,6 @@ button{
 }
 .compass-wrap svg{ width:36px; height:36px; }
 
-/* ── Manual pin button (bottom-left) ─────────────── */
 .pin-map-btn{
   background:rgba(20,20,20,.88);
   border:1px solid #3a3a3a;
@@ -236,13 +251,11 @@ button{
 }
 .pin-map-btn.active{ background:#f5a623; border-color:#f5a623; }
 
-/* Style for the permanent 6-hour background trails */
 .bg-trail-teal {
   stroke-dasharray: 6, 6;
   pointer-events: none;
 }
   
-/* ── Source label ─────────────────────────────────── */
 .source-label{
   background:#ff8800; color:white;
   border-radius:8px; padding:6px 10px;
@@ -253,7 +266,6 @@ button{
   display:inline-block;
 }
 
-/* ── GPS modal ────────────────────────────────────── */
 .gps-modal-overlay{
   position:fixed; inset:0;
   background:rgba(0,0,0,.75);
@@ -293,7 +305,6 @@ button{
 }
 .gps-modal-close:active{ background:#444; }
 
-/* ── Source Tracer Button Styles ── */
 .trace-source-btn {
   background: rgba(20,20,20,.88);
   border: 1px solid #3a3a3a;
@@ -324,6 +335,11 @@ button{
     </div>
   </div>
 </header>
+
+<div id="eventAlertBanner" class="alert-banner">
+  <span id="eventAlertText">An active air issue is reported nearby.</span>
+  <button class="alert-btn" id="eventAlertBtn" onclick="quickVerifyCurrentEvent()">I SMELL IT TOO</button>
+</div>
 
 <div id="map"></div>
 
@@ -474,17 +490,18 @@ button{
 <script>
 
 /* ═══════════════════════════════════════════════════
-   GLOBAL STATE DECLARATIONS (Resolved Initialization Order)
+   GLOBAL STATE DECLARATIONS
 ═══════════════════════════════════════════════════ */
 let lang = 'sr';
 let traceMode = false;
 let tracerMarker = null;
-let tracerVisualCircles = []; // Keeps track of the visual search zones
+let tracerVisualCircles = []; 
 let globalActiveData = [];
 let activePlacementTrailLayer = null;
+let targetActiveClusterEvent = null; // Tracks current nearby active smell cluster
 
 const timeOptions = [
-    { id: 'h1',  hours: 0,    labelEn: '0h',       labelSr: '0h' },
+  { id: 'h1',  hours: 0,    labelEn: '0h',       labelSr: '0h' },
   { id: 'h1',  hours: 1,    labelEn: '1h',       labelSr: '1h' },
   { id: 'h2',  hours: 2,    labelEn: '2h',       labelSr: '2h' },
   { id: 'h3',  hours: 3,    labelEn: '3h',       labelSr: '3h' },
@@ -551,7 +568,9 @@ const T = {
   gpsBtn:       { en:'Got it',                           sr:'Razumem' },
   noReports:    { en:'No reports in current map view.',  sr:'Nema prijava u vidljivoj oblasti.' },
   traceModeOn:  { en:'Tap map to trace source',          sr:'Tapni kartu za praćenje izvora' },
-  traceModeOff: { en:'Trace Possible Source',            sr:'Prati potencijalni izvor' }
+  traceModeOff: { en:'Trace Possible Source',            sr:'Prati potencijalni izvor' },
+  alertText:    { en:'Active smell reported nearby:',    sr:'Prijavljen aktivan miris u blizini:' },
+  alertBtnText: { en:'I SMELL IT TOO',                   sr:'I JA OSEĆAM' }
 };
 
 function t(k){ return T[k]?.[lang] ?? k; }
@@ -601,7 +620,7 @@ function applyLang(){
   const gm = document.getElementById('gpsModal');
   if(gm && gm.style.display!=='none') updateGpsModalText();
 
-  // Dynamically redraw active selectors to preserve multi-language states
+  updateAlertBannerUI();
   initTimeFilters();
 }
 
@@ -635,7 +654,6 @@ function onTimeRangeChange() {
   const fromOpt = timeOptions.find(o => o.id === fromSelect.value);
   const toOpt = timeOptions.find(o => o.id === toSelect.value);
 
-  // Correction handling: if window range flips backwards, align them
   if (fromOpt.hours > toOpt.hours) {
     toSelect.value = fromSelect.value;
   }
@@ -711,6 +729,7 @@ function startWatching(){
         userMarker.setLatLng([userCoords.lat,userCoords.lon]);
       }
       checkFormReady();
+      evaluateActiveNearbyClusters();
       if (!pinMode) {
         updateActivePlacementTrail(userCoords.lat, userCoords.lon);
       }
@@ -835,6 +854,7 @@ function togglePinMode(){
     manualCoords = null;
     checkFormReady();
     triggerWindUpdate();
+    evaluateActiveNearbyClusters();
     if (userCoords) {
       updateActivePlacementTrail(userCoords.lat, userCoords.lon);
     } else if (activePlacementTrailLayer) {
@@ -854,7 +874,6 @@ function toggleTraceMode() {
 
   if (!traceMode) {
     if (tracerMarker) { map.removeLayer(tracerMarker); tracerMarker = null; }
-    // Clean up visual circles
     tracerVisualCircles.forEach(c => map.removeLayer(c));
     tracerVisualCircles = [];
     loadPinsByWindow();
@@ -877,6 +896,7 @@ map.on('click', async (e) => {
     }
     checkFormReady();
     fetchLiveWind(manualCoords.lat, manualCoords.lon);
+    evaluateActiveNearbyClusters();
     updateActivePlacementTrail(manualCoords.lat, manualCoords.lon);
   }
   
@@ -937,7 +957,7 @@ function startWindWhenReady(){
 startWindWhenReady();
 
 /* ═══════════════════════════════════════════════════
-   HELPERS
+   HELPERS / MATH
 ═══════════════════════════════════════════════════ */
 function ageColor(createdAt){
   const h=(Date.now()-new Date(createdAt))/3600000;
@@ -952,6 +972,17 @@ function ageColor(createdAt){
 
 function degToCardinal(deg){
   return ['N','NE','E','SE','S','SW','W','NW'][Math.round(deg/45)%8];
+}
+
+function getHaversineDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371; 
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
 }
 
 function makeIcon(color, windDeg){
@@ -970,7 +1001,7 @@ function makeIcon(color, windDeg){
 }
 
 /* ═══════════════════════════════════════════════════
-   BACKTRACK ENGINE (Dynamic Multi-hour Segment Paths)
+   BACKTRACK ENGINE
 ═══════════════════════════════════════════════════ */
 let btLayers    = []; 
 let bgTrailLayers = []; 
@@ -1001,7 +1032,6 @@ async function fetchHistoricWind(lat,lon,isoStart,isoEnd){
   const r=await fetch(url); const d=await r.json(); return d.hourly;
 }
 
-// Internal tool wrapper to construct an array coordinate path model for a report over an hour sequence
 async function renderBackgroundTrailForReport(report) {
   try {
     const reportTime = new Date(report.created_at);
@@ -1162,6 +1192,128 @@ async function updateActivePlacementTrail(lat, lon) {
 }
 
 /* ═══════════════════════════════════════════════════
+   CROWD VALIDATION & CLUSTERING ENGINE
+═══════════════════════════════════════════════════ */
+function evaluateActiveNearbyClusters() {
+  const currentLoc = pinMode && manualCoords ? manualCoords : userCoords;
+  if (!currentLoc || !globalActiveData.length) {
+    hideAlertBanner();
+    return;
+  }
+
+  const now = Date.now();
+  const CLUSTER_RADIUS_KM = 3.0;
+  const CLUSTER_TIME_WINDOW_MS = 2 * 3600 * 1000; // 2 hours
+
+  // Find recent reports nearby
+  const candidateReports = globalActiveData.filter(r => {
+    const ageMs = now - new Date(r.created_at).getTime();
+    if (ageMs > CLUSTER_TIME_WINDOW_MS) return false;
+    
+    const distance = getHaversineDistance(currentLoc.lat, currentLoc.lon, r.latitude, r.longitude);
+    return distance <= CLUSTER_RADIUS_KM;
+  });
+
+  if (!candidateReports.length) {
+    hideAlertBanner();
+    return;
+  }
+
+  // Find the most frequent smell category within proximity candidates
+  const categoryCounts = {};
+  candidateReports.forEach(r => {
+    categoryCounts[r.category] = (categoryCounts[r.category] || 0) + 1;
+  });
+
+  let topCategory = '';
+  let maxCount = 0;
+  for (const cat in categoryCounts) {
+    if (categoryCounts[cat] > maxCount) {
+      maxCount = categoryCounts[cat];
+      topCategory = cat;
+    }
+  }
+
+  // Trigger alert banner if 2 or more separate reports align
+  if (maxCount >= 2) {
+    targetActiveClusterEvent = {
+      category: topCategory,
+      lat: currentLoc.lat,
+      lon: currentLoc.lon
+    };
+    showAlertBanner(topCategory, maxCount);
+  } else {
+    hideAlertBanner();
+  }
+}
+
+function showAlertBanner(category, count) {
+  const banner = document.getElementById('eventAlertBanner');
+  if (!banner) return;
+  
+  targetActiveClusterEvent.localizedCategoryLabel = category;
+  
+  // Apply translation labels to dynamic alert strings
+  const mappedOptions = Array.from(document.getElementById('category').options);
+  const matchedOpt = mappedOptions.find(o => o.value === category);
+  if (matchedOpt) {
+    targetActiveClusterEvent.localizedCategoryLabel = matchedOpt.textContent;
+  }
+
+  updateAlertBannerUI();
+  banner.style.display = 'flex';
+}
+
+function hideAlertBanner() {
+  const banner = document.getElementById('eventAlertBanner');
+  if (banner) banner.style.display = 'none';
+  targetActiveClusterEvent = null;
+}
+
+function updateAlertBannerUI() {
+  if (!targetActiveClusterEvent) return;
+  const textEl = document.getElementById('eventAlertText');
+  const btnEl = document.getElementById('eventAlertBtn');
+  
+  if (textEl) {
+    textEl.textContent = `${t('alertText')} "${targetActiveClusterEvent.localizedCategoryLabel}"`;
+  }
+  if (btnEl) {
+    btnEl.textContent = t('alertBtnText');
+  }
+}
+
+async function quickVerifyCurrentEvent() {
+  if (!targetActiveClusterEvent) return;
+  
+  const currentLoc = pinMode && manualCoords ? manualCoords : userCoords;
+  if (!currentLoc) { alert(t('waitGps')); return; }
+
+  try {
+    const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${currentLoc.lat}&longitude=${currentLoc.lon}&current=wind_speed_10m,wind_direction_10m,pressure_msl`);
+    const w = await r.json(); const c = w.current;
+
+    const { error } = await sb.from('air_reports').insert([{
+      latitude: currentLoc.lat, 
+      longitude: currentLoc.lon,
+      category: targetActiveClusterEvent.category, 
+      intensity: 7, // Highly confident defaults
+      comment: "Quick-verify community report endorsement",
+      wind_speed: c.wind_speed_10m,
+      wind_direction: c.wind_direction_10m,
+      sea_level_pressure: c.pressure_msl
+    }]);
+    
+    if (error) throw error;
+
+    alert(t('submitted'));
+    hideAlertBanner();
+    loadPinsByWindow();
+
+  } catch(err) { alert(err.message); }
+}
+
+/* ═══════════════════════════════════════════════════
    PINS RENDER ENGINE
 ═══════════════════════════════════════════════════ */
 function clearMarkers(){
@@ -1240,8 +1392,6 @@ async function loadPinsByWindow() {
 
   data.forEach((r, index) => {
     const reportTimestamp = new Date(r.created_at).getTime();
-    
-    // Bounds limit matching: skip elements older than 'To' or newer than 'From'
     if (reportTimestamp > innerCutoffTimestamp || reportTimestamp < outerCutoffTimestamp) return;
 
     n++;
@@ -1252,6 +1402,7 @@ async function loadPinsByWindow() {
   const rcEl = document.getElementById('reportCount');
   if (rcEl) rcEl.textContent = n + ' ' + (n === 1 ? t('reportCount1') : t('reportCount'));
 
+  evaluateActiveNearbyClusters();
   generateAllBackgroundTrails(activeReports);
 }
 
@@ -1262,7 +1413,6 @@ async function filterPinsBySourceTrajectory(tracerCoords) {
   const BASE_RADIUS_KM = 0.5; 
   const DISPERSION_RATE_KM_H = 1.2; 
 
-  // Clear existing markers, background trails, and old visual radius layers
   reportMarkers.forEach(m => map.removeLayer(m));
   reportMarkers = [];
   clearBackgroundTrails();
@@ -1270,9 +1420,8 @@ async function filterPinsBySourceTrajectory(tracerCoords) {
   tracerVisualCircles.forEach(c => map.removeLayer(c));
   tracerVisualCircles = [];
 
-  // Render the primary starting search radius visually (500m base)
   const primaryRadiusCircle = L.circle([tracerCoords.lat, tracerCoords.lon], {
-    radius: BASE_RADIUS_KM * 1000, // Leaflet uses meters
+    radius: BASE_RADIUS_KM * 1000, 
     color: '#ff4d4d',
     fillColor: '#ff4d4d',
     fillOpacity: 0.15,
@@ -1284,7 +1433,6 @@ async function filterPinsBySourceTrajectory(tracerCoords) {
 
   let activeReportsToDrawTrails = [];
 
-  // Minimum Orthogonal Distance function to solve segment line vector intersections
   function distanceToSegment(p, v, w, segmentHoursIndex) {
     const R = 6371; 
 
@@ -1315,7 +1463,6 @@ async function filterPinsBySourceTrajectory(tracerCoords) {
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
   }
 
-  // Loop through global active data points to find path intersections
   for (let index = 0; index < globalActiveData.length; index++) {
     const report = globalActiveData[index];
     let matchFound = false;
@@ -1327,14 +1474,12 @@ async function filterPinsBySourceTrajectory(tracerCoords) {
       const p1 = trailCoordinates[i];
       const p2 = trailCoordinates[i + 1];
 
-      // Dynamic hour index context step factor
       const distanceKM = distanceToSegment(tracerCoords, p1, p2, i + 1);
       const maxAllowedDistance = BASE_RADIUS_KM + (DISPERSION_RATE_KM_H * (i + 1));
 
       if (distanceKM <= maxAllowedDistance) {
         matchFound = true;
         
-        // OPTIONAL VISUAL HIGHLIGHT: Plot the expanding dynamic dispersion bounds where it crosses the path
         const dispersionIndicator = L.circle([p1.lat, p1.lon], {
           radius: maxAllowedDistance * 1000,
           color: '#ff8800',
@@ -1400,7 +1545,7 @@ async function reportBadAir(){
 }
 
 /* ═══════════════════════════════════════════════════
-   CSV EXPORT BOUNDS GENERATOR
+   CSV EXPORT
 ═══════════════════════════════════════════════════ */
 async function downloadCSV(){
   const data=await fetchAll();
@@ -1438,22 +1583,16 @@ async function downloadCSV(){
 }
 
 /* ═══════════════════════════════════════════════════
-   ORCHESTRATION ARCHITECTURE (Safe Initialization)
+   ORCHESTRATION ARCHITECTURE
 ═══════════════════════════════════════════════════ */
-// 1. Establish dropdown choices structure
 initTimeFilters();
-
-// 2. Load translations context safely
 applyLang(); 
 
-// 3. Set standard starting window view parameters: 1h to 1d
 document.getElementById('filterFrom').value = 'h1';
 document.getElementById('filterTo').value = 'd1';
 
-// 4. Fire baseline payload extraction query
 loadPinsByWindow();
 
-// 5. Setup synchronization heartbeat thread intervals
 setInterval(() => {
   if (!traceMode) {
     loadPinsByWindow();
