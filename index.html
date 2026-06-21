@@ -1,0 +1,1608 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>TraceTheToxin</title>
+  
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>
+*{ margin:0; padding:0; box-sizing:border-box; }
+
+body{
+  font-family:-apple-system,BlinkMacSystemFont,sans-serif;
+  background:#111;
+  color:white;
+  height: 100svh;
+  display:flex;
+  flex-direction:column;
+}
+
+header{
+  padding:10px 12px;
+  background:#181818;
+  border-bottom:1px solid #333;
+}
+
+.header-top{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+}
+
+header h1{ font-size:19px; }
+header p{ font-size:11px; opacity:.7; margin-top:2px; }
+
+/* ── Active Event Banner ──────────────────────────── */
+.alert-banner {
+  background: #ff8800;
+  color: white;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  display: none;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  animation: slideDown 0.3s ease-out;
+}
+@keyframes slideDown {
+  from { transform: translateY(-100%); }
+  to { transform: translateY(0); }
+}
+.alert-btn {
+  background: white;
+  color: #ff8800;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-weight: bold;
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.lang-toggle{
+  display:flex;
+  gap:4px;
+  align-items:center;
+  flex-shrink:0;
+}
+
+.lang-btn{
+  background:#303030;
+  color:#aaa;
+  border:none;
+  border-radius:6px;
+  padding:5px 8px;
+  font-size:11px;
+  font-weight:600;
+  cursor:pointer;
+  transition:background .15s,color .15s;
+  -webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;
+}
+.lang-btn.active{ background:#00a7b5; color:white; }
+
+#map {
+  flex: 1;
+  height: 0;      
+  min-height: 0;  
+  position: relative;
+  overflow: hidden;
+}
+
+.filter-label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px 4px 14px;
+  background: #181818;
+  font-size: 11px;
+  font-weight: bold;
+}
+
+.filter-title {
+  color: #888;
+  letter-spacing: .3px;
+  text-transform: uppercase;
+  font-size: 10px;
+}
+
+#reportCount {
+  color: #aaa;
+  font-size: 12px;
+  text-align: right;
+  width: 80px;
+}
+
+.filter-select-row {
+  background: #181818;
+  padding: 0 12px 14px 12px;
+  border-bottom: 1px solid #292929;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.select-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+
+.select-sublabel {
+  font-size: 9px;
+  color: #888;
+  text-transform: uppercase;
+  padding-left: 2px;
+  font-weight: bold;
+}
+
+.panel{
+  background:#181818;
+  padding:12px 12px;
+  padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)); 
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  flex-shrink: 0; 
+}
+
+.row{ display:flex; gap:8px; }
+
+select{
+  flex:1;
+  padding:11px 10px;
+  border:none;
+  border-radius:8px;
+  background:#262626;
+  color:white;
+  font-size:13px;
+  -webkit-appearance:none;
+  appearance:none;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23888' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;
+  background-position:right 10px center;
+  padding-right:28px;
+}
+
+input[type="text"]{
+  width:100%;
+  padding:11px 10px;
+  border:none;
+  border-radius:8px;
+  background:#262626;
+  color:white;
+  font-size:13px;
+}
+
+button{
+  padding:12px;
+  border:none;
+  border-radius:8px;
+  cursor:pointer;
+  font-weight:bold;
+  font-size:13px;
+  -webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;
+}
+
+.report-btn{ background:#ff4b4b; color:white; width:100%; transition:opacity .2s; }
+.report-btn:disabled{ opacity:.35; cursor:not-allowed; }
+.export-btn{ background:#00a7b5; color:white; width:100%; }
+
+.legend{
+  display:flex;
+  gap:8px;
+  font-size:10px;
+  align-items:center;
+  flex-wrap:wrap;
+  opacity:.8;
+}
+.legend-item{ display:flex; align-items:center; gap:3px; }
+.legend-dot{ width:9px; height:9px; border-radius:50%; display:inline-block; flex-shrink:0; }
+
+.leaflet-popup-content-wrapper{
+  border-radius:10px !important;
+  padding:0 !important;
+  overflow:hidden;
+  min-width:200px;
+}
+.leaflet-popup-content{ margin:0 !important; width:auto !important; }
+
+.popup-inner{
+  font-family:-apple-system,BlinkMacSystemFont,sans-serif;
+  font-size:13px;
+  line-height:1.65;
+  color:#111;
+  padding:12px 14px;
+  min-width:200px;
+}
+.popup-inner b{ color:#222; }
+.popup-title{ font-size:14px; font-weight:700; margin-bottom:8px; color:#111; }
+
+.compass-wrap{
+  background:transparent;
+  width:40px; height:40px;
+  display:flex; align-items:center; justify-content:center;
+  cursor:default; user-select:none;
+}
+.compass-wrap svg{ width:36px; height:36px; }
+
+.pin-map-btn{
+  background:rgba(20,20,20,.88);
+  border:1px solid #3a3a3a;
+  border-radius:8px;
+  width:44px; height:44px;
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer; font-size:22px;
+  box-shadow:0 2px 8px rgba(0,0,0,.55);
+  transition:background .15s;
+  user-select:none;
+  -webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;
+}
+.pin-map-btn.active{ background:#f5a623; border-color:#f5a623; }
+
+.bg-trail-teal {
+  stroke-dasharray: 6, 6;
+  pointer-events: none;
+}
+  
+.source-label{
+  background:#ff8800; color:white;
+  border-radius:8px; padding:6px 10px;
+  font-size:12px; font-weight:700;
+  white-space:nowrap;
+  box-shadow:0 2px 8px rgba(0,0,0,.55);
+  line-height:1.5; text-align:center;
+  display:inline-block;
+}
+
+.gps-modal-overlay{
+  position:fixed; inset:0;
+  background:rgba(0,0,0,.75);
+  display:flex; align-items:center; justify-content:center;
+  z-index:9999;
+  padding:20px;
+  -webkit-overflow-scrolling:touch;
+}
+.gps-modal{
+  background:#1e1e1e; color:white;
+  border-radius:18px;
+  padding:28px 22px 22px;
+  max-width:320px; width:100%;
+  text-align:center;
+  box-shadow:0 16px 48px rgba(0,0,0,.8);
+  max-height:90vh; overflow-y:auto;
+  pointer-events:all;
+}
+.gps-modal-icon{ font-size:44px; margin-bottom:12px; }
+.gps-modal h2{ font-size:18px; font-weight:700; margin-bottom:10px; }
+.gps-modal p{ font-size:14px; line-height:1.7; color:#bbb; margin-bottom:8px; }
+.gps-modal-steps{
+  background:#2a2a2a; border-radius:10px;
+  padding:12px 14px; margin:14px 0 20px;
+  text-align:left; font-size:12px; color:#ccc; line-height:1.8;
+}
+.gps-modal-steps b{ color:#fff; }
+.gps-modal-close{
+  background:#333; color:#eee;
+  border:1px solid #555; border-radius:10px;
+  padding:14px 24px;
+  font-size:15px; font-weight:600;
+  cursor:pointer; width:100%;
+  -webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;
+  min-height:50px;
+}
+.gps-modal-close:active{ background:#444; }
+
+.trace-source-btn {
+  background: rgba(20,20,20,.88);
+  border: 1px solid #3a3a3a;
+  border-radius: 8px;
+  width: 44px; height: 44px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; font-size: 22px;
+  box-shadow: 0 2px 8px rgba(0,0,0,.55);
+  transition: background .15s;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+.trace-source-btn.active { background: #ff4d4d; border-color: #ff4d4d; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-top">
+    <div>
+      <h1>TraceTheToxin</h1>
+      <p id="subtitle">Community Air Reporting Network</p>
+    </div>
+    <div class="lang-toggle">
+      <button class="lang-btn"        onclick="setLang('en')">🇬🇧 EN</button>
+      <button class="lang-btn active" onclick="setLang('sr')">🇷🇸 SR</button> 
+    </div>
+  </div>
+</header>
+
+<div id="eventAlertBanner" class="alert-banner">
+  <span id="eventAlertText">An active air issue is reported nearby.</span>
+  <button class="alert-btn" id="eventAlertBtn" onclick="quickVerifyCurrentEvent()">I SMELL IT TOO</button>
+</div>
+
+<div id="map"></div>
+
+<div class="filter-label-row">
+  <span class="filter-title" id="filterTitleLabel">Time Window Filter</span>
+  <span id="reportCount">0 Reports</span>
+</div>
+
+<div class="filter-select-row">
+  <div class="select-wrap">
+    <span class="select-sublabel" id="labelFrom">From (Newer)</span>
+    <select id="filterFrom" onchange="onTimeRangeChange()">
+    </select>
+  </div>
+  
+  <span style="color: #555; padding-top: 14px; font-weight: bold;">→</span>
+
+  <div class="select-wrap">
+    <span class="select-sublabel" id="labelTo">To (Older)</span>
+    <select id="filterTo" onchange="onTimeRangeChange()">
+    </select>
+  </div>
+</div>
+
+<div id="mapLegend" style="display:none;
+  background:rgba(18,18,18,.88);
+  backdrop-filter:blur(4px);
+  -webkit-backdrop-filter:blur(4px);
+  border-radius:10px;
+  padding:5px 10px;
+  display:flex;
+  align-items:center;
+  gap:6px;
+  flex-wrap:nowrap;
+  pointer-events:none;
+  border:1px solid rgba(255,255,255,.09);
+  box-shadow:0 2px 10px rgba(0,0,0,.45);
+  margin-bottom:4px;
+">
+  <span class="legend-item"><span class="legend-dot" style="background:#ff1a1a"></span><span class="leg" data-en="&lt;1h"  data-sr="&lt;1h"  style="color:#ddd;font-size:10px;">&lt;1h</span></span>
+  <span class="legend-item"><span class="legend-dot" style="background:#ff6600"></span><span class="leg" data-en="1–2h"  data-sr="1–2h"   style="color:#ddd;font-size:10px;">1–2h</span></span>
+  <span class="legend-item"><span class="legend-dot" style="background:#e09000"></span><span class="leg" data-en="2–6h"  data-sr="2–6h"   style="color:#ddd;font-size:10px;">2–6h</span></span>
+  <span class="legend-item"><span class="legend-dot" style="background:#a0a000"></span><span class="leg" data-en="6–12h" data-sr="6–12h"  style="color:#ddd;font-size:10px;">6–12h</span></span>
+  <span class="legend-item"><span class="legend-dot" style="background:#777"></span>   <span class="leg" data-en="12–24h" data-sr="12–24h" style="color:#ddd;font-size:10px;">12–24h</span></span>
+  <span class="legend-item"><span class="legend-dot" style="background:#444;border:1px solid #666"></span><span class="leg" data-en="24h+" data-sr="24h+" style="color:#ddd;font-size:10px;">24h+</span></span>
+</div>
+
+<div id="compassWidget" style="display:none; flex-direction: column; align-items: center; gap: 6px;">
+  <div id="compassWindBox" style="
+    background:rgba(20,20,20,.88);
+    border:1px solid #3a3a3a;
+    border-radius:8px;
+    padding:6px 10px;
+    text-align:center;
+    font-size:12px;
+    font-weight:700;
+    color:#fff;
+    line-height:1.4;
+    box-shadow:0 2px 8px rgba(0,0,0,.55);
+    min-width:72px;
+  ">
+    <div id="compassWindArrow" style="font-size:18px;line-height:1;margin-bottom:2px; display:inline-block; transition: transform 0.2s;">↑</div>
+    <div id="compassWindSpeed">-- km/h</div>
+    <div id="compassWindDir" style="font-size:9.5px;opacity:.75;font-weight:600;">--° --</div>
+  </div>
+
+  <div class="compass-wrap" style="
+    background: rgba(20, 20, 20, 0.85);
+    border: 1px solid #3a3a3a;
+    width: 46px; 
+    height: 46px; 
+    border-radius: 50%; 
+    display: flex; 
+    align-items: center; 
+    justify-content: center;
+    position: relative;
+    user-select: none;
+  " title="Compass">
+    <svg viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg" style="width: 40px; height: 40px;">
+      <circle cx="22" cy="22" r="20" fill="none" stroke="#333" stroke-width="1"/>
+      <text x="22" y="9" text-anchor="middle" fill="#ff4b4b" font-size="6.5" font-weight="900">N</text>
+      <g id="compassNeedle" style="transform-origin:22px 22px; transition: transform 0.15s ease-out;">
+        <polygon points="22,11 19,22 22,20 25,22" fill="#ff4b4b"/>
+        <polygon points="22,33 19,22 22,24 25,22" fill="#555"/>
+        <circle cx="22" cy="22" r="1.5" fill="#fff"/>
+      </g>
+    </svg>
+  </div>
+</div>
+
+<div id="pinMapBtn" class="pin-map-btn" style="display:none" title="Set location manually" onclick="togglePinMode()">📍</div>
+<div id="traceSourceBtn" class="trace-source-btn" style="display:none" title="Trace Possible Source" onclick="toggleTraceMode()">🔍</div>
+
+<div class="panel">
+  <div class="row">
+    <select id="category" onchange="checkFormReady()">
+      <option value="" disabled selected>Select smell…</option>
+      <option value="Chemical" data-sr="Hemijsko">Chemical</option>
+      <option value="Smoke"    data-sr="Dim">Smoke</option>
+      <option value="Sulfur"   data-sr="Sumpor">Sulfur</option>
+      <option value="Sewage"   data-sr="Kanalizacija">Sewage</option>
+      <option value="Plastic"  data-sr="Plastika">Plastic</option>
+      <option value="Dust"     data-sr="Prašina">Dust</option>
+      <option value="Unknown"  data-sr="Nepoznato">Unknown</option>
+    </select>
+
+    <select id="intensity" onchange="checkFormReady()">
+      <option value="" disabled selected>Intensity…</option>
+      <option value="1">1 – Barely noticeable</option>
+      <option value="2">2</option>
+      <option value="3">3</option>
+      <option value="4">4</option>
+      <option value="5">5 – Moderate</option>
+      <option value="6">6</option>
+      <option value="7">7</option>
+      <option value="8">8</option>
+      <option value="9">9</option>
+      <option value="10">10 – Overwhelming</option>
+    </select>
+  </div>
+
+  <input id="comment" type="text" placeholder="Optional notes...">
+
+  <div class="row" style="align-items:stretch;">
+    <button class="report-btn" id="reportBtn" onclick="reportBadAir()"
+            style="flex:0 0 80%;min-width:0;font-size:14px;" disabled>
+      ⚠️ <span id="reportBtnLabel">REPORT BAD AIR</span>
+    </button>
+    <button class="export-btn" onclick="downloadCSV()"
+            style="flex:0 0 calc(20% - 8px);min-width:0;font-size:12px;padding:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+      <span id="csvLabel">CSV</span>
+    </button>
+  </div>
+</div>
+
+<div id="gpsModal" class="gps-modal-overlay" style="display:none">
+  <div class="gps-modal">
+    <div class="gps-modal-icon">📍</div>
+    <h2 id="gpsModalTitle">GPS Not Enabled</h2>
+    <p id="gpsModalBody">Location access is turned off. To report bad air at your location, enable it in your settings.</p>
+    <p id="gpsModalAlt" style="font-size:12px;color:#999;margin-bottom:16px;">Or use the 📍 button on the map to drop a pin manually.</p>
+    <button class="gps-modal-close" onclick="hideGpsModal()" id="gpsModalBtn">Got it</button>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<script>
+
+/* ═══════════════════════════════════════════════════
+   GLOBAL STATE DECLARATIONS
+═══════════════════════════════════════════════════ */
+let lang = 'sr';
+let traceMode = false;
+let tracerMarker = null;
+let tracerVisualCircles = []; 
+let globalActiveData = [];
+let activePlacementTrailLayer = null;
+let targetActiveClusterEvent = null; 
+
+const weatherCache = {};
+
+const timeOptions = [
+  { id: 'h1',  hours: 0,    labelEn: '0h',       labelSr: '0h' },
+  { id: 'h1',  hours: 1,    labelEn: '1h',       labelSr: '1h' },
+  { id: 'h2',  hours: 2,    labelEn: '2h',       labelSr: '2h' },
+  { id: 'h3',  hours: 3,    labelEn: '3h',       labelSr: '3h' },
+  { id: 'h4',  hours: 4,    labelEn: '4h',       labelSr: '4h' },
+  { id: 'h6',  hours: 6,    labelEn: '6h',       labelSr: '6h' },
+  { id: 'h12', hours: 12,   labelEn: '12h',      labelSr: '12h' },
+  { id: 'h18', hours: 18,   labelEn: '18h',      labelSr: '18h' },
+  { id: 'd1',  hours: 24,   labelEn: '1d',       labelSr: '1d' },
+  { id: 'd1.5',hours: 36,   labelEn: '1.5d',     labelSr: '1.5d' },
+  { id: 'd2',  hours: 48,   labelEn: '2d',       labelSr: '2d' },
+  { id: 'd3',  hours: 72,   labelEn: '3d',       labelSr: '3d' },
+  { id: 'd4',  hours: 96,   labelEn: '4d',       labelSr: '4d' },
+  { id: 'd5',  hours: 120,  labelEn: '5d',       labelSr: '5d' },
+  { id: 'd6',  hours: 144,  labelEn: '6d',       labelSr: '6d' },
+  { id: 'd7',  hours: 168,  labelEn: '7d',       labelSr: '7d' },
+  { id: 'd10', hours: 240,  labelEn: '10d',      labelSr: '10d' },
+  { id: 'd15', hours: 360,  labelEn: '15d',      labelSr: '15d' },
+  { id: 'd30', hours: 720,  labelEn: '30d',      labelSr: '30d' },
+  { id: 'all', hours: 999999,labelEn: 'All Time', labelSr: 'Sve vreme' }
+];
+
+/* ═══════════════════════════════════════════════════
+   SUPABASE
+═══════════════════════════════════════════════════ */
+const SUPABASE_URL = 'https://fnkqmwweljsupbmerbkh.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZua3Ftd3dlbGpzdXBibWVyYmtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE3OTcwODUsImV4cCI6MjA5NzM3MzA4NX0.eX3mxnSpGmJ6Ebw7Y4F_jHiJarPH4ri9WNYXwmLi16I';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+/* ═══════════════════════════════════════════════════
+   i18n
+═══════════════════════════════════════════════════ */
+const T = {
+  subtitle:     { en:'Community Air Reporting Network',  sr:'Mreža za prijavu kvaliteta vazduha' },
+  reportCount:  { en:'Reports',                          sr:'Prijava' },
+  reportCount1: { en:'Report',                           sr:'Prijava' },
+  loading:      { en:'Loading...',                       sr:'Učitavanje...' },
+  reportBtn:    { en:'REPORT BAD AIR',                   sr:'PRIJAVI LOŠ VAZDUH' },
+  csvLabel:     { en:'CSV',                              sr:'CSV' },
+  legendLabel:  { en:'Age:',                             sr:'Starost:' },
+  commentPH:    { en:'Optional notes...',                sr:'Opciona napomena...' },
+  waitGps:      { en:'Waiting for GPS...',               sr:'Čekanje GPS-a...' },
+  submitted:    { en:'Report submitted.',                sr:'Prijava uspešna.' },
+  popupTitle:   { en:'⚠️ Air Report',                   sr:'⚠️ Prijava vazduha' },
+  popupCat:     { en:'Category',                         sr:'Kategorija' },
+  popupInt:     { en:'Intensity',                        sr:'Intenzitet' },
+  popupDate:    { en:'Date',                             sr:'Datum' },
+  popupWind:    { en:'Wind',                             sr:'Vetar' },
+  popupDir:     { en:'Direction',                        sr:'Smer' },
+  popupPres:    { en:'Pressure',                         sr:'Pritisak' },
+  popupNotes:   { en:'Notes',                            sr:'Napomena' },
+  popupNone:    { en:'None',                             sr:'Nema' },
+  possSource:   { en:'⚠ Possible sources',               sr:'⚠ Mogući izvori' },
+  backtrack:    { en:'backtrack',                        sr:'unazad' },
+  timeFilter:   { en:'Time Window Filter',               sr:'Filter vremenskog prozora' },
+  labelFrom:    { en:'From (Newer)',                     sr:'Od (Novije)' },
+  labelTo:      { en:'Do (Starije)',                     sr:'Do (Starije)' },
+  catPH:        { en:'Select smell…',                    sr:'Izaberi miris…' },
+  intPH:        { en:'Intensity…',                       sr:'Intenzitet…' },
+  pinModeOn:    { en:'Tap map to place pin',             sr:'Tapni kartu za pin' },
+  pinModeOff:   { en:'Set location manually',            sr:'Ručna lokacija' },
+  gpsTitle:     { en:'GPS Not Enabled',                  sr:'GPS nije uključen' },
+  gpsBody:      { en:'Location access is turned off. To report bad air at your location, enable it in your settings.', sr:'Pristup lokaciji je isključen. Da biste prijavili loš vazduh, omogućite ga u podešavanjima.' },
+  gpsAlt:       { en:'Or use the 📍 button on the map to drop a pin manually.', sr:'Ili koristite dugme 📍 na karti da ručno postavite pin.' },
+  gpsBtn:       { en:'Got it',                           sr:'Razumem' },
+  noReports:    { en:'No reports in current map view.',  sr:'Nema prijava u vidljivoj oblasti.' },
+  traceModeOn:  { en:'Tap map to trace source',          sr:'Tapni kartu za praćenje izvora' },
+  traceModeOff: { en:'Trace Possible Source',            sr:'Prati potencijalni izvor' },
+  alertText:    { en:'Prijavljen aktivan miris u blizini:',    sr:'Prijavljen aktivan miris u blizini:' },
+  alertBtnText: { en:'I SMELL IT TOO',                   sr:'I JA OSEĆAM' }
+};
+
+function t(k){ return T[k]?.[lang] ?? k; }
+
+function setLang(l){
+  lang = l;
+  document.querySelectorAll('.lang-btn').forEach(b=>{
+    b.classList.toggle('active', b.getAttribute('onclick').includes("'"+l+"'"));
+  });
+  applyLang();
+}
+
+function applyLang(){
+  document.getElementById('subtitle').textContent         = t('subtitle');
+  document.getElementById('reportBtnLabel').textContent   = t('reportBtn');
+  document.getElementById('csvLabel').textContent         = t('csvLabel');
+  document.getElementById('filterTitleLabel').textContent = t('timeFilter');
+  document.getElementById('labelFrom').textContent        = t('labelFrom');
+  document.getElementById('labelTo').textContent          = t('labelTo');
+  document.getElementById('comment').placeholder          = t('commentPH');
+
+  document.getElementById('category').options[0].text  = t('catPH');
+  document.getElementById('intensity').options[0].text = t('intPH');
+
+  const intSel = document.getElementById('intensity');
+  const intensityLabels = lang === 'sr'
+    ? { 1:'Jedva primetno', 5:'Umereno', 10:'Nepodnošljivo' }
+    : { 1:'Barely noticeable', 5:'Moderate', 10:'Overwhelming' };
+  
+  for(let i = 1; i <= 10; i++){
+    intSel.options[i].textContent = intensityLabels[i] ? `${i} – ${intensityLabels[i]}` : `${i}`;
+  }
+
+  const catEl = document.getElementById('category');
+  const catLabels = lang === 'sr'
+    ? ['Hemijsko','Dim','Sumpor','Kanalizacija','Plastika','Prašina','Nepoznato']
+    : ['Chemical','Smoke','Sulfur','Sewage','Plastic','Dust','Unknown'];
+  
+  Array.from(catEl.options).slice(1).forEach((opt, i) => {
+    opt.textContent = catLabels[i];
+  });
+
+  document.querySelectorAll('.leg').forEach(el=>{
+    el.textContent = el.dataset[lang] || el.dataset.en;
+  });
+
+  const gm = document.getElementById('gpsModal');
+  if(gm && gm.style.display!=='none') updateGpsModalText();
+
+  updateAlertBannerUI();
+  initTimeFilters();
+}
+
+/* ═══════════════════════════════════════════════════
+   DYNAMIC TIME WINDOW SELECTION SYSTEM
+═══════════════════════════════════════════════════ */
+function initTimeFilters() {
+  const fromSelect = document.getElementById('filterFrom');
+  const toSelect = document.getElementById('filterTo');
+  
+  const oldFromVal = fromSelect.value || 'h1'; 
+  const oldToVal = toSelect.value || 'd1';     
+
+  fromSelect.innerHTML = '';
+  toSelect.innerHTML = '';
+
+  timeOptions.forEach(opt => {
+    const label = (lang === 'sr') ? opt.labelSr : opt.labelEn;
+    fromSelect.add(new Option(label, opt.id));
+    toSelect.add(new Option(label, opt.id));
+  });
+
+  fromSelect.value = oldFromVal;
+  toSelect.value = oldToVal;
+}
+
+function onTimeRangeChange() {
+  const fromSelect = document.getElementById('filterFrom');
+  const toSelect = document.getElementById('filterTo');
+
+  const fromOpt = timeOptions.find(o => o.id === fromSelect.value);
+  const toOpt = timeOptions.find(o => o.id === toSelect.value);
+
+  if (fromOpt.hours > toOpt.hours) {
+    toSelect.value = fromSelect.value;
+  }
+
+  if (traceMode && tracerMarker) {
+    filterPinsBySourceTrajectory(tracerMarker.getLatLng());
+  } else {
+    loadPinsByWindow();
+  }
+}
+
+/* ═══════════════════════════════════════════════════
+   MAP (Light Mode Restored)
+═══════════════════════════════════════════════════ */
+const map = L.map('map').setView([45.25,19.85],11);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+  attribution:'© OpenStreetMap'
+}).addTo(map);
+
+let userCoords    = null;
+let userMarker    = null;
+let reportMarkers = [];
+let pinMode       = false;
+let manualCoords  = null;
+let manualMarker  = null;
+
+/* ═══════════════════════════════════════════════════
+   GPS MODAL
+═══════════════════════════════════════════════════ */
+function updateGpsModalText(){
+  const el = id => document.getElementById(id);
+  if(el('gpsModalTitle')) el('gpsModalTitle').textContent  = t('gpsTitle');
+  if(el('gpsModalBody'))  el('gpsModalBody').textContent   = t('gpsBody');
+  if(el('gpsModalAlt'))   el('gpsModalAlt').textContent    = t('gpsAlt');
+  if(el('gpsModalBtn'))   el('gpsModalBtn').textContent    = t('gpsBtn');
+}
+
+function showGpsModal(){
+  const modal = document.getElementById('gpsModal');
+  if(!modal) return;
+  updateGpsModalText();
+  modal.style.display = 'flex';
+  modal.offsetHeight;
+}
+
+function hideGpsModal(){
+  const modal = document.getElementById('gpsModal');
+  if(modal) modal.style.display = 'none';
+}
+
+/* ═══════════════════════════════════════════════════
+   GPS INIT
+═══════════════════════════════════════════════════ */
+function checkFormReady(){
+  const cat    = document.getElementById('category').value;
+  const intVal = document.getElementById('intensity').value;
+  const hasLoc = !!(userCoords || manualCoords);
+  const btn    = document.getElementById('reportBtn');
+  if(btn) btn.disabled = !(cat && intVal && hasLoc);
+}
+
+function startWatching(){
+  navigator.geolocation.watchPosition(
+    pos => {
+      userCoords = { lat:pos.coords.latitude, lon:pos.coords.longitude };
+      hideGpsModal();
+      if(!userMarker){
+        userMarker = L.circleMarker([userCoords.lat,userCoords.lon],{
+          radius:8, color:'#00d0ff', fillColor:'#00d0ff', fillOpacity:.85, weight:2
+        }).addTo(map);
+        if(!pinMode) map.setView([userCoords.lat,userCoords.lon],13);
+      } else {
+        userMarker.setLatLng([userCoords.lat,userCoords.lon]);
+      }
+      checkFormReady();
+      evaluateActiveNearbyClusters();
+      if (!pinMode) {
+        updateActivePlacementTrail(userCoords.lat, userCoords.lon);
+      }
+    },
+    err => {
+      if(err.code === 1) showGpsModal(); 
+      else setTimeout(()=>{ if(!userCoords) showGpsModal(); }, 5000);
+    },
+    { enableHighAccuracy:true, timeout:12000 }
+  );
+}
+
+function initGps(){
+  if(!navigator.geolocation){ showGpsModal(); return; }
+
+  if(navigator.permissions && navigator.permissions.query){
+    navigator.permissions.query({ name:'geolocation' }).then(result=>{
+      if(result.state === 'denied'){
+        showGpsModal();
+      } else {
+        startWatching();
+        if(result.state === 'prompt')
+          setTimeout(()=>{ if(!userCoords) showGpsModal(); }, 9000);
+      }
+      result.onchange = ()=>{
+        if(result.state === 'denied') showGpsModal();
+        else { hideGpsModal(); startWatching(); }
+      };
+    }).catch(()=>{
+      startWatching();
+      setTimeout(()=>{ if(!userCoords) showGpsModal(); }, 10000);
+    });
+  } else {
+    startWatching();
+    setTimeout(()=>{ if(!userCoords) showGpsModal(); }, 10000);
+  }
+}
+
+initGps();
+
+/* ═══════════════════════════════════════════════════
+   COMPASS Control
+═══════════════════════════════════════════════════ */
+const CompassControl = L.Control.extend({
+  options:{ position:'topright' },
+  onAdd(){ return document.getElementById('compassWidget'); }
+});
+new CompassControl().addTo(map);
+document.getElementById('compassWidget').style.display = 'flex';
+
+const LegendControl = L.Control.extend({
+  options:{ position:'bottomright' },
+  onAdd(){ return document.getElementById('mapLegend'); }
+});
+new LegendControl().addTo(map);
+document.getElementById('mapLegend').style.display = 'flex';
+
+let currentNeedleRotation = 0; 
+let lastRawHeading = null;
+
+function updateCompassNeedle(rawHeading) {
+  const n = document.getElementById('compassNeedle');
+  if (!n) return;
+
+  let targetRotation = -rawHeading; 
+  if (lastRawHeading !== null) {
+    let diff = (targetRotation - currentNeedleRotation) % 360;
+    if (diff > 180)  diff -= 360;
+    if (diff < -180) diff += 360;
+    currentNeedleRotation += diff;
+  } else {
+    currentNeedleRotation = targetRotation;
+  }
+  lastRawHeading = rawHeading;
+  n.style.transform = `rotate(${currentNeedleRotation}deg)`;
+}
+
+if(window.DeviceOrientationEvent){
+  if(typeof DeviceOrientationEvent.requestPermission === 'function'){
+    // Checked dynamically
+  } else {
+    listenOrientation();
+  }
+}
+function listenOrientation(){
+  window.addEventListener('deviceorientationabsolute', handleOri, true);
+  window.addEventListener('deviceorientation',         handleOri, true);
+}
+function handleOri(e){
+  let h = null;
+  if(e.absolute && e.alpha!==null) h=(360-e.alpha)%360;
+  else if(e.webkitCompassHeading!==undefined) h=e.webkitCompassHeading;
+  if(h!==null) updateCompassNeedle(h);
+}
+
+/* ═══════════════════════════════════════════════════
+   CONTROLS (Manual Pin & Tracer)
+═══════════════════════════════════════════════════ */
+const PinControl = L.Control.extend({
+  options:{ position:'bottomleft' },
+  onAdd(){ return document.getElementById('pinMapBtn'); }
+});
+new PinControl().addTo(map);
+document.getElementById('pinMapBtn').style.display = 'flex';
+
+const TraceControl = L.Control.extend({
+  options:{ position:'bottomleft' },
+  onAdd(){ return document.getElementById('traceSourceBtn'); }
+});
+new TraceControl().addTo(map);
+document.getElementById('traceSourceBtn').style.display = 'flex';
+
+function togglePinMode(){
+  pinMode = !pinMode;
+  if (pinMode && traceMode) toggleTraceMode(); 
+
+  const btn = document.getElementById('pinMapBtn');
+  btn.classList.toggle('active', pinMode);
+  btn.title = t(pinMode ? 'pinModeOn' : 'pinModeOff');
+  if(!pinMode){
+    if(manualMarker){ map.removeLayer(manualMarker); manualMarker=null; }
+    manualCoords = null;
+    checkFormReady();
+    triggerWindUpdate();
+    evaluateActiveNearbyClusters();
+    if (userCoords) {
+      updateActivePlacementTrail(userCoords.lat, userCoords.lon);
+    } else if (activePlacementTrailLayer) {
+      map.removeLayer(activePlacementTrailLayer);
+      activePlacementTrailLayer = null;
+    }
+  }
+}
+
+function toggleTraceMode() {
+  traceMode = !traceMode;
+  if (traceMode && pinMode) togglePinMode(); 
+
+  const btn = document.getElementById('traceSourceBtn');
+  btn.classList.toggle('active', traceMode);
+  btn.title = t(traceMode ? 'traceModeOn' : 'traceModeOff');
+
+  if (!traceMode) {
+    if (tracerMarker) { map.removeLayer(tracerMarker); tracerMarker = null; }
+    tracerVisualCircles.forEach(c => map.removeLayer(c));
+    tracerVisualCircles = [];
+    loadPinsByWindow();
+  }
+}
+
+map.on('click', async (e) => {
+  if (pinMode) {
+    manualCoords = { lat:e.latlng.lat, lon:e.latlng.lng };
+    if(manualMarker){
+      manualMarker.setLatLng(e.latlng);
+    } else {
+      manualMarker = L.marker(e.latlng,{
+        icon:L.divIcon({
+          className:'',
+          html:`<div style="width:22px;height:22px;background:#f5a623;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,.5)"></div>`,
+          iconAnchor:[11,22]
+        })
+      }).addTo(map);
+    }
+    checkFormReady();
+    fetchLiveWind(manualCoords.lat, manualCoords.lon);
+    evaluateActiveNearbyClusters();
+    updateActivePlacementTrail(manualCoords.lat, manualCoords.lon);
+  }
+  
+  if (traceMode) {
+    const tracerCoords = { lat: e.latlng.lat, lon: e.latlng.lng };
+    if (tracerMarker) {
+      tracerMarker.setLatLng(e.latlng);
+    } else {
+      tracerMarker = L.marker(e.latlng, {
+        icon: L.divIcon({
+          className: '',
+          html: `<div style="width:22px;height:22px;background:#ff4d4d;border-radius:50%;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,.5)"></div>`,
+          iconAnchor: [11,11]
+        })
+      }).addTo(map);
+    }
+    await filterPinsBySourceTrajectory(tracerCoords);
+  }
+});
+
+/* ═══════════════════════════════════════════════════
+   LIVE WIND SYSTEM
+═══════════════════════════════════════════════════ */
+async function fetchLiveWind(lat,lon){
+  try{
+    const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=wind_speed_10m,wind_direction_10m,pressure_msl`);
+    const d = await r.json();
+    const spd=d.current.wind_speed_10m, dir=d.current.wind_direction_10m;
+    const rot=(dir+180)%360; 
+    const card=degToCardinal(dir);
+
+    const arrow = document.getElementById('compassWindArrow');
+    const speed = document.getElementById('compassWindSpeed');
+    const dirEl = document.getElementById('compassWindDir');
+    
+    if(arrow)  arrow.style.transform = `rotate(${rot}deg)`;
+    if(speed)  speed.textContent = spd + ' km/h';
+    if(dirEl)  dirEl.textContent = dir + '° ' + card;
+  } catch(e){ console.warn('Wind fetch error:',e); }
+}
+
+function triggerWindUpdate() {
+  const activeLoc = (pinMode && manualCoords) ? manualCoords : userCoords;
+  if(activeLoc) {
+    fetchLiveWind(activeLoc.lat, activeLoc.lon);
+  }
+}
+
+function startWindWhenReady(){
+  const activeLoc = (pinMode && manualCoords) ? manualCoords : userCoords;
+  if(activeLoc){
+    triggerWindUpdate();
+    setInterval(triggerWindUpdate, 5*60*1000);
+  } else { 
+    setTimeout(startWindWhenReady,1000); 
+  }
+}
+startWindWhenReady();
+
+/* ═══════════════════════════════════════════════════
+   HELPERS / MATH
+═══════════════════════════════════════════════════ */
+function ageColor(createdAt){
+  const h=(Date.now()-new Date(createdAt))/3600000;
+  if(h<1)   return '#ff1a1a'; 
+  if(h<2)   return '#ff6600'; 
+  if(h<6)   return '#e09000'; 
+  if(h<12)  return '#a0a000'; 
+  if(h<24)  return '#777777'; 
+  if(h<48)  return '#555555'; 
+  return     '#333333';        
+}
+
+function degToCardinal(deg){
+  return ['N','NE','E','SE','S','SW','W','NW'][Math.round(deg/45)%8];
+}
+
+function getHaversineDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371; 
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+function makeIcon(color, windDeg){
+  const rot = windDeg!==undefined ? (windDeg+180)%360 : null;
+  const arrow = rot!==null ? `
+    <g transform="translate(14,14) rotate(${rot})">
+      <line x1="0" y1="7" x2="0" y2="-7" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
+      <polygon points="0,-9 -2.5,-5 2.5,-5" fill="white"/>
+    </g>` : '';
+  const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="28" height="36" viewBox="0 0 28 36">
+    <path d="M14 0C6.27 0 0 6.27 0 14c0 9.63 14 22 14 22S28 23.63 28 14C28 6.27 21.73 0 14 0z"
+          fill="${color}" stroke="rgba(0,0,0,.35)" stroke-width="1.5"/>
+    ${arrow}
+  </svg>`;
+  return L.divIcon({ className:'', html:svg, iconSize:[28,36], iconAnchor:[14,36], popupAnchor:[0,-38] });
+}
+
+/* ═══════════════════════════════════════════════════
+   BACKTRACK ENGINE
+═══════════════════════════════════════════════════ */
+let btLayers    = []; 
+let bgTrailLayers = []; 
+let btAnimFrame = null;
+
+function clearBacktrack(){
+  btLayers.forEach(l=>map.removeLayer(l));
+  btLayers=[];
+  if(btAnimFrame){ cancelAnimationFrame(btAnimFrame); btAnimFrame=null; }
+}
+
+function moveUpwind(lat,lon,windFromDeg,distKm){
+  const R=6371, br=(windFromDeg*Math.PI)/180, d=distKm/R;
+  const lat1=lat*Math.PI/180, lon1=lon*Math.PI/180;
+  const lat2=Math.asin(Math.sin(lat1)*Math.cos(d)+Math.cos(lat1)*Math.sin(d)*Math.cos(br));
+  const lon2=lon1+Math.atan2(Math.sin(br)*Math.sin(d)*Math.cos(lat1),Math.cos(d)-Math.sin(lat1)*Math.sin(lat2));
+  return { lat:lat2*180/Math.PI, lon:lon2*180/Math.PI };
+}
+
+async function fetchHistoricWind(lat,lon,isoStart,isoEnd){
+  const cacheKey = `${lat.toFixed(3)}_${lon.toFixed(3)}_${isoStart.slice(0,13)}`;
+  if(weatherCache[cacheKey]) return weatherCache[cacheKey];
+
+  const daysDiff=(Date.now()-new Date(isoStart))/86400000;
+  let url = '';
+  if(daysDiff<7){
+    url=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=wind_speed_10m,wind_direction_10m&wind_speed_unit=kmh&timezone=auto&past_days=7&forecast_days=1`;
+  } else {
+    const sd=isoStart.slice(0,10), ed=isoEnd.slice(0,10);
+    url=`https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${sd}&end_date=${ed}&hourly=wind_speed_10m,wind_direction_10m&wind_speed_unit=kmh&timezone=auto`;
+  }
+  
+  try {
+    const r=await fetch(url); 
+    const d=await r.json(); 
+    weatherCache[cacheKey] = d.hourly;
+    return d.hourly;
+  } catch(e) {
+    return null;
+  }
+}
+
+async function renderBackgroundTrailForReport(report) {
+  try {
+    const reportTime = new Date(report.created_at);
+    const startTime = new Date(reportTime.getTime() - 6 * 3600000); 
+    const hourly = await fetchHistoricWind(report.latitude, report.longitude, startTime.toISOString(), reportTime.toISOString());
+    if (!hourly?.time?.length) return null;
+
+    const steps = [];
+    for (let i = hourly.time.length - 1; i >= 0; i--) {
+      const ts = new Date(hourly.time[i]);
+      if (ts >= startTime && ts <= reportTime)
+        steps.push({ spd: hourly.wind_speed_10m[i], dir: hourly.wind_direction_10m[i] });
+    }
+    if (!steps.length) return null;
+
+    const trail = [{ lat: report.latitude, lon: report.longitude }];
+    let cLat = report.latitude, cLon = report.longitude;
+    for (const s of steps) {
+      const m = moveUpwind(cLat, cLon, s.dir, s.spd * 1);
+      cLat = m.lat; cLon = m.lon;
+      trail.push({ lat: cLat, lon: cLon });
+    }
+    return trail;
+  } catch (err) {
+    return null;
+  }
+}
+
+async function startBacktrack(lat,lon,createdAt){
+  clearBacktrack();
+  const HOURS = 24; 
+  try{
+    const reportTime=new Date(createdAt);
+    const startTime=new Date(reportTime.getTime()-HOURS*3600000);
+    const hourly=await fetchHistoricWind(lat,lon,startTime.toISOString(),reportTime.toISOString());
+    if(!hourly?.time?.length) return;
+
+    const steps=[];
+    for(let i=hourly.time.length-1;i>=0;i--){
+      const ts=new Date(hourly.time[i]);
+      if(ts>=startTime && ts<=reportTime)
+        steps.push({ spd:hourly.wind_speed_10m[i], dir:hourly.wind_direction_10m[i] });
+    }
+    if(!steps.length) return;
+
+    const trail=[{lat,lon}];
+    let cLat=lat, cLon=lon;
+    for(const s of steps){
+      const m=moveUpwind(cLat,cLon,s.dir,s.spd*1);
+      cLat=m.lat; cLon=m.lon;
+      trail.push({lat:cLat,lon:cLon});
+    }
+
+    const latlngs=trail.map(p=>[p.lat,p.lon]);
+    const under=L.polyline(latlngs,{ color:'#ff8800', weight:4, opacity:.18 }).addTo(map);
+    btLayers.push(under);
+
+    const dashedLine=L.polyline([...latlngs].reverse(),{
+      color:'#ff8800', weight:4, opacity:.88, dashArray:'50 10'
+    }).addTo(map);
+    btLayers.push(dashedLine);
+
+    let offset = 0;
+    function anim(){
+      offset = (offset - 0.6); 
+      if (offset < -60) offset = 0; 
+      const el = dashedLine.getElement();
+      if (el) el.style.strokeDashoffset = offset + 'px'; 
+      btAnimFrame = requestAnimationFrame(anim);
+    }
+    anim();
+
+    trail.slice(1,-1).forEach(p=>{
+      const dot=L.circleMarker([p.lat,p.lon],{
+        radius:3.5, color:'#ff8800', fillColor:'#fff', fillOpacity:.9, weight:1.5
+      }).addTo(map);
+      btLayers.push(dot);
+    });
+
+    const srcCircle=L.circleMarker([cLat,cLon],{
+      radius:12, color:'#ff8800', fillColor:'#ff8800', fillOpacity:.18, weight:2.5
+    }).addTo(map);
+    btLayers.push(srcCircle);
+
+    const srcIcon=L.divIcon({
+      className:'',
+      html:`<div class="source-label">${t('possSource')}<br><span style="font-size:10px;opacity:.85;font-weight:600">${HOURS}h ${t('backtrack')}</span></div>`,
+      iconAnchor:[0,10]
+    });
+    btLayers.push(L.marker([cLat,cLon],{icon:srcIcon,interactive:false}).addTo(map));
+
+  } catch(err){ console.error('Backtrack:',err); }
+}
+
+function clearBackgroundTrails() {
+  bgTrailLayers.forEach(l => map.removeLayer(l));
+  bgTrailLayers = [];
+}
+
+async function generateAllBackgroundTrails(reports) {
+  clearBackgroundTrails();
+  if (!reports || !reports.length) return;
+
+  const trailPromises = reports.map(async (report) => {
+    const trail = await renderBackgroundTrailForReport(report);
+    if (!trail) return;
+
+    const latlngs = trail.map(p => [p.lat, p.lon]);
+    const tealTrail = L.polyline(latlngs, {
+      color: ageColor(report.created_at), 
+      weight: 2.5,
+      opacity: 0.65,
+      className: 'bg-trail-teal'
+    }).addTo(map);
+
+    bgTrailLayers.push(tealTrail);
+  });
+  await Promise.all(trailPromises);
+}
+
+/* ═══════════════════════════════════════════════════
+   FIXED: 6H GEOMETRIC BACKTRACK ENGINE TRAIL
+═══════════════════════════════════════════════════ */
+async function updateActivePlacementTrail(lat, lon) {
+  if (activePlacementTrailLayer) {
+    map.removeLayer(activePlacementTrailLayer);
+    activePlacementTrailLayer = null;
+  }
+  try {
+    const now = new Date();
+    const startTime = new Date(now.getTime() - 6 * 3600000);
+    const hourly = await fetchHistoricWind(lat, lon, startTime.toISOString(), now.toISOString());
+    if (!hourly?.time?.length) return;
+
+    const steps = [];
+    for (let i = hourly.time.length - 1; i >= 0; i--) {
+      const ts = new Date(hourly.time[i]);
+      if (ts >= startTime && ts <= now)
+        steps.push({ spd: hourly.wind_speed_10m[i], dir: hourly.wind_direction_10m[i] });
+    }
+    if (!steps.length) return;
+
+    const trail = [{ lat, lon }];
+    let cLat = lat, cLon = lon;
+    for (const s of steps) {
+      const m = moveUpwind(cLat, cLon, s.dir, s.spd * 1);
+      cLat = m.lat; cLon = m.lon;
+      trail.push({ lat: cLat, lon: cLon }); // Fixed variable mapping typo
+    }
+
+    const latlngs = trail.map(p => [p.lat, p.lon]);
+    activePlacementTrailLayer = L.polyline(latlngs, {
+      color: '#00d0ff',
+      weight: 3,
+      opacity: 0.8,
+      dashArray: '5, 5',
+      pointerEvents: 'none'
+    }).addTo(map);
+  } catch (err) {
+    console.warn('Active placement trail backtrack error:', err);
+  }
+}
+
+/* ═══════════════════════════════════════════════════
+   CROWD VALIDATION & CLUSTERING ENGINE
+═══════════════════════════════════════════════════ */
+function evaluateActiveNearbyClusters() {
+  const currentLoc = pinMode && manualCoords ? manualCoords : userCoords;
+  if (!currentLoc || !globalActiveData.length) {
+    hideAlertBanner();
+    return;
+  }
+
+  const now = Date.now();
+  const CLUSTER_RADIUS_KM = 3.0;
+  const CLUSTER_TIME_WINDOW_MS = 2 * 3600 * 1000; 
+
+  const candidateReports = globalActiveData.filter(r => {
+    const ageMs = now - new Date(r.created_at).getTime();
+    if (ageMs > CLUSTER_TIME_WINDOW_MS) return false;
+    
+    const distance = getHaversineDistance(currentLoc.lat, currentLoc.lon, r.latitude, r.longitude);
+    return distance <= CLUSTER_RADIUS_KM;
+  });
+
+  if (!candidateReports.length) {
+    hideAlertBanner();
+    return;
+  }
+
+  const categoryCounts = {};
+  candidateReports.forEach(r => {
+    categoryCounts[r.category] = (categoryCounts[r.category] || 0) + 1;
+  });
+
+  let topCategory = '';
+  let maxCount = 0;
+  for (const cat in categoryCounts) {
+    if (categoryCounts[cat] > maxCount) {
+      maxCount = categoryCounts[cat];
+      topCategory = cat;
+    }
+  }
+
+  if (maxCount >= 2) {
+    targetActiveClusterEvent = {
+      category: topCategory,
+      lat: currentLoc.lat,
+      lon: currentLoc.lon
+    };
+    showAlertBanner(topCategory, maxCount);
+  } else {
+    hideAlertBanner();
+  }
+}
+
+function showAlertBanner(category, count) {
+  const banner = document.getElementById('eventAlertBanner');
+  if (!banner) return;
+  
+  targetActiveClusterEvent.localizedCategoryLabel = category;
+  
+  const mappedOptions = Array.from(document.getElementById('category').options);
+  const matchedOpt = mappedOptions.find(o => o.value === category);
+  if (matchedOpt) {
+    targetActiveClusterEvent.localizedCategoryLabel = matchedOpt.textContent;
+  }
+
+  updateAlertBannerUI();
+  banner.style.display = 'flex';
+}
+
+function hideAlertBanner() {
+  const banner = document.getElementById('eventAlertBanner');
+  if (banner) banner.style.display = 'none';
+  targetActiveClusterEvent = null;
+}
+
+function updateAlertBannerUI() {
+  if (!targetActiveClusterEvent) return;
+  const textEl = document.getElementById('eventAlertText');
+  const btnEl = document.getElementById('eventAlertBtn');
+  
+  if (textEl) {
+    textEl.textContent = `${t('alertText')} "${targetActiveClusterEvent.localizedCategoryLabel}"`;
+  }
+  if (btnEl) {
+    btnEl.textContent = t('alertBtnText');
+  }
+}
+
+async function quickVerifyCurrentEvent() {
+  if (!targetActiveClusterEvent) return;
+  
+  const currentLoc = pinMode && manualCoords ? manualCoords : userCoords;
+  if (!currentLoc) { alert(t('waitGps')); return; }
+
+  try {
+    const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${currentLoc.lat}&longitude=${currentLoc.lon}&current=wind_speed_10m,wind_direction_10m,pressure_msl`);
+    const w = await r.json(); const c = w.current;
+
+    const { error } = await sb.from('air_reports').insert([{
+      latitude: currentLoc.lat, 
+      longitude: currentLoc.lon,
+      category: targetActiveClusterEvent.category, 
+      intensity: 7, 
+      comment: "Quick-verify community report endorsement",
+      wind_speed: c.wind_speed_10m,
+      wind_direction: c.wind_direction_10m,
+      sea_level_pressure: c.pressure_msl
+    }]);
+    
+    if (error) throw error;
+
+    alert(t('submitted'));
+    hideAlertBanner();
+    loadPinsByWindow();
+
+  } catch(err) { alert(err.message); }
+}
+
+/* ═══════════════════════════════════════════════════
+   PINS RENDER ENGINE
+═══════════════════════════════════════════════════ */
+function clearMarkers(){
+  reportMarkers.forEach(m=>map.removeLayer(m));
+  reportMarkers=[];
+}
+
+function renderPin(report, index = 0){ 
+  const date  = new Date(report.created_at);
+  const color = ageColor(report.created_at);
+  const card  = degToCardinal(report.wind_direction);
+  const rot   = (report.wind_direction+180)%360;
+  const intensity = report.intensity ? ` &nbsp;|&nbsp; <b>${t('popupInt')}:</b> ${report.intensity}/10` : '';
+
+  const popupHtml=`<div class="popup-inner">
+<div class="popup-title">${t('popupTitle')}</div>
+<b>${t('popupCat')}:</b> ${report.category||'Unknown'}${intensity}<br>
+<b>${t('popupDate')}:</b> ${date.toLocaleString('en-GB')}<br>
+<b>${t('popupWind')}:</b> ${report.wind_speed} km/h<br>
+<b>${t('popupDir')}:</b> ${report.wind_direction}° ${card}
+  <span style="display:inline-block;transform:rotate(${rot}deg);font-size:15px;line-height:1;vertical-align:middle">↑</span><br>
+<b>${t('popupPres')}:</b> ${report.sea_level_pressure} hPa<br>
+<b>${t('popupNotes')}:</b> ${report.comment||t('popupNone')}
+</div>`;
+
+  const zIndexPriority = 10000 - index;
+  const marker=L.marker([report.latitude,report.longitude],{
+    icon:makeIcon(color,report.wind_direction),
+    zIndexOffset: zIndexPriority 
+  }).addTo(map);
+
+  marker.bindPopup(popupHtml,{ maxWidth:250, minWidth:200 });
+  marker.on('popupopen', ()=>startBacktrack(report.latitude,report.longitude,report.created_at));
+  reportMarkers.push(marker);
+}
+
+/* ═══════════════════════════════════════════════════
+   CORE DATA RETRIEVAL
+═══════════════════════════════════════════════════ */
+async function fetchAll(){
+  const {data,error}=await sb.from('air_reports').select('*').order('created_at',{ascending:false});
+  if(error){ console.error(error); return []; }
+  return data;
+}
+
+async function loadPinsByWindow() {
+  clearMarkers(); clearBacktrack(); clearBackgroundTrails();
+  const data = await fetchAll();
+  globalActiveData = data; 
+
+  const fromVal = document.getElementById('filterFrom').value;
+  const toVal = document.getElementById('filterTo').value;
+
+  const fromOpt = timeOptions.find(o => o.id === fromVal);
+  const toOpt = timeOptions.find(o => o.id === toVal);
+
+  const now = Date.now();
+  const innerCutoffTimestamp = now - (fromOpt.hours * 3600000);
+  const outerCutoffTimestamp = now - (toOpt.hours * 3600000);
+
+  let n = 0;
+  let activeReports = [];
+
+  data.forEach((r, index) => {
+    const reportTimestamp = new Date(r.created_at).getTime();
+    if (reportTimestamp > innerCutoffTimestamp || reportTimestamp < outerCutoffTimestamp) return;
+
+    n++;
+    renderPin(r, index);
+    activeReports.push(r);
+  });
+
+  const rcEl = document.getElementById('reportCount');
+  if (rcEl) rcEl.textContent = n + ' ' + (n === 1 ? t('reportCount1') : t('reportCount'));
+
+  evaluateActiveNearbyClusters();
+  generateAllBackgroundTrails(activeReports);
+}
+
+/* ═══════════════════════════════════════════════════
+   HIGH-PRECISION SPLINE SEGMENT INTERCEPT TRACER
+═══════════════════════════════════════════════════ */
+async function filterPinsBySourceTrajectory(tracerCoords) {
+  const BASE_RADIUS_KM = 0.5; 
+  const DISPERSION_RATE_KM_H = 1.2; 
+
+  clearMarkers();
+  clearBackgroundTrails();
+  
+  tracerVisualCircles.forEach(c => map.removeLayer(c));
+  tracerVisualCircles = [];
+
+  const primaryRadiusCircle = L.circle([tracerCoords.lat, tracerCoords.lon], {
+    radius: BASE_RADIUS_KM * 1000, 
+    color: '#ff4d4d',
+    fillColor: '#ff4d4d',
+    fillOpacity: 0.15,
+    weight: 1.5,
+    dashArray: '3, 4',
+    interactive: false
+  }).addTo(map);
+  tracerVisualCircles.push(primaryRadiusCircle);
+
+  let activeReportsToDrawTrails = [];
+
+  function distanceToSegment(p, v, w) {
+    const R = 6371; 
+    const x = p.lon * Math.cos(p.lat * Math.PI / 180);
+    const y = p.lat;
+    const x1 = v.lon * Math.cos(v.lat * Math.PI / 180);
+    const y1 = v.lat;
+    const x2 = w.lon * Math.cos(w.lat * Math.PI / 180);
+    const y2 = w.lat;
+
+    const l2 = (x2 - x1) ** 2 + (y2 - y1) ** 2;
+    if (l2 === 0) {
+      const dLat = (p.lat - v.lat) * Math.PI / 180;
+      const dLon = (p.lon - v.lon) * Math.PI / 180;
+      const a = Math.sin(dLat/2)**2 + Math.cos(v.lat*Math.PI/180) * Math.cos(p.lat*Math.PI/180) * Math.sin(dLon/2)**2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    }
+
+    let tVal = ((x - x1) * (x2 - x1) + (y - y1) * (y2 - y1)) / l2;
+    tVal = Math.max(0, Math.min(1, tVal));
+
+    const closestLat = y1 + tVal * (y2 - y1);
+    const closestLon = (x1 + tVal * (x2 - x1)) / Math.cos(closestLat * Math.PI / 180);
+
+    const dLat = (p.lat - closestLat) * Math.PI / 180;
+    const dLon = (p.lon - closestLon) * Math.PI / 180;
+    const a = Math.sin(dLat/2)**2 + Math.cos(closestLat*Math.PI/180) * Math.cos(p.lat*Math.PI/180) * Math.sin(dLon/2)**2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  }
+
+  const evaluationPromises = globalActiveData.map(async (report, index) => {
+    const trailCoordinates = await renderBackgroundTrailForReport(report);
+    if (!trailCoordinates || trailCoordinates.length < 2) return null;
+
+    let matchFound = false;
+    for (let i = 0; i < trailCoordinates.length - 1; i++) {
+      const p1 = trailCoordinates[i];
+      const p2 = trailCoordinates[i + 1];
+
+      const distanceKM = distanceToSegment(tracerCoords, p1, p2);
+      const maxAllowedDistance = BASE_RADIUS_KM + (DISPERSION_RATE_KM_H * (i + 1));
+
+      if (distanceKM <= maxAllowedDistance) {
+        matchFound = true;
+        
+        const dispersionIndicator = L.circle([p1.lat, p1.lon], {
+          radius: maxAllowedDistance * 1000,
+          color: '#ff8800',
+          fillColor: 'transparent',
+          weight: 1,
+          dashArray: '5, 5',
+          opacity: 0.4,
+          interactive: false
+        }).addTo(map);
+        tracerVisualCircles.push(dispersionIndicator);
+        break; 
+      }
+    }
+
+    if (matchFound) {
+      return { report, index };
+    }
+    return null;
+  });
+
+  const results = await Promise.all(evaluationPromises);
+  results.forEach(res => {
+    if (res) {
+      renderPin(res.report, res.index);
+      activeReportsToDrawTrails.push(res.report);
+    }
+  });
+  
+  generateAllBackgroundTrails(activeReportsToDrawTrails);
+
+  const n = reportMarkers.length;
+  const rcEl = document.getElementById('reportCount');
+  if(rcEl) rcEl.textContent = n + ' ' + (n === 1 ? t('reportCount1') : t('reportCount'));
+}
+
+/* ═══════════════════════════════════════════════════
+   REPORT
+═══════════════════════════════════════════════════ */
+async function reportBadAir(){
+  const coords=pinMode&&manualCoords ? manualCoords : userCoords;
+  if(!coords){ alert(t('waitGps')); return; }
+
+  const category  = document.getElementById('category').value;
+  const intensity = document.getElementById('intensity').value;
+  const comment   = document.getElementById('comment').value;
+
+  try{
+    const r=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lon}&current=wind_speed_10m,wind_direction_10m,pressure_msl`);
+    const w=await r.json(); const c=w.current;
+
+    const {error}=await sb.from('air_reports').insert([{
+      latitude:coords.lat, longitude:coords.lon,
+      category, intensity:parseInt(intensity), comment,
+      wind_speed:c.wind_speed_10m,
+      wind_direction:c.wind_direction_10m,
+      sea_level_pressure:c.pressure_msl
+    }]);
+    
+    if(error) throw error;
+
+    document.getElementById('category').selectedIndex = 0;
+    document.getElementById('intensity').selectedIndex = 0;
+    document.getElementById('comment').value='';
+    document.getElementById('reportBtn').disabled = true;
+
+    alert(t('submitted'));
+    loadPinsByWindow();
+
+  } catch(err){ alert(err.message); }
+}
+
+/* ═══════════════════════════════════════════════════
+   CSV EXPORT
+═══════════════════════════════════════════════════ */
+async function downloadCSV(){
+  const data=await fetchAll();
+  if(!data.length) return;
+
+  const fromVal = document.getElementById('filterFrom').value;
+  const toVal = document.getElementById('filterTo').value;
+
+  const fromOpt = timeOptions.find(o => o.id === fromVal);
+  const toOpt = timeOptions.find(o => o.id === toVal);
+
+  const now = Date.now();
+  const innerCutoff = now - (fromOpt.hours * 3600000);
+  const outerCutoff = now - (toOpt.hours * 3600000);
+
+  const bounds=map.getBounds();
+  const visible=data.filter(r=>{
+    if(!bounds.contains(L.latLng(r.latitude,r.longitude))) return false;
+    const ts = new Date(r.created_at).getTime();
+    if(ts > innerCutoff || ts < outerCutoff) return false;
+    return true;
+  });
+
+  if(!visible.length){ alert(t('noReports')); return; }
+
+  let csv='ID,Date,Latitude,Longitude,Category,Intensity,WindSpeed,WindDirection,Pressure,Comment\n';
+  visible.forEach(r=>{
+    csv+=`${r.id},${r.created_at},${r.latitude},${r.longitude},${r.category},${r.intensity||''},${r.wind_speed},${r.wind_direction},${r.sea_level_pressure},"${r.comment||''}"\n`;
+  });
+
+  const a=document.createElement('a');
+  a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
+  a.download='TraceTheToxin.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
+
+/* ═══════════════════════════════════════════════════
+   ORCHESTRATION ARCHITECTURE
+═══════════════════════════════════════════════════ */
+initTimeFilters();
+applyLang(); 
+
+document.getElementById('filterFrom').value = 'h1';
+document.getElementById('filterTo').value = 'd1';
+
+loadPinsByWindow();
+
+setInterval(() => {
+  if (!traceMode) {
+    loadPinsByWindow();
+  }
+}, 60000);
+
+</script>
+</body>
+</html>
