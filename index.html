@@ -982,25 +982,28 @@ async function getRealTimeWeatherData(lat, lon) {
   };
 }
 
-async function fetchLiveWind(lat,lon){
-  try{
+async function fetchLiveWind(lat, lon) {
+  try {
     const weather = await getRealTimeWeatherData(lat, lon);
     
     // Save locally for context calculations
     liveTrackedWindSpeed = weather.wind_speed;
     liveTrackedWindDir = weather.wind_direction;
 
-    const rot=(weather.wind_direction+180)%360; 
-    const card=degToCardinal(weather.wind_direction);
+    const rot = (weather.wind_direction + 180) % 360; 
+    const card = degToCardinal(weather.wind_direction);
 
     const arrow = document.getElementById('compassWindArrow');
     const speed = document.getElementById('compassWindSpeed');
     const dirEl = document.getElementById('compassWindDir');
     
-    if(arrow)  arrow.style.transform = `rotate(${rot}deg)`;
-    if(speed)  speed.textContent = weather.wind_speed + ' km/h';
-    if(dirEl)  dirEl.textContent = weather.wind_direction + '° ' + card;
-  } catch(e){ console.warn('Wind fetch error:',e); }
+    // UI Update Block
+    if (arrow) arrow.style.transform = `rotate(${rot}deg)`;
+    if (speed) speed.textContent = weather.wind_speed + ' km/h';
+    if (dirEl) dirEl.textContent = weather.wind_direction + '° ' + card;
+  } catch (e) { 
+    console.warn('Wind UI update error:', e); 
+  }
 }
 
 function triggerWindUpdate() {
