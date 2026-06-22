@@ -962,28 +962,44 @@ map.on('click', async (e) => {
 });
 
 /* ═══════════════════════════════════════════════════
-   LIVE WIND SYSTEM
+   HIGH-REFRESH METEOROLOGICAL SERVICE
 ═══════════════════════════════════════════════════ */
+async function getRealTimeWeatherData(lat, lon) {
+  // Use a dynamic micro-timestamp hash to completely break browser/CDN cache pipes
+  const cacheBuster = Date.now();
+  
+  // Forces the request to fetch high-resolution, short-range rapid update mesoscale data matrices
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=wind_speed_10m,wind_direction_10m,pressure_msl&models=icon_seamless,hrrr_seamless&_=${cacheBuster}`;
+  
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Weather engine sync failure: ${response.status}`);
+  
+  const data = await response.json();
+  return {
+    wind_speed: data.current.wind_speed_10m,
+    wind_direction: data.current.wind_direction_10m,
+    pressure: data.current.pressure_msl
+  };
+}
+
 async function fetchLiveWind(lat,lon){
   try{
-    const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=wind_speed_10m,wind_direction_10m,pressure_msl`);
-    const d = await r.json();
-    const spd=d.current.wind_speed_10m, dir=d.current.wind_direction_10m;
+    const weather = await getRealTimeWeatherData(lat, lon);
     
     // Save locally for context calculations
-    liveTrackedWindSpeed = spd;
-    liveTrackedWindDir = dir;
+    liveTrackedWindSpeed = weather.wind_speed;
+    liveTrackedWindDir = weather.wind_direction;
 
-    const rot=(dir+180)%360; 
-    const card=degToCardinal(dir);
+    const rot=(weather.wind_direction+180)%360; 
+    const card=degToCardinal(weather.wind_direction);
 
     const arrow = document.getElementById('compassWindArrow');
     const speed = document.getElementById('compassWindSpeed');
     const dirEl = document.getElementById('compassWindDir');
     
     if(arrow)  arrow.style.transform = `rotate(${rot}deg)`;
-    if(speed)  speed.textContent = spd + ' km/h';
-    if(dirEl)  dirEl.textContent = dir + '° ' + card;
+    if(speed)  speed.textContent = weather.wind_speed + ' km/h';
+    if(dirEl)  dirEl.textContent = weather.wind_direction + '° ' + card;
   } catch(e){ console.warn('Wind fetch error:',e); }
 }
 
@@ -1447,8 +1463,7 @@ async function quickVerifyCurrentEvent() {
   if (!currentLoc) { alert(t('waitGps')); return; }
 
   try {
-    const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${currentLoc.lat}&longitude=${currentLoc.lon}&current=wind_speed_10m,wind_direction_10m,pressure_msl`);
-    const w = await r.json(); const c = w.current;
+    const weather = await getRealTimeWeatherData(currentLoc.lat, currentLoc.lon);
 
     const { error } = await sb.from('air_reports').insert([{
       latitude: currentLoc.lat, 
@@ -1456,9 +1471,9 @@ async function quickVerifyCurrentEvent() {
       category: targetActiveClusterEvent.category, 
       intensity: 7, 
       comment: "Quick-verify community report endorsement",
-      wind_speed: c.wind_speed_10m,
-      wind_direction: c.wind_direction_10m,
-      sea_level_pressure: c.pressure_msl
+      wind_speed: weather.wind_speed,
+      wind_direction: weather.wind_direction,
+      sea_level_pressure: weather.pressure
     }]);
     
     if (error) throw error;
@@ -1659,23 +1674,22 @@ async function filterPinsBySourceTrajectory(tracerCoords) {
    REPORT ACTION
 ═══════════════════════════════════════════════════ */
 async function reportBadAir(){
-  const coords=pinMode&&manualCoords ? manualCoords : userCoords;
-  if(!coords){ alert(t('waitGps')); return; }
+  const coords = pinMode && manualCoords ? manualCoords : userCoords;
+  if (!coords) { alert(t('waitGps')); return; }
 
   const category  = document.getElementById('category').value;
   const intensity = document.getElementById('intensity').value;
   const comment   = document.getElementById('comment').value;
 
-  try{
-    const r=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lon}&current=wind_speed_10m,wind_direction_10m,pressure_msl`);
-    const w=await r.json(); const c=w.current;
+  try {
+    const weather = await getRealTimeWeatherData(coords.lat, coords.lon);
 
     const {error}=await sb.from('air_reports').insert([{
       latitude:coords.lat, longitude:coords.lon,
       category, intensity:parseInt(intensity), comment,
-      wind_speed:c.wind_speed_10m,
-      wind_direction:c.wind_direction_10m,
-      sea_level_pressure:c.pressure_msl
+      wind_speed: weather.wind_speed,
+      wind_direction: weather.wind_direction,
+      sea_level_pressure: weather.pressure
     }]);
     
     if(error) throw error;
@@ -1742,11 +1756,12 @@ applyLang();
 
 loadPinsByWindow();
 
+// Background layout visual synchronization loop dropped to 20 seconds for hot real-time updates
 setInterval(() => {
   if (!traceMode) {
     loadPinsByWindow();
   }
-}, 60000);
+}, 20000);
 
 </script>
 </body>
