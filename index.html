@@ -11,6 +11,8 @@
   
   <link rel="icon" type="image/png" href="favicon.png">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/themes/dark.css">
 <style>
 *{ margin:0; padding:0; box-sizing:border-box; }
 
@@ -133,16 +135,8 @@ header p{ font-size:11px; opacity:.7; margin-top:2px; }
 .select-wrap {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
   flex: 1;
-}
-
-.select-sublabel {
-  font-size: 9px;
-  color: #888;
-  text-transform: uppercase;
-  padding-left: 2px;
-  font-weight: bold;
 }
 
 .panel{
@@ -319,6 +313,15 @@ button{
   touch-action: manipulation;
 }
 .trace-source-btn.active { background: #ff4d4d; border-color: #ff4d4d; }
+
+/* Flatpickr input theme modification override */
+#dateRangePicker {
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='18' rx='2' ry='2'%3E%3C/rect%3E%3Cline x1='16' y1='2' x2='16' y2='6'%3E%3C/line%3E%3Cline x1='8' y1='2' x2='8' y2='6'%3E%3C/line%3E%3Cline x1='3' y1='10' x2='21' y2='10'%3E%3C/line%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 32px !important;
+}
 </style>
 </head>
 <body>
@@ -350,17 +353,7 @@ button{
 
 <div class="filter-select-row">
   <div class="select-wrap">
-    <span class="select-sublabel" id="labelFrom">From (Newer)</span>
-    <select id="filterFrom" onchange="onTimeRangeChange()">
-    </select>
-  </div>
-  
-  <span style="color: #555; padding-top: 14px; font-weight: bold;">→</span>
-
-  <div class="select-wrap">
-    <span class="select-sublabel" id="labelTo">To (Older)</span>
-    <select id="filterTo" onchange="onTimeRangeChange()">
-    </select>
+    <input type="text" id="dateRangePicker" placeholder="Select date range..." readonly>
   </div>
 </div>
 
@@ -487,6 +480,8 @@ button{
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/sr.js"></script>
 <script>
 
 /* ═══════════════════════════════════════════════════
@@ -499,31 +494,9 @@ let tracerVisualCircles = [];
 let globalActiveData = [];
 let activePlacementTrailLayer = null;
 let targetActiveClusterEvent = null; 
+let fp = null; // Flatpickr Instance
 
 const weatherCache = {};
-
-const timeOptions = [
-  { id: 'h1',  hours: 0,    labelEn: '0h',       labelSr: '0h' },
-  { id: 'h1',  hours: 1,    labelEn: '1h',       labelSr: '1h' },
-  { id: 'h2',  hours: 2,    labelEn: '2h',       labelSr: '2h' },
-  { id: 'h3',  hours: 3,    labelEn: '3h',       labelSr: '3h' },
-  { id: 'h4',  hours: 4,    labelEn: '4h',       labelSr: '4h' },
-  { id: 'h6',  hours: 6,    labelEn: '6h',       labelSr: '6h' },
-  { id: 'h12', hours: 12,   labelEn: '12h',      labelSr: '12h' },
-  { id: 'h18', hours: 18,   labelEn: '18h',      labelSr: '18h' },
-  { id: 'd1',  hours: 24,   labelEn: '1d',       labelSr: '1d' },
-  { id: 'd1.5',hours: 36,   labelEn: '1.5d',     labelSr: '1.5d' },
-  { id: 'd2',  hours: 48,   labelEn: '2d',       labelSr: '2d' },
-  { id: 'd3',  hours: 72,   labelEn: '3d',       labelSr: '3d' },
-  { id: 'd4',  hours: 96,   labelEn: '4d',       labelSr: '4d' },
-  { id: 'd5',  hours: 120,  labelEn: '5d',       labelSr: '5d' },
-  { id: 'd6',  hours: 144,  labelEn: '6d',       labelSr: '6d' },
-  { id: 'd7',  hours: 168,  labelEn: '7d',       labelSr: '7d' },
-  { id: 'd10', hours: 240,  labelEn: '10d',      labelSr: '10d' },
-  { id: 'd15', hours: 360,  labelEn: '15d',      labelSr: '15d' },
-  { id: 'd30', hours: 720,  labelEn: '30d',      labelSr: '30d' },
-  { id: 'all', hours: 999999,labelEn: 'All Time', labelSr: 'Sve vreme' }
-];
 
 /* ═══════════════════════════════════════════════════
    SUPABASE
@@ -558,8 +531,6 @@ const T = {
   possSource:   { en:'⚠ Possible sources',               sr:'⚠ Mogući izvori' },
   backtrack:    { en:'backtrack',                        sr:'unazad' },
   timeFilter:   { en:'Time Window Filter',               sr:'Filter vremenskog prozora' },
-  labelFrom:    { en:'From (Newer)',                     sr:'Od (Novije)' },
-  labelTo:      { en:'Do (Starije)',                     sr:'Do (Starije)' },
   catPH:        { en:'Select smell…',                    sr:'Izaberi miris…' },
   intPH:        { en:'Intensity…',                       sr:'Intenzitet…' },
   pinModeOn:    { en:'Tap map to place pin',             sr:'Tapni kartu za pin' },
@@ -572,7 +543,8 @@ const T = {
   traceModeOn:  { en:'Tap map to trace source',          sr:'Tapni kartu za praćenje izvora' },
   traceModeOff: { en:'Trace Possible Source',            sr:'Prati potencijalni izvor' },
   alertText:    { en:'Prijavljen aktivan miris u blizini:',    sr:'Prijavljen aktivan miris u blizini:' },
-  alertBtnText: { en:'I SMELL IT TOO',                   sr:'I JA OSEĆAM' }
+  alertBtnText: { en:'I SMELL IT TOO',                   sr:'I JA OSEĆAM' },
+  calendarPH:   { en:'Select date range...',            sr:'Izaberi vremenski opseg...' }
 };
 
 function t(k){ return T[k]?.[lang] ?? k; }
@@ -583,6 +555,13 @@ function setLang(l){
     b.classList.toggle('active', b.getAttribute('onclick').includes("'"+l+"'"));
   });
   applyLang();
+  
+  // Re-localize calendar picker elements safely
+  if (fp) {
+    const savedDates = fp.selectedDates;
+    fp.destroy();
+    initCalendarFilter(savedDates);
+  }
 }
 
 function applyLang(){
@@ -590,9 +569,8 @@ function applyLang(){
   document.getElementById('reportBtnLabel').textContent   = t('reportBtn');
   document.getElementById('csvLabel').textContent         = t('csvLabel');
   document.getElementById('filterTitleLabel').textContent = t('timeFilter');
-  document.getElementById('labelFrom').textContent        = t('labelFrom');
-  document.getElementById('labelTo').textContent          = t('labelTo');
   document.getElementById('comment').placeholder          = t('commentPH');
+  document.getElementById('dateRangePicker').placeholder   = t('calendarPH');
 
   document.getElementById('category').options[0].text  = t('catPH');
   document.getElementById('intensity').options[0].text = t('intPH');
@@ -623,48 +601,37 @@ function applyLang(){
   if(gm && gm.style.display!=='none') updateGpsModalText();
 
   updateAlertBannerUI();
-  initTimeFilters();
 }
 
 /* ═══════════════════════════════════════════════════
-   DYNAMIC TIME WINDOW SELECTION SYSTEM
+   CALENDAR POPUP SETUP (FLATPICKR)
 ═══════════════════════════════════════════════════ */
-function initTimeFilters() {
-  const fromSelect = document.getElementById('filterFrom');
-  const toSelect = document.getElementById('filterTo');
+function initCalendarFilter(optionalDefaultDates) {
+  let initialDates = optionalDefaultDates;
   
-  const oldFromVal = fromSelect.value || 'h1'; 
-  const oldToVal = toSelect.value || 'd1';     
+  if (!initialDates || initialDates.length === 0) {
+    const defaultStart = new Date();
+    defaultStart.setDate(defaultStart.getDate() - 7); 
+    const defaultEnd = new Date();
+    initialDates = [defaultStart, defaultEnd];
+  }
 
-  fromSelect.innerHTML = '';
-  toSelect.innerHTML = '';
-
-  timeOptions.forEach(opt => {
-    const label = (lang === 'sr') ? opt.labelSr : opt.labelEn;
-    fromSelect.add(new Option(label, opt.id));
-    toSelect.add(new Option(label, opt.id));
+  fp = flatpickr("#dateRangePicker", {
+    mode: "range",
+    theme: "dark",
+    dateFormat: "d.m.Y", // Custom standard output formatting requested: e.g. 20.06.2026
+    locale: lang === 'sr' ? flatpickr.l10ns.sr : 'default',
+    defaultDate: initialDates,
+    onClose: function(selectedDates) {
+      if (selectedDates.length === 2) {
+        if (traceMode && tracerMarker) {
+          filterPinsBySourceTrajectory(tracerMarker.getLatLng());
+        } else {
+          loadPinsByWindow();
+        }
+      }
+    }
   });
-
-  fromSelect.value = oldFromVal;
-  toSelect.value = oldToVal;
-}
-
-function onTimeRangeChange() {
-  const fromSelect = document.getElementById('filterFrom');
-  const toSelect = document.getElementById('filterTo');
-
-  const fromOpt = timeOptions.find(o => o.id === fromSelect.value);
-  const toOpt = timeOptions.find(o => o.id === toSelect.value);
-
-  if (fromOpt.hours > toOpt.hours) {
-    toSelect.value = fromSelect.value;
-  }
-
-  if (traceMode && tracerMarker) {
-    filterPinsBySourceTrajectory(tracerMarker.getLatLng());
-  } else {
-    loadPinsByWindow();
-  }
 }
 
 /* ═══════════════════════════════════════════════════
@@ -1084,7 +1051,7 @@ async function startBacktrack(lat,lon,createdAt){
     if(!hourly?.time?.length) return;
 
     const steps=[];
-    for(let i=hourly.time.length-1;i>=0;i--){
+    for(let i=hourly.time.length-1;i >= 0;i--){
       const ts=new Date(hourly.time[i]);
       if(ts>=startTime && ts<=reportTime)
         steps.push({ spd:hourly.wind_speed_10m[i], dir:hourly.wind_direction_10m[i] });
@@ -1167,7 +1134,7 @@ async function generateAllBackgroundTrails(reports) {
 }
 
 /* ═══════════════════════════════════════════════════
-   FIXED: 6H GEOMETRIC BACKTRACK ENGINE TRAIL
+   6H GEOMETRIC BACKTRACK ENGINE TRAIL
 ═══════════════════════════════════════════════════ */
 async function updateActivePlacementTrail(lat, lon) {
   if (activePlacementTrailLayer) {
@@ -1193,7 +1160,7 @@ async function updateActivePlacementTrail(lat, lon) {
     for (const s of steps) {
       const m = moveUpwind(cLat, cLon, s.dir, s.spd * 1);
       cLat = m.lat; cLon = m.lon;
-      trail.push({ lat: cLat, lon: cLon }); // Fixed variable mapping typo
+      trail.push({ lat: cLat, lon: cLon });
     }
 
     const latlngs = trail.map(p => [p.lat, p.lon]);
@@ -1342,10 +1309,14 @@ function renderPin(report, index = 0){
   const rot   = (report.wind_direction+180)%360;
   const intensity = report.intensity ? ` &nbsp;|&nbsp; <b>${t('popupInt')}:</b> ${report.intensity}/10` : '';
 
+  // Standardize the timestamp representation string manually inside popups too
+  const pad = (n) => String(n).padStart(2, '0');
+  const customDateStr = `${pad(date.getDate())}.${pad(date.getMonth() + 1)}.${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+
   const popupHtml=`<div class="popup-inner">
 <div class="popup-title">${t('popupTitle')}</div>
 <b>${t('popupCat')}:</b> ${report.category||'Unknown'}${intensity}<br>
-<b>${t('popupDate')}:</b> ${date.toLocaleString('en-GB')}<br>
+<b>${t('popupDate')}:</b> ${customDateStr}<br>
 <b>${t('popupWind')}:</b> ${report.wind_speed} km/h<br>
 <b>${t('popupDir')}:</b> ${report.wind_direction}° ${card}
   <span style="display:inline-block;transform:rotate(${rot}deg);font-size:15px;line-height:1;vertical-align:middle">↑</span><br>
@@ -1378,22 +1349,19 @@ async function loadPinsByWindow() {
   const data = await fetchAll();
   globalActiveData = data; 
 
-  const fromVal = document.getElementById('filterFrom').value;
-  const toVal = document.getElementById('filterTo').value;
+  if (!fp || !fp.selectedDates || fp.selectedDates.length < 2) return;
 
-  const fromOpt = timeOptions.find(o => o.id === fromVal);
-  const toOpt = timeOptions.find(o => o.id === toVal);
-
-  const now = Date.now();
-  const innerCutoffTimestamp = now - (fromOpt.hours * 3600000);
-  const outerCutoffTimestamp = now - (toOpt.hours * 3600000);
+  const filterStart = new Date(fp.selectedDates[0]);
+  filterStart.setHours(0, 0, 0, 0);
+  const filterEnd = new Date(fp.selectedDates[1]);
+  filterEnd.setHours(23, 59, 59, 999);
 
   let n = 0;
   let activeReports = [];
 
   data.forEach((r, index) => {
     const reportTimestamp = new Date(r.created_at).getTime();
-    if (reportTimestamp > innerCutoffTimestamp || reportTimestamp < outerCutoffTimestamp) return;
+    if (reportTimestamp < filterStart.getTime() || reportTimestamp > filterEnd.getTime()) return;
 
     n++;
     renderPin(r, index);
@@ -1555,21 +1523,15 @@ async function downloadCSV(){
   const data=await fetchAll();
   if(!data.length) return;
 
-  const fromVal = document.getElementById('filterFrom').value;
-  const toVal = document.getElementById('filterTo').value;
-
-  const fromOpt = timeOptions.find(o => o.id === fromVal);
-  const toOpt = timeOptions.find(o => o.id === toVal);
-
-  const now = Date.now();
-  const innerCutoff = now - (fromOpt.hours * 3600000);
-  const outerCutoff = now - (toOpt.hours * 3600000);
+  if (!fp || !fp.selectedDates || fp.selectedDates.length < 2) return;
+  const filterStart = new Date(fp.selectedDates[0]).setHours(0,0,0,0);
+  const filterEnd = new Date(fp.selectedDates[1]).setHours(23,59,59,999);
 
   const bounds=map.getBounds();
   const visible=data.filter(r=>{
     if(!bounds.contains(L.latLng(r.latitude,r.longitude))) return false;
     const ts = new Date(r.created_at).getTime();
-    if(ts > innerCutoff || ts < outerCutoff) return false;
+    if(ts < filterStart || ts > filterEnd) return false;
     return true;
   });
 
@@ -1580,20 +1542,28 @@ async function downloadCSV(){
     csv+=`${r.id},${r.created_at},${r.latitude},${r.longitude},${r.category},${r.intensity||''},${r.wind_speed},${r.wind_direction},${r.sea_level_pressure},"${r.comment||''}"\n`;
   });
 
+  // Calculate formatted dynamic file name using selected bounds
+  let filename = 'TraceTheToxin.csv';
+  if (fp.selectedDates.length === 2) {
+    const pad = (n) => String(n).padStart(2, '0');
+    const d1 = fp.selectedDates[0];
+    const d2 = fp.selectedDates[1];
+    const startStr = `${pad(d1.getDate())}${pad(d1.getMonth() + 1)}${d1.getFullYear()}`;
+    const endStr = `${pad(d2.getDate())}${pad(d2.getMonth() + 1)}${d2.getFullYear()}`;
+    filename = `TraceTheToxin_${startStr}_${endStr}.csv`;
+  }
+
   const a=document.createElement('a');
   a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
-  a.download='TraceTheToxin.csv';
+  a.download=filename;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
 }
 
 /* ═══════════════════════════════════════════════════
    ORCHESTRATION ARCHITECTURE
 ═══════════════════════════════════════════════════ */
-initTimeFilters();
+initCalendarFilter();
 applyLang(); 
-
-document.getElementById('filterFrom').value = 'h1';
-document.getElementById('filterTo').value = 'd1';
 
 loadPinsByWindow();
 
