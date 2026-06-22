@@ -11,7 +11,6 @@
   
   <link rel="icon" type="image/png" href="favicon.png">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-  <!-- Flatpickr Calendar Styling -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/themes/dark.css">
 <style>
@@ -492,7 +491,6 @@ button{
   </div>
 </div>
 
-<!-- GPS/Error Alert Modal -->
 <div id="gpsModal" class="generic-modal-overlay" style="display:none">
   <div class="generic-modal">
     <div class="generic-modal-icon">📍</div>
@@ -503,22 +501,18 @@ button{
   </div>
 </div>
 
-<!-- Dynamic Instruction Help Modal -->
 <div id="helpModal" class="generic-modal-overlay" style="display:none">
   <div class="generic-modal" style="max-width: 380px;">
     <h2 id="helpModalTitle" style="margin-top: 6px;">How to Use</h2>
     <div id="helpModalContent" style="max-height: 55vh; overflow-y: auto; padding-right: 4px;">
-      <!-- Filled programmatically via standard state language rules -->
-    </div>
+      </div>
     <button class="generic-modal-close" onclick="hideHelpModal()" id="helpModalBtn" style="margin-top:14px;">Close</button>
   </div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
-<!-- Flatpickr Calendar Engine -->
 <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-<!-- Flatpickr Serbian Translation File -->
 <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/sr.js"></script>
 <script>
 
@@ -664,7 +658,7 @@ function buildHelpModalContent() {
     contentEl.innerHTML = `
       <p style="margin-top:10px;"><b>1. Prijava lošeg vazduha:</b> Izaberite vrstu mirisa i intenzitet na donjem panelu, upišite opcionu napomenu i kliknite na <b>"PRIJAVI LOŠ VAZDUH"</b>. Prijava automatski snima vremenske podatke i smer vetra.</p>
       <p><b>2. Ručno postavljanje lokacije (📍):</b> Ako vam je GPS isključen, aktivirajte narandžastu ikonicu piona u donjem levom uglu i dodirnite mapu da biste ručno postavili tačku prijave.</p>
-      <p><b>3. Praćenje kretanja vetra unazad:</b> Klikom na bilo koji podneti pion na mapi, sistem će iscrtati narandžastu liniju koja simulira putanju vazduha 24 sata unazad da vam ukaže na potencijalni izvor zagađenja.</p>
+      <p><b>3. Praćenje kretanja vetra unazad (Plume Cone):</b> Klikom na bilo koji podneti pion na mapi, sistem će iscrtati narandžasti konus koji simulira kretanje i širenje vazduha do 6 sati unazad da vam ukaže na potencijalni zagađivač.</p>
       <p><b>4. Alat za praćenje izvora (🔍):</b> Uključite crveno dugme sa lupom i kliknite bilo gde na mapi. Sistem će prikazati samo one prijave čije se projektovane linije vetra ukrštaju sa lokacijom koju ste izabrali.</p>
       <p><b>5. Filtriranje i Izvoz:</b> Koristite kalendarski prozor da odaberete opseg datuma, a zatim kliknite na dugme <b>CSV</b> kako biste preuzeli trenutno filtrirane podatke.</p>
     `;
@@ -672,7 +666,7 @@ function buildHelpModalContent() {
     contentEl.innerHTML = `
       <p style="margin-top:10px;"><b>1. Reporting Odors:</b> Select the smell category and intensity on the bottom panel, type optional notes, and press <b>"REPORT BAD AIR"</b>. Submissions automatically log real-time meteorological data.</p>
       <p><b>2. Manual Pin Placement (📍):</b> If your GPS is disabled, toggle the orange pin button on the lower left and tap anywhere on the map to set your report coordinates manually.</p>
-      <p><b>3. Wind Backtracking:</b> Tap any active map report marker to generate an animated orange trajectory line, projecting where that air sample traveled from over the last 24 hours.</p>
+      <p><b>3. Wind Backtracking (Plume Cone):</b> Tap any active map report marker to generate an expanding plume cone envelope, projecting air mass coordinates and trajectory spread dispersion up to 6 hours upwind.</p>
       <p><b>4. Source Intercept Tracer (🔍):</b> Toggle the red magnifying glass icon and click any point on the map. The view will automatically isolate only the reports whose dynamic upwind dispersion patterns intersect with that chosen location.</p>
       <p><b>5. Filtering & Exporting:</b> Adjust the calendar input field to focus on specific dates, and tap the <b>CSV</b> button to download visible logs labeled by their chronological ranges.</p>
     `;
@@ -1126,7 +1120,7 @@ async function renderBackgroundTrailForReport(report) {
 
 async function startBacktrack(lat,lon,createdAt){
   clearBacktrack();
-  const HOURS = 24; 
+  const HOURS = 6; // Optimised realistic odor threshold window
   try{
     const reportTime=new Date(createdAt);
     const startTime=new Date(reportTime.getTime()-HOURS*3600000);
@@ -1149,18 +1143,56 @@ async function startBacktrack(lat,lon,createdAt){
       trail.push({lat:cLat,lon:cLon});
     }
 
-    const latlngs=trail.map(p=>[p.lat,p.lon]);
-    const under=L.polyline(latlngs,{ color:'#ff8800', weight:4, opacity:.18 }).addTo(map);
-    btLayers.push(under);
+    // ── PLUME CONE GEOMETRY ENVELOPE GENERATION ──
+    const leftBoundCoords = [];
+    const rightBoundCoords = [];
+    const EXPANSION_ANGLE_DEG = 12; // Angular dispersion width deviation rate
 
+    trail.forEach((point, index) => {
+      if (index === 0) {
+        leftBoundCoords.push([point.lat, point.lon]);
+      } else {
+        const prev = trail[index - 1];
+        const dy = point.lat - prev.lat;
+        const dx = (point.lon - prev.lon) * Math.cos(prev.lat * Math.PI / 180);
+        const baseBearingRad = Math.atan2(dx, dy);
+        
+        const spreadDistanceFactor = 0.002 * index; 
+
+        const leftLat = point.lat + Math.cos(baseBearingRad - Math.PI/2) * spreadDistanceFactor;
+        const leftLon = point.lon + (Math.sin(baseBearingRad - Math.PI/2) * spreadDistanceFactor) / Math.cos(point.lat * Math.PI / 180);
+        
+        const rightLat = point.lat + Math.cos(baseBearingRad + Math.PI/2) * spreadDistanceFactor;
+        const rightLon = point.lon + (Math.sin(baseBearingRad + Math.PI/2) * spreadDistanceFactor) / Math.cos(point.lat * Math.PI / 180);
+
+        leftBoundCoords.push([leftLat, leftLon]);
+        rightBoundCoords.unshift([rightLat, rightLon]);
+      }
+    });
+
+    const plumePolygonRing = leftBoundCoords.concat(rightBoundCoords);
+
+    // Render Plume Polygon Volume
+    const plumeConeVolume = L.polygon(plumePolygonRing, {
+      color: '#ff8800',
+      fillColor: '#ff8800',
+      fillOpacity: 0.12,
+      weight: 1,
+      dashArray: '3, 5',
+      interactive: false
+    }).addTo(map);
+    btLayers.push(plumeConeVolume);
+
+    // Render Midline Animated Central Spine Polyline
+    const latlngs=trail.map(p=>[p.lat,p.lon]);
     const dashedLine=L.polyline([...latlngs].reverse(),{
-      color:'#ff8800', weight:4, opacity:.88, dashArray:'50 10'
+      color:'#ff8800', weight:3, opacity:.9, dashArray:'8 6'
     }).addTo(map);
     btLayers.push(dashedLine);
 
     let offset = 0;
     function anim(){
-      offset = (offset - 0.6); 
+      offset = (offset - 0.4); 
       if (offset < -60) offset = 0; 
       const el = dashedLine.getElement();
       if (el) el.style.strokeDashoffset = offset + 'px'; 
@@ -1168,24 +1200,12 @@ async function startBacktrack(lat,lon,createdAt){
     }
     anim();
 
-    trail.slice(1,-1).forEach(p=>{
-      const dot=L.circleMarker([p.lat,p.lon],{
-        radius:3.5, color:'#ff8800', fillColor:'#fff', fillOpacity:.9, weight:1.5
-      }).addTo(map);
-      btLayers.push(dot);
-    });
-
-    const srcCircle=L.circleMarker([cLat,cLon],{
-      radius:12, color:'#ff8800', fillColor:'#ff8800', fillOpacity:.18, weight:2.5
-    }).addTo(map);
-    btLayers.push(srcCircle);
-
     const srcIcon=L.divIcon({
       className:'',
       html:`<div class="source-label">${t('possSource')}<br><span style="font-size:10px;opacity:.85;font-weight:600">${HOURS}h ${t('backtrack')}</span></div>`,
       iconAnchor:[0,10]
     });
-    btLayers.push(L.marker([cLat,cLon],{icon:srcIcon,interactive:false}).addTo(map));
+    btLayers.push(L.marker([cLat, cLon],{icon:srcIcon,interactive:false}).addTo(map));
 
   } catch(err){ console.error('Backtrack:',err); }
 }
