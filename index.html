@@ -262,7 +262,6 @@ button{
 .pin-map-btn.active{ background:#f5a623; border-color:#f5a623; }
 
 .bg-trail-teal {
-  stroke-dasharray: 6, 6;
   pointer-events: none;
 }
   
@@ -524,9 +523,13 @@ let traceMode = false;
 let tracerMarker = null;
 let tracerVisualCircles = []; 
 let globalActiveData = [];
-let activePlacementTrailLayer = null;
+let activePlacementLayers = []; // Supports active polygon envelopes and centerline spines
 let targetActiveClusterEvent = null; 
 let fp = null; // Flatpickr Instance
+
+// Global cached telemetry storage for active placement calculations
+let liveTrackedWindSpeed = 12.0; 
+let liveTrackedWindDir = 0.0;
 
 const weatherCache = {};
 
@@ -590,7 +593,6 @@ function setLang(l){
   });
   applyLang();
   
-  // Re-localize calendar picker elements safely
   if (fp) {
     const savedDates = fp.selectedDates;
     fp.destroy();
@@ -658,7 +660,7 @@ function buildHelpModalContent() {
     contentEl.innerHTML = `
       <p style="margin-top:10px;"><b>1. Prijava lošeg vazduha:</b> Izaberite vrstu mirisa i intenzitet na donjem panelu, upišite opcionu napomenu i kliknite na <b>"PRIJAVI LOŠ VAZDUH"</b>. Prijava automatski snima vremenske podatke i smer vetra.</p>
       <p><b>2. Ručno postavljanje lokacije (📍):</b> Ako vam je GPS isključen, aktivirajte narandžastu ikonicu piona u donjem levom uglu i dodirnite mapu da biste ručno postavili tačku prijave.</p>
-      <p><b>3. Praćenje kretanja vetra unazad (Plume Cone):</b> Klikom na bilo koji podneti pion na mapi, sistem će iscrtati narandžasti konus koji simulira kretanje i širenje vazduha do 6 sati unazad da vam ukaže na potencijalni zagađivač.</p>
+      <p><b>3. Praćenje kretanja vetra unazad (Plume Cone):</b> Klikom na bilo koji podneti pion na mapi, sistem iscrtava zakrivljenu, glatku aerodinamičnu putanju i narandžasti konus koji simulira širenje vazduha do 6 sati unazad.</p>
       <p><b>4. Alat za praćenje izvora (🔍):</b> Uključite crveno dugme sa lupom i kliknite bilo gde na mapi. Sistem će prikazati samo one prijave čije se projektovane linije vetra ukrštaju sa lokacijom koju ste izabrali.</p>
       <p><b>5. Filtriranje i Izvoz:</b> Koristite kalendarski prozor da odaberete opseg datuma, a zatim kliknite na dugme <b>CSV</b> kako biste preuzeli trenutno filtrirane podatke.</p>
     `;
@@ -666,7 +668,7 @@ function buildHelpModalContent() {
     contentEl.innerHTML = `
       <p style="margin-top:10px;"><b>1. Reporting Odors:</b> Select the smell category and intensity on the bottom panel, type optional notes, and press <b>"REPORT BAD AIR"</b>. Submissions automatically log real-time meteorological data.</p>
       <p><b>2. Manual Pin Placement (📍):</b> If your GPS is disabled, toggle the orange pin button on the lower left and tap anywhere on the map to set your report coordinates manually.</p>
-      <p><b>3. Wind Backtracking (Plume Cone):</b> Tap any active map report marker to generate an expanding plume cone envelope, projecting air mass coordinates and trajectory spread dispersion up to 6 hours upwind.</p>
+      <p><b>3. Wind Backtracking (Plume Cone):</b> Tap any active map report marker to generate a curved spline line and expanding plume cone envelope, projecting air mass coordinates and trajectory spread dispersion up to 6 hours upwind.</p>
       <p><b>4. Source Intercept Tracer (🔍):</b> Toggle the red magnifying glass icon and click any point on the map. The view will automatically isolate only the reports whose dynamic upwind dispersion patterns intersect with that chosen location.</p>
       <p><b>5. Filtering & Exporting:</b> Adjust the calendar input field to focus on specific dates, and tap the <b>CSV</b> button to download visible logs labeled by their chronological ranges.</p>
     `;
@@ -705,7 +707,7 @@ function initCalendarFilter(optionalDefaultDates) {
 }
 
 /* ═══════════════════════════════════════════════════
-   MAP (Light Mode Restored)
+   MAP
 ═══════════════════════════════════════════════════ */
 const map = L.map('map').setView([45.25,19.85],11);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
@@ -747,10 +749,10 @@ function hideGpsModal(){
    GPS INIT
 ═══════════════════════════════════════════════════ */
 function checkFormReady(){
-  const cat    = document.getElementById('category').value;
+  const cat = document.getElementById('category').value;
   const intVal = document.getElementById('intensity').value;
   const hasLoc = !!(userCoords || manualCoords);
-  const btn    = document.getElementById('reportBtn');
+  const btn = document.getElementById('reportBtn');
   if(btn) btn.disabled = !(cat && intVal && hasLoc);
 }
 
@@ -770,7 +772,7 @@ function startWatching(){
       checkFormReady();
       evaluateActiveNearbyClusters();
       if (!pinMode) {
-        updateActivePlacementTrail(userCoords.lat, userCoords.lon);
+        updateActivePlacementCone(userCoords.lat, userCoords.lon);
       }
     },
     err => {
@@ -881,6 +883,11 @@ const TraceControl = L.Control.extend({
 new TraceControl().addTo(map);
 document.getElementById('traceSourceBtn').style.display = 'flex';
 
+function clearActivePlacementLayers() {
+  activePlacementLayers.forEach(l => map.removeLayer(l));
+  activePlacementLayers = [];
+}
+
 function togglePinMode(){
   pinMode = !pinMode;
   if (pinMode && traceMode) toggleTraceMode(); 
@@ -894,11 +901,9 @@ function togglePinMode(){
     checkFormReady();
     triggerWindUpdate();
     evaluateActiveNearbyClusters();
+    clearActivePlacementLayers();
     if (userCoords) {
-      updateActivePlacementTrail(userCoords.lat, userCoords.lon);
-    } else if (activePlacementTrailLayer) {
-      map.removeLayer(activePlacementTrailLayer);
-      activePlacementTrailLayer = null;
+      updateActivePlacementCone(userCoords.lat, userCoords.lon);
     }
   }
 }
@@ -934,9 +939,9 @@ map.on('click', async (e) => {
       }).addTo(map);
     }
     checkFormReady();
-    fetchLiveWind(manualCoords.lat, manualCoords.lon);
+    await fetchLiveWind(manualCoords.lat, manualCoords.lon);
     evaluateActiveNearbyClusters();
-    updateActivePlacementTrail(manualCoords.lat, manualCoords.lon);
+    updateActivePlacementCone(manualCoords.lat, manualCoords.lon);
   }
   
   if (traceMode) {
@@ -964,6 +969,11 @@ async function fetchLiveWind(lat,lon){
     const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=wind_speed_10m,wind_direction_10m,pressure_msl`);
     const d = await r.json();
     const spd=d.current.wind_speed_10m, dir=d.current.wind_direction_10m;
+    
+    // Save locally for context calculations
+    liveTrackedWindSpeed = spd;
+    liveTrackedWindDir = dir;
+
     const rot=(dir+180)%360; 
     const card=degToCardinal(dir);
 
@@ -996,7 +1006,7 @@ function startWindWhenReady(){
 startWindWhenReady();
 
 /* ═══════════════════════════════════════════════════
-   HELPERS / MATH
+   HELPERS / MATH / SPLINES
 ═══════════════════════════════════════════════════ */
 function ageColor(createdAt){
   const h=(Date.now()-new Date(createdAt))/3600000;
@@ -1024,7 +1034,40 @@ function getHaversineDistance(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
-/* Modern Sleek Minimalist Circular Layer Pins */
+/**
+ * Chaikin's Smoothing Algorithm for Coordinate Paths
+ * Smooths out polygonal sharp angles into flowing curves
+ */
+function smoothPathChaikin(points, iterations = 3) {
+  if (points.length < 3) return points;
+  let current = [...points];
+  
+  for (let iter = 0; iter < iterations; iter++) {
+    const nextArr = [];
+    nextArr.push(current[0]); // Preserve apex point anchoring
+    
+    for (let i = 0; i < current.length - 1; i++) {
+      const p0 = current[i];
+      const p1 = current[i + 1];
+      
+      const q = {
+        lat: p0.lat * 0.75 + p1.lat * 0.25,
+        lon: p0.lon * 0.75 + p1.lon * 0.25
+      };
+      const r = {
+        lat: p0.lat * 0.25 + p1.lat * 0.75,
+        lon: p0.lon * 0.25 + p1.lon * 0.75
+      };
+      
+      nextArr.push(q);
+      nextArr.push(r);
+    }
+    nextArr.push(current[current.length - 1]);
+    current = nextArr;
+  }
+  return current;
+}
+
 function makeIcon(color, windDeg){
   const rot = windDeg!==undefined ? (windDeg+180)%360 : null;
   const arrow = rot!==null ? `
@@ -1090,6 +1133,61 @@ async function fetchHistoricWind(lat,lon,isoStart,isoEnd){
   }
 }
 
+/**
+ * Builds standard raw vector points dictating spatial meteorological coordinates
+ * Forces the first step vector to match the Pin's logged recorded wind direction
+ */
+function buildRawVectorTrail(baseLat, baseLon, steps, pinSpeed = null, pinDir = null) {
+  const trail = [{ lat: baseLat, lon: baseLon }];
+  let cLat = baseLat, cLon = baseLon;
+  
+  steps.forEach((s, idx) => {
+    // If telemetry data exists for Hour 0, force vector calculation parameters
+    const useDir = (idx === 0 && pinDir !== null) ? pinDir : s.dir;
+    const useSpd = (idx === 0 && pinSpeed !== null) ? pinSpeed : s.spd;
+    
+    const m = moveUpwind(cLat, cLon, useDir, useSpd * 1.0);
+    cLat = m.lat; cLon = m.lon;
+    trail.push({ lat: cLat, lon: cLon });
+  });
+  
+  return trail;
+}
+
+/**
+ * Generates an expanded polygon ring based on a smooth curved path spine input
+ */
+function computePlumeEnvelopeRing(smoothedSpine, expansionAngleDeg = 12) {
+  const leftBoundCoords = [];
+  const rightBoundCoords = [];
+
+  smoothedSpine.forEach((point, index) => {
+    if (index === 0) {
+      leftBoundCoords.push([point.lat, point.lon]);
+    } else {
+      const prev = smoothedSpine[index - 1];
+      const dy = point.lat - prev.lat;
+      const dx = (point.lon - prev.lon) * Math.cos(prev.lat * Math.PI / 180);
+      const baseBearingRad = Math.atan2(dx, dy);
+      
+      // Compute relative expansion scaling smoothly across spline index length
+      const progressFactor = index / smoothedSpine.length;
+      const spreadDistanceFactor = 0.012 * progressFactor; 
+
+      const leftLat = point.lat + Math.cos(baseBearingRad - Math.PI/2) * spreadDistanceFactor;
+      const leftLon = point.lon + (Math.sin(baseBearingRad - Math.PI/2) * spreadDistanceFactor) / Math.cos(point.lat * Math.PI / 180);
+      
+      const rightLat = point.lat + Math.cos(baseBearingRad + Math.PI/2) * spreadDistanceFactor;
+      const rightLon = point.lon + (Math.sin(baseBearingRad + Math.PI/2) * spreadDistanceFactor) / Math.cos(point.lat * Math.PI / 180);
+
+      leftBoundCoords.push([leftLat, leftLon]);
+      rightBoundCoords.unshift([rightLat, rightLon]);
+    }
+  });
+
+  return leftBoundCoords.concat(rightBoundCoords);
+}
+
 async function renderBackgroundTrailForReport(report) {
   try {
     const reportTime = new Date(report.created_at);
@@ -1105,14 +1203,8 @@ async function renderBackgroundTrailForReport(report) {
     }
     if (!steps.length) return null;
 
-    const trail = [{ lat: report.latitude, lon: report.longitude }];
-    let cLat = report.latitude, cLon = report.longitude;
-    for (const s of steps) {
-      const m = moveUpwind(cLat, cLon, s.dir, s.spd * 1);
-      cLat = m.lat; cLon = m.lon;
-      trail.push({ lat: cLat, lon: cLon });
-    }
-    return trail;
+    const rawTrail = buildRawVectorTrail(report.latitude, report.longitude, steps, report.wind_speed, report.wind_direction);
+    return smoothPathChaikin(rawTrail, 3);
   } catch (err) {
     return null;
   }
@@ -1120,8 +1212,13 @@ async function renderBackgroundTrailForReport(report) {
 
 async function startBacktrack(lat,lon,createdAt){
   clearBacktrack();
-  const HOURS = 6; // Optimised realistic odor threshold window
+  const HOURS = 6; 
   try{
+    // Match pin data context values from active data pool
+    const matchedReport = globalActiveData.find(r => r.latitude === lat && r.longitude === lon);
+    const pinSpd = matchedReport ? matchedReport.wind_speed : null;
+    const pinDir = matchedReport ? matchedReport.wind_direction : null;
+
     const reportTime=new Date(createdAt);
     const startTime=new Date(reportTime.getTime()-HOURS*3600000);
     const hourly=await fetchHistoricWind(lat,lon,startTime.toISOString(),reportTime.toISOString());
@@ -1135,42 +1232,9 @@ async function startBacktrack(lat,lon,createdAt){
     }
     if(!steps.length) return;
 
-    const trail=[{lat,lon}];
-    let cLat=lat, cLon=lon;
-    for(const s of steps){
-      const m=moveUpwind(cLat,cLon,s.dir,s.spd*1);
-      cLat=m.lat; cLon=m.lon;
-      trail.push({lat:cLat,lon:cLon});
-    }
-
-    // ── PLUME CONE GEOMETRY ENVELOPE GENERATION ──
-    const leftBoundCoords = [];
-    const rightBoundCoords = [];
-    const EXPANSION_ANGLE_DEG = 12; // Angular dispersion width deviation rate
-
-    trail.forEach((point, index) => {
-      if (index === 0) {
-        leftBoundCoords.push([point.lat, point.lon]);
-      } else {
-        const prev = trail[index - 1];
-        const dy = point.lat - prev.lat;
-        const dx = (point.lon - prev.lon) * Math.cos(prev.lat * Math.PI / 180);
-        const baseBearingRad = Math.atan2(dx, dy);
-        
-        const spreadDistanceFactor = 0.002 * index; 
-
-        const leftLat = point.lat + Math.cos(baseBearingRad - Math.PI/2) * spreadDistanceFactor;
-        const leftLon = point.lon + (Math.sin(baseBearingRad - Math.PI/2) * spreadDistanceFactor) / Math.cos(point.lat * Math.PI / 180);
-        
-        const rightLat = point.lat + Math.cos(baseBearingRad + Math.PI/2) * spreadDistanceFactor;
-        const rightLon = point.lon + (Math.sin(baseBearingRad + Math.PI/2) * spreadDistanceFactor) / Math.cos(point.lat * Math.PI / 180);
-
-        leftBoundCoords.push([leftLat, leftLon]);
-        rightBoundCoords.unshift([rightLat, rightLon]);
-      }
-    });
-
-    const plumePolygonRing = leftBoundCoords.concat(rightBoundCoords);
+    const rawTrail = buildRawVectorTrail(lat, lon, steps, pinSpd, pinDir);
+    const curvedSpine = smoothPathChaikin(rawTrail, 3);
+    const plumePolygonRing = computePlumeEnvelopeRing(curvedSpine, 12);
 
     // Render Plume Polygon Volume
     const plumeConeVolume = L.polygon(plumePolygonRing, {
@@ -1184,7 +1248,7 @@ async function startBacktrack(lat,lon,createdAt){
     btLayers.push(plumeConeVolume);
 
     // Render Midline Animated Central Spine Polyline
-    const latlngs=trail.map(p=>[p.lat,p.lon]);
+    const latlngs = curvedSpine.map(p => [p.lat, p.lon]);
     const dashedLine=L.polyline([...latlngs].reverse(),{
       color:'#ff8800', weight:3, opacity:.9, dashArray:'8 6'
     }).addTo(map);
@@ -1200,12 +1264,13 @@ async function startBacktrack(lat,lon,createdAt){
     }
     anim();
 
+    const finalCoord = curvedSpine[curvedSpine.length - 1];
     const srcIcon=L.divIcon({
       className:'',
       html:`<div class="source-label">${t('possSource')}<br><span style="font-size:10px;opacity:.85;font-weight:600">${HOURS}h ${t('backtrack')}</span></div>`,
       iconAnchor:[0,10]
     });
-    btLayers.push(L.marker([cLat, cLon],{icon:srcIcon,interactive:false}).addTo(map));
+    btLayers.push(L.marker([finalCoord.lat, finalCoord.lon],{icon:srcIcon,interactive:false}).addTo(map));
 
   } catch(err){ console.error('Backtrack:',err); }
 }
@@ -1220,10 +1285,10 @@ async function generateAllBackgroundTrails(reports) {
   if (!reports || !reports.length) return;
 
   const trailPromises = reports.map(async (report) => {
-    const trail = await renderBackgroundTrailForReport(report);
-    if (!trail) return;
+    const smoothedTrail = await renderBackgroundTrailForReport(report);
+    if (!smoothedTrail) return;
 
-    const latlngs = trail.map(p => [p.lat, p.lon]);
+    const latlngs = smoothedTrail.map(p => [p.lat, p.lon]);
     const tealTrail = L.polyline(latlngs, {
       color: ageColor(report.created_at), 
       weight: 2.5,
@@ -1237,13 +1302,10 @@ async function generateAllBackgroundTrails(reports) {
 }
 
 /* ═══════════════════════════════════════════════════
-   6H GEOMETRIC BACKTRACK ENGINE TRAIL
+   LIVE 6H CONE AND CURVE PLACEMENT INTERACTION
 ═══════════════════════════════════════════════════ */
-async function updateActivePlacementTrail(lat, lon) {
-  if (activePlacementTrailLayer) {
-    map.removeLayer(activePlacementTrailLayer);
-    activePlacementTrailLayer = null;
-  }
+async function updateActivePlacementCone(lat, lon) {
+  clearActivePlacementLayers();
   try {
     const now = new Date();
     const startTime = new Date(now.getTime() - 6 * 3600000);
@@ -1258,24 +1320,35 @@ async function updateActivePlacementTrail(lat, lon) {
     }
     if (!steps.length) return;
 
-    const trail = [{ lat, lon }];
-    let cLat = lat, cLon = lon;
-    for (const s of steps) {
-      const m = moveUpwind(cLat, cLon, s.dir, s.spd * 1);
-      cLat = m.lat; cLon = m.lon;
-      trail.push({ lat: cLat, lon: cLon });
-    }
+    // Use current live cached wind telemetry to dictate the initial curve calculation
+    const rawTrail = buildRawVectorTrail(lat, lon, steps, liveTrackedWindSpeed, liveTrackedWindDir);
+    const curvedSpine = smoothPathChaikin(rawTrail, 3);
+    const plumePolygonRing = computePlumeEnvelopeRing(curvedSpine, 12);
 
-    const latlngs = trail.map(p => [p.lat, p.lon]);
-    activePlacementTrailLayer = L.polyline(latlngs, {
+    // Draw active cyan envelope layer
+    const cyanPlumeVolume = L.polygon(plumePolygonRing, {
       color: '#00d0ff',
-      weight: 3,
-      opacity: 0.8,
-      dashArray: '5, 5',
+      fillColor: '#00d0ff',
+      fillOpacity: 0.10,
+      weight: 1,
+      dashArray: '3, 4',
       pointerEvents: 'none'
     }).addTo(map);
+    activePlacementLayers.push(cyanPlumeVolume);
+
+    // Draw active cyan spine path centerline layer
+    const latlngs = curvedSpine.map(p => [p.lat, p.lon]);
+    const cyanSpineLine = L.polyline(latlngs, {
+      color: '#00d0ff',
+      weight: 3,
+      opacity: 0.75,
+      dashArray: '6, 6',
+      pointerEvents: 'none'
+    }).addTo(map);
+    activePlacementLayers.push(cyanSpineLine);
+
   } catch (err) {
-    console.warn('Active placement trail backtrack error:', err);
+    console.warn('Active placement cone processing error:', err);
   }
 }
 
@@ -1542,7 +1615,7 @@ async function filterPinsBySourceTrajectory(tracerCoords) {
       const p2 = trailCoordinates[i + 1];
 
       const distanceKM = distanceToSegment(tracerCoords, p1, p2);
-      const maxAllowedDistance = BASE_RADIUS_KM + (DISPERSION_RATE_KM_H * (i + 1));
+      const maxAllowedDistance = BASE_RADIUS_KM + (DISPERSION_RATE_KM_H * (i + 1) * (6 / trailCoordinates.length));
 
       if (distanceKM <= maxAllowedDistance) {
         matchFound = true;
@@ -1583,7 +1656,7 @@ async function filterPinsBySourceTrajectory(tracerCoords) {
 }
 
 /* ═══════════════════════════════════════════════════
-   REPORT
+   REPORT ACTION
 ═══════════════════════════════════════════════════ */
 async function reportBadAir(){
   const coords=pinMode&&manualCoords ? manualCoords : userCoords;
@@ -1613,6 +1686,7 @@ async function reportBadAir(){
     document.getElementById('reportBtn').disabled = true;
 
     alert(t('submitted'));
+    clearActivePlacementLayers();
     loadPinsByWindow();
 
   } catch(err){ alert(err.message); }
