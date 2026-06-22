@@ -40,6 +40,7 @@ header{
 header h1{ font-size:19px; }
 header p{ font-size:11px; opacity:.7; margin-top:2px; }
 
+/* ── Active Event Banner ──────────────────────────── */
 .alert-banner {
   background: #ff8800;
   color: white;
@@ -327,6 +328,7 @@ button{
 }
 .trace-source-btn.active { background: #ff4d4d; border-color: #ff4d4d; }
 
+/* Flatpickr input theme modification override */
 #dateRangePicker {
   cursor: pointer;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='18' rx='2' ry='2'%3E%3C/rect%3E%3Cline x1='16' y1='2' x2='16' y2='6'%3E%3C/line%3E%3Cline x1='8' y1='2' x2='8' y2='6'%3E%3C/line%3E%3Cline x1='3' y1='10' x2='21' y2='10'%3E%3C/line%3E%3C/svg%3E");
@@ -335,17 +337,9 @@ button{
   padding-right: 32px !important;
 }
 
+/* Modern Minimalist Circular Pin Drop Shadow */
 .modern-marker-shadow {
   filter: drop-shadow(0px 3px 5px rgba(0,0,0,0.45));
-}
-
-@keyframes pulseGlow {
-  0% { opacity: 0.05; }
-  50% { opacity: 0.14; }
-  100% { opacity: 0.05; }
-}
-path[stroke="#00d0ff"], path[fill="#00d0ff"] {
-  animation: pulseGlow 3s infinite ease-in-out;
 }
 </style>
 </head>
@@ -509,7 +503,8 @@ path[stroke="#00d0ff"], path[fill="#00d0ff"] {
 <div id="helpModal" class="generic-modal-overlay" style="display:none">
   <div class="generic-modal" style="max-width: 380px;">
     <h2 id="helpModalTitle" style="margin-top: 6px;">How to Use</h2>
-    <div id="helpModalContent" style="max-height: 55vh; overflow-y: auto; padding-right: 4px;"></div>
+    <div id="helpModalContent" style="max-height: 55vh; overflow-y: auto; padding-right: 4px;">
+      </div>
     <button class="generic-modal-close" onclick="hideHelpModal()" id="helpModalBtn" style="margin-top:14px;">Close</button>
   </div>
 </div>
@@ -528,25 +523,25 @@ let traceMode = false;
 let tracerMarker = null;
 let tracerVisualCircles = []; 
 let globalActiveData = [];
-let activePlacementLayers = []; 
+let activePlacementLayers = []; // Supports active polygon envelopes and centerline spines
 let targetActiveClusterEvent = null; 
-let fp = null; 
+let fp = null; // Flatpickr Instance
 
+// Global cached telemetry storage for active placement calculations
 let liveTrackedWindSpeed = 12.0; 
 let liveTrackedWindDir = 0.0;
 
 const weatherCache = {};
-const trailGeometryCache = {};
 
 /* ═══════════════════════════════════════════════════
-   SUPABASE CONFIGURATION
+   SUPABASE
 ═══════════════════════════════════════════════════ */
 const SUPABASE_URL = 'https://fnkqmwweljsupbmerbkh.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZua3Ftd3dlbGpzdXBibWVyYmtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE3OTcwODUsImV4cCI6MjA5NzM3MzA4NX0.eX3mxnSpGmJ6Ebw7Y4F_jHiJarPH4ri9WNYXwmLi16I';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 /* ═══════════════════════════════════════════════════
-   i18n TRANSLATIONS
+   i18n
 ═══════════════════════════════════════════════════ */
 const T = {
   subtitle:     { en:'Community Air Reporting Network',  sr:'Mreža za prijavu kvaliteta vazduha' },
@@ -645,6 +640,9 @@ function applyLang(){
   buildHelpModalContent();
 }
 
+/* ═══════════════════════════════════════════════════
+   HELP INSTRUCTION POPUP MODAL
+═══════════════════════════════════════════════════ */
 function showHelpModal() {
   buildHelpModalContent();
   document.getElementById('helpModal').style.display = 'flex';
@@ -677,8 +675,12 @@ function buildHelpModalContent() {
   }
 }
 
+/* ═══════════════════════════════════════════════════
+   CALENDAR POPUP SETUP (FLATPICKR)
+═══════════════════════════════════════════════════ */
 function initCalendarFilter(optionalDefaultDates) {
   let initialDates = optionalDefaultDates;
+  
   if (!initialDates || initialDates.length === 0) {
     const defaultStart = new Date();
     defaultStart.setDate(defaultStart.getDate() - 7); 
@@ -704,7 +706,9 @@ function initCalendarFilter(optionalDefaultDates) {
   });
 }
 
-/* ── MAP INITIALIZATION ───────────────────────────── */
+/* ═══════════════════════════════════════════════════
+   MAP
+═══════════════════════════════════════════════════ */
 const map = L.map('map').setView([45.25,19.85],11);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
   attribution:'© OpenStreetMap'
@@ -717,11 +721,23 @@ let pinMode       = false;
 let manualCoords  = null;
 let manualMarker  = null;
 
+/* ═══════════════════════════════════════════════════
+   GPS MODAL
+═══════════════════════════════════════════════════ */
+function updateGpsModalText(){
+  const el = id => document.getElementById(id);
+  if(el('gpsModalTitle')) el('gpsModalTitle').textContent  = t('gpsTitle');
+  if(el('gpsModalBody'))  el('gpsModalBody').textContent   = t('gpsBody');
+  if(el('gpsModalAlt'))   el('gpsModalAlt').textContent    = t('gpsAlt');
+  if(el('gpsModalBtn'))   el('gpsModalBtn').textContent    = t('gpsBtn');
+}
+
 function showGpsModal(){
   const modal = document.getElementById('gpsModal');
   if(!modal) return;
   updateGpsModalText();
   modal.style.display = 'flex';
+  modal.offsetHeight;
 }
 
 function hideGpsModal(){
@@ -729,6 +745,9 @@ function hideGpsModal(){
   if(modal) modal.style.display = 'none';
 }
 
+/* ═══════════════════════════════════════════════════
+   GPS INIT
+═══════════════════════════════════════════════════ */
 function checkFormReady(){
   const cat = document.getElementById('category').value;
   const intVal = document.getElementById('intensity').value;
@@ -766,6 +785,7 @@ function startWatching(){
 
 function initGps(){
   if(!navigator.geolocation){ showGpsModal(); return; }
+
   if(navigator.permissions && navigator.permissions.query){
     navigator.permissions.query({ name:'geolocation' }).then(result=>{
       if(result.state === 'denied'){
@@ -781,14 +801,19 @@ function initGps(){
       };
     }).catch(()=>{
       startWatching();
+      setTimeout(()=>{ if(!userCoords) showGpsModal(); }, 10000);
     });
   } else {
     startWatching();
+    setTimeout(()=>{ if(!userCoords) showGpsModal(); }, 10000);
   }
 }
+
 initGps();
 
-/* ── MAP CONTROLS & WIDGET PLACEMENTS ─────────────── */
+/* ═══════════════════════════════════════════════════
+   COMPASS Control
+═══════════════════════════════════════════════════ */
 const CompassControl = L.Control.extend({
   options:{ position:'topright' },
   onAdd(){ return document.getElementById('compassWidget'); }
@@ -809,6 +834,7 @@ let lastRawHeading = null;
 function updateCompassNeedle(rawHeading) {
   const n = document.getElementById('compassNeedle');
   if (!n) return;
+
   let targetRotation = -rawHeading; 
   if (lastRawHeading !== null) {
     let diff = (targetRotation - currentNeedleRotation) % 360;
@@ -823,7 +849,11 @@ function updateCompassNeedle(rawHeading) {
 }
 
 if(window.DeviceOrientationEvent){
-  listenOrientation();
+  if(typeof DeviceOrientationEvent.requestPermission === 'function'){
+    // Handled dynamically
+  } else {
+    listenOrientation();
+  }
 }
 function listenOrientation(){
   window.addEventListener('deviceorientationabsolute', handleOri, true);
@@ -836,6 +866,9 @@ function handleOri(e){
   if(h!==null) updateCompassNeedle(h);
 }
 
+/* ═══════════════════════════════════════════════════
+   CONTROLS (Manual Pin & Tracer)
+═══════════════════════════════════════════════════ */
 const PinControl = L.Control.extend({
   options:{ position:'bottomleft' },
   onAdd(){ return document.getElementById('pinMapBtn'); }
@@ -928,13 +961,16 @@ map.on('click', async (e) => {
   }
 });
 
-/* ── LIVE TELEMETRY LOGGING ───────────────────────── */
+/* ═══════════════════════════════════════════════════
+   LIVE WIND SYSTEM
+═══════════════════════════════════════════════════ */
 async function fetchLiveWind(lat,lon){
   try{
     const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=wind_speed_10m,wind_direction_10m,pressure_msl`);
     const d = await r.json();
     const spd=d.current.wind_speed_10m, dir=d.current.wind_direction_10m;
     
+    // Save locally for context calculations
     liveTrackedWindSpeed = spd;
     liveTrackedWindDir = dir;
 
@@ -969,7 +1005,9 @@ function startWindWhenReady(){
 }
 startWindWhenReady();
 
-/* ── MATH & GEOMETRY UTILITIES ────────────────────── */
+/* ═══════════════════════════════════════════════════
+   HELPERS / MATH / SPLINES
+═══════════════════════════════════════════════════ */
 function ageColor(createdAt){
   const h=(Date.now()-new Date(createdAt))/3600000;
   if(h<1)   return '#ff1a1a'; 
@@ -996,20 +1034,33 @@ function getHaversineDistance(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
+/**
+ * Chaikin's Smoothing Algorithm for Coordinate Paths
+ * Smooths out polygonal sharp angles into flowing curves
+ */
 function smoothPathChaikin(points, iterations = 3) {
   if (points.length < 3) return points;
   let current = [...points];
   
   for (let iter = 0; iter < iterations; iter++) {
     const nextArr = [];
-    nextArr.push(current[0]); 
+    nextArr.push(current[0]); // Preserve apex point anchoring
     
     for (let i = 0; i < current.length - 1; i++) {
       const p0 = current[i];
       const p1 = current[i + 1];
-      const q = { lat: p0.lat * 0.75 + p1.lat * 0.25, lon: p0.lon * 0.75 + p1.lon * 0.25 };
-      const r = { lat: p0.lat * 0.25 + p1.lat * 0.75, lon: p0.lon * 0.25 + p1.lon * 0.75 };
-      nextArr.push(q, r);
+      
+      const q = {
+        lat: p0.lat * 0.75 + p1.lat * 0.25,
+        lon: p0.lon * 0.75 + p1.lon * 0.25
+      };
+      const r = {
+        lat: p0.lat * 0.25 + p1.lat * 0.75,
+        lon: p0.lon * 0.25 + p1.lon * 0.75
+      };
+      
+      nextArr.push(q);
+      nextArr.push(r);
     }
     nextArr.push(current[current.length - 1]);
     current = nextArr;
@@ -1018,8 +1069,8 @@ function smoothPathChaikin(points, iterations = 3) {
 }
 
 function makeIcon(color, windDeg){
-  const rot = windDeg !== undefined ? (windDeg + 180) % 360 : null;
-  const arrow = rot !== null ? `
+  const rot = windDeg!==undefined ? (windDeg+180)%360 : null;
+  const arrow = rot!==null ? `
     <g transform="translate(13,13) rotate(${rot})">
       <line x1="0" y1="5" x2="0" y2="-5" stroke="white" stroke-width="2" stroke-linecap="round"/>
       <polygon points="0,-7 -2.5,-3.5 2.5,-3.5" fill="white"/>
@@ -1038,6 +1089,19 @@ function makeIcon(color, windDeg){
   });
 }
 
+/* ═══════════════════════════════════════════════════
+   BACKTRACK ENGINE
+═══════════════════════════════════════════════════ */
+let btLayers    = []; 
+let bgTrailLayers = []; 
+let btAnimFrame = null;
+
+function clearBacktrack(){
+  btLayers.forEach(l=>map.removeLayer(l));
+  btLayers=[];
+  if(btAnimFrame){ cancelAnimationFrame(btAnimFrame); btAnimFrame=null; }
+}
+
 function moveUpwind(lat,lon,windFromDeg,distKm){
   const R=6371, br=(windFromDeg*Math.PI)/180, d=distKm/R;
   const lat1=lat*Math.PI/180, lon1=lon*Math.PI/180;
@@ -1046,24 +1110,56 @@ function moveUpwind(lat,lon,windFromDeg,distKm){
   return { lat:lat2*180/Math.PI, lon:lon2*180/Math.PI };
 }
 
+async function fetchHistoricWind(lat,lon,isoStart,isoEnd){
+  const cacheKey = `${lat.toFixed(3)}_${lon.toFixed(3)}_${isoStart.slice(0,13)}`;
+  if(weatherCache[cacheKey]) return weatherCache[cacheKey];
+
+  const daysDiff=(Date.now()-new Date(isoStart))/86400000;
+  let url = '';
+  if(daysDiff<7){
+    url=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=wind_speed_10m,wind_direction_10m&wind_speed_unit=kmh&timezone=auto&past_days=7&forecast_days=1`;
+  } else {
+    const sd=isoStart.slice(0,10), ed=isoEnd.slice(0,10);
+    url=`https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${sd}&end_date=${ed}&hourly=wind_speed_10m,wind_direction_10m&wind_speed_unit=kmh&timezone=auto`;
+  }
+  
+  try {
+    const r=await fetch(url); 
+    const d=await r.json(); 
+    weatherCache[cacheKey] = d.hourly;
+    return d.hourly;
+  } catch(e) {
+    return null;
+  }
+}
+
+/**
+ * Builds standard raw vector points dictating spatial meteorological coordinates
+ * Forces the first step vector to match the Pin's logged recorded wind direction
+ */
 function buildRawVectorTrail(baseLat, baseLon, steps, pinSpeed = null, pinDir = null) {
   const trail = [{ lat: baseLat, lon: baseLon }];
   let cLat = baseLat, cLon = baseLon;
   
   steps.forEach((s, idx) => {
+    // If telemetry data exists for Hour 0, force vector calculation parameters
     const useDir = (idx === 0 && pinDir !== null) ? pinDir : s.dir;
     const useSpd = (idx === 0 && pinSpeed !== null) ? pinSpeed : s.spd;
+    
     const m = moveUpwind(cLat, cLon, useDir, useSpd * 1.0);
     cLat = m.lat; cLon = m.lon;
     trail.push({ lat: cLat, lon: cLon });
   });
+  
   return trail;
 }
 
-function computePlumeEnvelopeRing(smoothedSpine, windSpeed = 12.0) {
+/**
+ * Generates an expanded polygon ring based on a smooth curved path spine input
+ */
+function computePlumeEnvelopeRing(smoothedSpine, expansionAngleDeg = 12) {
   const leftBoundCoords = [];
   const rightBoundCoords = [];
-  const windFactor = Math.max(0.005, Math.min(0.028, 0.20 / (windSpeed + 2)));
 
   smoothedSpine.forEach((point, index) => {
     if (index === 0) {
@@ -1074,8 +1170,9 @@ function computePlumeEnvelopeRing(smoothedSpine, windSpeed = 12.0) {
       const dx = (point.lon - prev.lon) * Math.cos(prev.lat * Math.PI / 180);
       const baseBearingRad = Math.atan2(dx, dy);
       
+      // Compute relative expansion scaling smoothly across spline index length
       const progressFactor = index / smoothedSpine.length;
-      const spreadDistanceFactor = windFactor * progressFactor; 
+      const spreadDistanceFactor = 0.012 * progressFactor; 
 
       const leftLat = point.lat + Math.cos(baseBearingRad - Math.PI/2) * spreadDistanceFactor;
       const leftLon = point.lon + (Math.sin(baseBearingRad - Math.PI/2) * spreadDistanceFactor) / Math.cos(point.lat * Math.PI / 180);
@@ -1087,115 +1184,44 @@ function computePlumeEnvelopeRing(smoothedSpine, windSpeed = 12.0) {
       rightBoundCoords.unshift([rightLat, rightLon]);
     }
   });
+
   return leftBoundCoords.concat(rightBoundCoords);
 }
 
-/* ── HIGH-PERFORMANCE MULTI-COORDINATE NETWORK BATCHING ── */
-async function fetchHistoricWindBatch(reports, HOURS = 6) {
-  if (!reports.length) return;
-
-  const uncachedReports = reports.filter(r => {
-    const reportTime = new Date(r.created_at);
-    const startTime = new Date(reportTime.getTime() - HOURS * 3600000);
-    const cacheKey = `${r.latitude.toFixed(3)}_${r.longitude.toFixed(3)}_${startTime.toISOString().slice(0,13)}`;
-    return !weatherCache[cacheKey];
-  });
-
-  if (!uncachedReports.length) return;
-
-  const BATCH_SIZE = 45; 
-  for (let b = 0; b < uncachedReports.length; b += BATCH_SIZE) {
-    const chunk = uncachedReports.slice(b, b + BATCH_SIZE);
-    
-    const lats = chunk.map(r => r.latitude.toFixed(5)).join(',');
-    const lons = chunk.map(r => r.longitude.toFixed(5)).join(',');
-    
-    const sampleReportTime = new Date(chunk[0].created_at);
-    const sampleStartTime = new Date(sampleReportTime.getTime() - HOURS * 3600000);
-    const daysDiff = (Date.now() - sampleStartTime) / 86400000;
-
-    let url = '';
-    if (daysDiff < 7) {
-      url = `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lons}&hourly=wind_speed_10m,wind_direction_10m&wind_speed_unit=kmh&timezone=auto&past_days=7&forecast_days=1`;
-    } else {
-      const sd = sampleStartTime.toISOString().slice(0, 10);
-      const ed = sampleReportTime.toISOString().slice(0, 10);
-      url = `https://archive-api.open-meteo.com/v1/archive?latitude=${lats}&longitude=${lons}&start_date=${sd}&end_date=${ed}&hourly=wind_speed_10m,wind_direction_10m&wind_speed_unit=kmh&timezone=auto`;
-    }
-
-    try {
-      const res = await fetch(url);
-      const data = await res.json();
-      
-      const payloadArray = Array.isArray(data) ? data : [data];
-
-      chunk.forEach((report, idx) => {
-        const dataset = payloadArray[idx];
-        if (!dataset || !dataset.hourly) return;
-
-        const rTime = new Date(report.created_at);
-        const sTime = new Date(rTime.getTime() - HOURS * 3600000);
-        const cacheKey = `${report.latitude.toFixed(3)}_${report.longitude.toFixed(3)}_${sTime.toISOString().slice(0,13)}`;
-        
-        weatherCache[cacheKey] = dataset.hourly;
-      });
-    } catch (e) {
-      console.warn("Weather telemetry batch failed:", e);
-    }
-  }
-}
-
 async function renderBackgroundTrailForReport(report) {
-  const reportTime = new Date(report.created_at);
-  const startTime = new Date(reportTime.getTime() - 6 * 3600000); 
-  const cacheKey = `${report.latitude.toFixed(3)}_${report.longitude.toFixed(3)}_${startTime.toISOString().slice(0,13)}`;
-  
-  if (trailGeometryCache[cacheKey]) {
-    return trailGeometryCache[cacheKey];
+  try {
+    const reportTime = new Date(report.created_at);
+    const startTime = new Date(reportTime.getTime() - 6 * 3600000); 
+    const hourly = await fetchHistoricWind(report.latitude, report.longitude, startTime.toISOString(), reportTime.toISOString());
+    if (!hourly?.time?.length) return null;
+
+    const steps = [];
+    for (let i = hourly.time.length - 1; i >= 0; i--) {
+      const ts = new Date(hourly.time[i]);
+      if (ts >= startTime && ts <= reportTime)
+        steps.push({ spd: hourly.wind_speed_10m[i], dir: hourly.wind_direction_10m[i] });
+    }
+    if (!steps.length) return null;
+
+    const rawTrail = buildRawVectorTrail(report.latitude, report.longitude, steps, report.wind_speed, report.wind_direction);
+    return smoothPathChaikin(rawTrail, 3);
+  } catch (err) {
+    return null;
   }
-
-  const hourly = weatherCache[cacheKey];
-  if (!hourly?.time?.length) return null;
-
-  const steps = [];
-  for (let i = hourly.time.length - 1; i >= 0; i--) {
-    const ts = new Date(hourly.time[i]);
-    if (ts >= startTime && ts <= reportTime)
-      steps.push({ spd: hourly.wind_speed_10m[i], dir: hourly.wind_direction_10m[i] });
-  }
-  if (!steps.length) return null;
-
-  const rawTrail = buildRawVectorTrail(report.latitude, report.longitude, steps, report.wind_speed, report.wind_direction);
-  const smoothed = smoothPathChaikin(rawTrail, 3);
-  
-  trailGeometryCache[cacheKey] = smoothed;
-  return smoothed;
-}
-
-/* ── PLUME CONE ENGINE & BACKTRACK VISUALS ────────── */
-let btLayers    = []; 
-let bgTrailLayers = []; 
-let btAnimFrame = null;
-
-function clearBacktrack(){
-  btLayers.forEach(l=>map.removeLayer(l));
-  btLayers=[];
-  if(btAnimFrame){ cancelAnimationFrame(btAnimFrame); btAnimFrame=null; }
 }
 
 async function startBacktrack(lat,lon,createdAt){
   clearBacktrack();
   const HOURS = 6; 
   try{
+    // Match pin data context values from active data pool
     const matchedReport = globalActiveData.find(r => r.latitude === lat && r.longitude === lon);
     const pinSpd = matchedReport ? matchedReport.wind_speed : null;
     const pinDir = matchedReport ? matchedReport.wind_direction : null;
 
     const reportTime=new Date(createdAt);
     const startTime=new Date(reportTime.getTime()-HOURS*3600000);
-    
-    const cacheKey = `${lat.toFixed(3)}_${lon.toFixed(3)}_${startTime.toISOString().slice(0,13)}`;
-    const hourly = weatherCache[cacheKey];
+    const hourly=await fetchHistoricWind(lat,lon,startTime.toISOString(),reportTime.toISOString());
     if(!hourly?.time?.length) return;
 
     const steps=[];
@@ -1208,27 +1234,21 @@ async function startBacktrack(lat,lon,createdAt){
 
     const rawTrail = buildRawVectorTrail(lat, lon, steps, pinSpd, pinDir);
     const curvedSpine = smoothPathChaikin(rawTrail, 3);
-    
-    const speedParam = pinSpd || 12.0;
-    const outerRing = computePlumeEnvelopeRing(curvedSpine, speedParam);
-    const coreRing = computePlumeEnvelopeRing(curvedSpine, speedParam * 2.5);
+    const plumePolygonRing = computePlumeEnvelopeRing(curvedSpine, 12);
 
-    const plumeConeOuter = L.polygon(outerRing, {
-      color: '#ff8800', fillColor: '#ff8800', fillOpacity: 0.04, weight: 1, dashArray: '3, 5', interactive: false
+    // Render Plume Polygon Volume
+    const plumeConeVolume = L.polygon(plumePolygonRing, {
+      color: '#ff8800',
+      fillColor: '#ff8800',
+      fillOpacity: 0.12,
+      weight: 1,
+      dashArray: '3, 5',
+      interactive: false
     }).addTo(map);
-    btLayers.push(plumeConeOuter);
+    btLayers.push(plumeConeVolume);
 
-    const plumeConeCore = L.polygon(coreRing, {
-      color: '#ff5500', fillColor: '#ff5500', fillOpacity: 0.14, weight: 0, interactive: false
-    }).addTo(map);
-    btLayers.push(plumeConeCore);
-
+    // Render Midline Animated Central Spine Polyline
     const latlngs = curvedSpine.map(p => [p.lat, p.lon]);
-    const spineGlow = L.polyline([...latlngs].reverse(), {
-      color: '#ffaa44', weight: 8, opacity: 0.25, interactive: false
-    }).addTo(map);
-    btLayers.push(spineGlow);
-
     const dashedLine=L.polyline([...latlngs].reverse(),{
       color:'#ff8800', weight:3, opacity:.9, dashArray:'8 6'
     }).addTo(map);
@@ -1251,7 +1271,8 @@ async function startBacktrack(lat,lon,createdAt){
       iconAnchor:[0,10]
     });
     btLayers.push(L.marker([finalCoord.lat, finalCoord.lon],{icon:srcIcon,interactive:false}).addTo(map));
-  } catch(err){ console.error('Backtrack failed:',err); }
+
+  } catch(err){ console.error('Backtrack:',err); }
 }
 
 function clearBackgroundTrails() {
@@ -1262,8 +1283,6 @@ function clearBackgroundTrails() {
 async function generateAllBackgroundTrails(reports) {
   clearBackgroundTrails();
   if (!reports || !reports.length) return;
-
-  await fetchHistoricWindBatch(reports);
 
   const trailPromises = reports.map(async (report) => {
     const smoothedTrail = await renderBackgroundTrailForReport(report);
@@ -1276,22 +1295,21 @@ async function generateAllBackgroundTrails(reports) {
       opacity: 0.65,
       className: 'bg-trail-teal'
     }).addTo(map);
+
     bgTrailLayers.push(tealTrail);
   });
   await Promise.all(trailPromises);
 }
 
-/* ── LIVE INTERACTION PLACEMENT TRACKING ──────────── */
+/* ═══════════════════════════════════════════════════
+   LIVE 6H CONE AND CURVE PLACEMENT INTERACTION
+═══════════════════════════════════════════════════ */
 async function updateActivePlacementCone(lat, lon) {
   clearActivePlacementLayers();
   try {
     const now = new Date();
     const startTime = new Date(now.getTime() - 6 * 3600000);
-    
-    await fetchHistoricWindBatch([{ latitude: lat, longitude: lon, created_at: now.toISOString() }]);
-    
-    const cacheKey = `${lat.toFixed(3)}_${lon.toFixed(3)}_${startTime.toISOString().slice(0,13)}`;
-    const hourly = weatherCache[cacheKey];
+    const hourly = await fetchHistoricWind(lat, lon, startTime.toISOString(), now.toISOString());
     if (!hourly?.time?.length) return;
 
     const steps = [];
@@ -1302,34 +1320,41 @@ async function updateActivePlacementCone(lat, lon) {
     }
     if (!steps.length) return;
 
+    // Use current live cached wind telemetry to dictate the initial curve calculation
     const rawTrail = buildRawVectorTrail(lat, lon, steps, liveTrackedWindSpeed, liveTrackedWindDir);
     const curvedSpine = smoothPathChaikin(rawTrail, 3);
-    
-    const speedParam = liveTrackedWindSpeed || 12.0;
-    const outerRing = computePlumeEnvelopeRing(curvedSpine, speedParam);
-    const coreRing = computePlumeEnvelopeRing(curvedSpine, speedParam * 2.5);
+    const plumePolygonRing = computePlumeEnvelopeRing(curvedSpine, 12);
 
-    const cyanPlumeOuter = L.polygon(outerRing, {
-      color: '#00d0ff', fillColor: '#00d0ff', fillOpacity: 0.04, weight: 1, dashArray: '3, 4', pointerEvents: 'none'
+    // Draw active cyan envelope layer
+    const cyanPlumeVolume = L.polygon(plumePolygonRing, {
+      color: '#00d0ff',
+      fillColor: '#00d0ff',
+      fillOpacity: 0.10,
+      weight: 1,
+      dashArray: '3, 4',
+      pointerEvents: 'none'
     }).addTo(map);
-    activePlacementLayers.push(cyanPlumeOuter);
+    activePlacementLayers.push(cyanPlumeVolume);
 
-    const cyanPlumeCore = L.polygon(coreRing, {
-      color: '#00d0ff', fillColor: '#00d0ff', fillOpacity: 0.12, weight: 0, pointerEvents: 'none'
-    }).addTo(map);
-    activePlacementLayers.push(cyanPlumeCore);
-
+    // Draw active cyan spine path centerline layer
     const latlngs = curvedSpine.map(p => [p.lat, p.lon]);
     const cyanSpineLine = L.polyline(latlngs, {
-      color: '#00d0ff', weight: 3, opacity: 0.75, dashArray: '6, 6', pointerEvents: 'none'
+      color: '#00d0ff',
+      weight: 3,
+      opacity: 0.75,
+      dashArray: '6, 6',
+      pointerEvents: 'none'
     }).addTo(map);
     activePlacementLayers.push(cyanSpineLine);
+
   } catch (err) {
-    console.warn('Placement projection missing:', err);
+    console.warn('Active placement cone processing error:', err);
   }
 }
 
-/* ── CROWD VALIDATION CLUSTERING ──────────────────── */
+/* ═══════════════════════════════════════════════════
+   CROWD VALIDATION & CLUSTERING ENGINE
+═══════════════════════════════════════════════════ */
 function evaluateActiveNearbyClusters() {
   const currentLoc = pinMode && manualCoords ? manualCoords : userCoords;
   if (!currentLoc || !globalActiveData.length) {
@@ -1369,7 +1394,11 @@ function evaluateActiveNearbyClusters() {
   }
 
   if (maxCount >= 2) {
-    targetActiveClusterEvent = { lat: currentLoc.lat, lon: currentLoc.lon, category: topCategory };
+    targetActiveClusterEvent = {
+      category: topCategory,
+      lat: currentLoc.lat,
+      lon: currentLoc.lon
+    };
     showAlertBanner(topCategory, maxCount);
   } else {
     hideAlertBanner();
@@ -1379,10 +1408,14 @@ function evaluateActiveNearbyClusters() {
 function showAlertBanner(category, count) {
   const banner = document.getElementById('eventAlertBanner');
   if (!banner) return;
+  
   targetActiveClusterEvent.localizedCategoryLabel = category;
   
-  const matchedOpt = Array.from(document.getElementById('category').options).find(o => o.value === category);
-  if (matchedOpt) targetActiveClusterEvent.localizedCategoryLabel = matchedOpt.textContent;
+  const mappedOptions = Array.from(document.getElementById('category').options);
+  const matchedOpt = mappedOptions.find(o => o.value === category);
+  if (matchedOpt) {
+    targetActiveClusterEvent.localizedCategoryLabel = matchedOpt.textContent;
+  }
 
   updateAlertBannerUI();
   banner.style.display = 'flex';
@@ -1398,12 +1431,18 @@ function updateAlertBannerUI() {
   if (!targetActiveClusterEvent) return;
   const textEl = document.getElementById('eventAlertText');
   const btnEl = document.getElementById('eventAlertBtn');
-  if (textEl) textEl.textContent = `${t('alertText')} "${targetActiveClusterEvent.localizedCategoryLabel}"`;
-  if (btnEl) btnEl.textContent = t('alertBtnText');
+  
+  if (textEl) {
+    textEl.textContent = `${t('alertText')} "${targetActiveClusterEvent.localizedCategoryLabel}"`;
+  }
+  if (btnEl) {
+    btnEl.textContent = t('alertBtnText');
+  }
 }
 
 async function quickVerifyCurrentEvent() {
   if (!targetActiveClusterEvent) return;
+  
   const currentLoc = pinMode && manualCoords ? manualCoords : userCoords;
   if (!currentLoc) { alert(t('waitGps')); return; }
 
@@ -1412,124 +1451,28 @@ async function quickVerifyCurrentEvent() {
     const w = await r.json(); const c = w.current;
 
     const { error } = await sb.from('air_reports').insert([{
-      latitude: currentLoc.lat, longitude: currentLoc.lon,
-      category: targetActiveClusterEvent.category, intensity: 7, 
+      latitude: currentLoc.lat, 
+      longitude: currentLoc.lon,
+      category: targetActiveClusterEvent.category, 
+      intensity: 7, 
       comment: "Quick-verify community report endorsement",
-      wind_speed: c.wind_speed_10m, wind_direction: c.wind_direction_10m, sea_level_pressure: c.pressure_msl
+      wind_speed: c.wind_speed_10m,
+      wind_direction: c.wind_direction_10m,
+      sea_level_pressure: c.pressure_msl
     }]);
+    
     if (error) throw error;
+
     alert(t('submitted'));
     hideAlertBanner();
     loadPinsByWindow();
+
   } catch(err) { alert(err.message); }
 }
 
-/* ── HIGH-PRECISION SPATIAL INTERCEPT GRID CLUSTERING ── */
-async function filterPinsBySourceTrajectory(tracerCoords) {
-  const BASE_RADIUS_KM = 0.5; 
-  const DISPERSION_RATE_KM_H = 1.2; 
-
-  clearMarkers(); clearBackgroundTrails();
-  tracerVisualCircles.forEach(c => map.removeLayer(c));
-  tracerVisualCircles = [];
-
-  function distanceToSegment(p, v, w) {
-    const R = 6371; 
-    const x = p.lon * Math.cos(p.lat * Math.PI / 180); const y = p.lat;
-    const x1 = v.lon * Math.cos(v.lat * Math.PI / 180); const y1 = v.lat;
-    const x2 = w.lon * Math.cos(w.lat * Math.PI / 180); const y2 = w.lat;
-    const l2 = (x2 - x1) ** 2 + (y2 - y1) ** 2;
-    if (l2 === 0) {
-      const dLat = (p.lat - v.lat) * Math.PI / 180; const dLon = (p.lon - v.lon) * Math.PI / 180;
-      const a = Math.sin(dLat/2)**2 + Math.cos(v.lat*Math.PI/180) * Math.cos(p.lat*Math.PI/180) * Math.sin(dLon/2)**2;
-      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    }
-    let tVal = Math.max(0, Math.min(1, ((x - x1) * (x2 - x1) + (y - y1) * (y2 - y1)) / l2));
-    const closestLat = y1 + tVal * (y2 - y1);
-    const closestLon = (x1 + tVal * (x2 - x1)) / Math.cos(closestLat * Math.PI / 180);
-    const dLat = (p.lat - closestLat) * Math.PI / 180; const dLon = (p.lon - closestLon) * Math.PI / 180;
-    const a = Math.sin(dLat/2)**2 + Math.cos(closestLat*Math.PI/180) * Math.cos(p.lat*Math.PI/180) * Math.sin(dLon/2)**2;
-    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-  }
-
-  await fetchHistoricWindBatch(globalActiveData);
-
-  let activeReportsToDrawTrails = [];
-  const clusterAccumulatorGrid = [];
-
-  const evaluationPromises = globalActiveData.map(async (report, index) => {
-    const trailCoordinates = await renderBackgroundTrailForReport(report);
-    if (!trailCoordinates || trailCoordinates.length < 2) return null;
-
-    for (let i = 0; i < trailCoordinates.length - 1; i++) {
-      const p1 = trailCoordinates[i];
-      const p2 = trailCoordinates[i + 1];
-      const distanceKM = distanceToSegment(tracerCoords, p1, p2);
-      const maxAllowedDistance = BASE_RADIUS_KM + (DISPERSION_RATE_KM_H * (i + 1) * (6 / trailCoordinates.length));
-
-      if (distanceKM <= maxAllowedDistance) {
-        clusterAccumulatorGrid.push({ lat: p1.lat, lon: p1.lon, radius: maxAllowedDistance });
-        return { report, index };
-      }
-    }
-    return null;
-  });
-
-  const results = await Promise.all(evaluationPromises);
-  results.forEach(res => {
-    if (res) {
-      renderPin(res.report, res.index);
-      activeReportsToDrawTrails.push(res.report);
-    }
-  });
-
-  generateAllBackgroundTrails(activeReportsToDrawTrails);
-
-  // High-performance Spatial Grid Clustering Aggregations
-  const groupedZones = [];
-  const CELL_GRID_KM = 0.8; 
-
-  clusterAccumulatorGrid.forEach(item => {
-    let assigned = false;
-    for (let zone of groupedZones) {
-      const dist = getHaversineDistance(item.lat, item.lon, zone.lat, zone.lon);
-      if (dist <= CELL_GRID_KM) {
-        zone.lat = (zone.lat * zone.count + item.lat) / (zone.count + 1);
-        zone.lon = (zone.lon * zone.count + item.lon) / (zone.count + 1);
-        zone.radius = Math.max(zone.radius, item.radius);
-        zone.count++;
-        assigned = true;
-        break;
-      }
-    }
-    if (!assigned) {
-      groupedZones.push({ lat: item.lat, lon: item.lon, radius: item.radius, count: 1 });
-    }
-  });
-
-  // Render optimized spatial target grids
-  groupedZones.forEach(zone => {
-    const weightFactor = Math.min(4, 1 + zone.count * 0.5);
-    const opacityFactor = Math.min(0.4, 0.1 + zone.count * 0.05);
-
-    const clusterRing = L.circle([zone.lat, zone.lon], {
-      radius: zone.radius * 1000,
-      color: '#ff4d4d',
-      fillColor: '#ff4d4d',
-      fillOpacity: opacityFactor,
-      weight: weightFactor,
-      dashArray: '4, 4',
-      interactive: false
-    }).addTo(map);
-    tracerVisualCircles.push(clusterRing);
-  });
-
-  const n = reportMarkers.length;
-  const rcEl = document.getElementById('reportCount');
-  if(rcEl) rcEl.textContent = n + ' ' + (n === 1 ? t('reportCount1') : t('reportCount'));
-}
-
-/* ── PINS RENDER SYSTEM ───────────────────────────── */
+/* ═══════════════════════════════════════════════════
+   PINS RENDER ENGINE
+═══════════════════════════════════════════════════ */
 function clearMarkers(){
   reportMarkers.forEach(m=>map.removeLayer(m));
   reportMarkers=[];
@@ -1552,7 +1495,7 @@ function renderPin(report, index = 0){
 <b>${t('popupWind')}:</b> ${report.wind_speed} km/h<br>
 <b>${t('popupDir')}:</b> ${report.wind_direction}° ${card}
   <span style="display:inline-block;transform:rotate(${rot}deg);font-size:15px;line-height:1;vertical-align:middle">↑</span><br>
-<b>${t('popupPres')}:</b> ${report.sea_level_pressure || '--'} hPa<br>
+<b>${t('popupPres')}:</b> ${report.sea_level_pressure} hPa<br>
 <b>${t('popupNotes')}:</b> ${report.comment||t('popupNone')}
 </div>`;
 
@@ -1567,12 +1510,11 @@ function renderPin(report, index = 0){
   reportMarkers.push(marker);
 }
 
-/* ── PERFORMANCE DATABASING RETRIEVALS ────────────── */
+/* ═══════════════════════════════════════════════════
+   CORE DATA RETRIEVAL
+═══════════════════════════════════════════════════ */
 async function fetchAll(){
-  // Bounding payload minimization select strategy applied
-  const {data,error}=await sb.from('air_reports')
-    .select('id, created_at, latitude, longitude, category, intensity, wind_speed, wind_direction, sea_level_pressure, comment')
-    .order('created_at',{ascending:false});
+  const {data,error}=await sb.from('air_reports').select('*').order('created_at',{ascending:false});
   if(error){ console.error(error); return []; }
   return data;
 }
@@ -1584,8 +1526,10 @@ async function loadPinsByWindow() {
 
   if (!fp || !fp.selectedDates || fp.selectedDates.length < 2) return;
 
-  const filterStart = new Date(fp.selectedDates[0]); filterStart.setHours(0, 0, 0, 0);
-  const filterEnd = new Date(fp.selectedDates[1]); filterEnd.setHours(23, 59, 59, 999);
+  const filterStart = new Date(fp.selectedDates[0]);
+  filterStart.setHours(0, 0, 0, 0);
+  const filterEnd = new Date(fp.selectedDates[1]);
+  filterEnd.setHours(23, 59, 59, 999);
 
   let n = 0;
   let activeReports = [];
@@ -1593,6 +1537,7 @@ async function loadPinsByWindow() {
   data.forEach((r, index) => {
     const reportTimestamp = new Date(r.created_at).getTime();
     if (reportTimestamp < filterStart.getTime() || reportTimestamp > filterEnd.getTime()) return;
+
     n++;
     renderPin(r, index);
     activeReports.push(r);
@@ -1605,7 +1550,114 @@ async function loadPinsByWindow() {
   generateAllBackgroundTrails(activeReports);
 }
 
-/* ── REPORT AND SUBMIT DEPLOYMENTS ────────────────── */
+/* ═══════════════════════════════════════════════════
+   HIGH-PRECISION SPLINE SEGMENT INTERCEPT TRACER
+═══════════════════════════════════════════════════ */
+async function filterPinsBySourceTrajectory(tracerCoords) {
+  const BASE_RADIUS_KM = 0.5; 
+  const DISPERSION_RATE_KM_H = 1.2; 
+
+  clearMarkers();
+  clearBackgroundTrails();
+  
+  tracerVisualCircles.forEach(c => map.removeLayer(c));
+  tracerVisualCircles = [];
+
+  const primaryRadiusCircle = L.circle([tracerCoords.lat, tracerCoords.lon], {
+    radius: BASE_RADIUS_KM * 1000, 
+    color: '#ff4d4d',
+    fillColor: '#ff4d4d',
+    fillOpacity: 0.15,
+    weight: 1.5,
+    dashArray: '3, 4',
+    interactive: false
+  }).addTo(map);
+  tracerVisualCircles.push(primaryRadiusCircle);
+
+  let activeReportsToDrawTrails = [];
+
+  function distanceToSegment(p, v, w) {
+    const R = 6371; 
+    const x = p.lon * Math.cos(p.lat * Math.PI / 180);
+    const y = p.lat;
+    const x1 = v.lon * Math.cos(v.lat * Math.PI / 180);
+    const y1 = v.lat;
+    const x2 = w.lon * Math.cos(w.lat * Math.PI / 180);
+    const y2 = w.lat;
+
+    const l2 = (x2 - x1) ** 2 + (y2 - y1) ** 2;
+    if (l2 === 0) {
+      const dLat = (p.lat - v.lat) * Math.PI / 180;
+      const dLon = (p.lon - v.lon) * Math.PI / 180;
+      const a = Math.sin(dLat/2)**2 + Math.cos(v.lat*Math.PI/180) * Math.cos(p.lat*Math.PI/180) * Math.sin(dLon/2)**2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    }
+
+    let tVal = ((x - x1) * (x2 - x1) + (y - y1) * (y2 - y1)) / l2;
+    tVal = Math.max(0, Math.min(1, tVal));
+
+    const closestLat = y1 + tVal * (y2 - y1);
+    const closestLon = (x1 + tVal * (x2 - x1)) / Math.cos(closestLat * Math.PI / 180);
+
+    const dLat = (p.lat - closestLat) * Math.PI / 180;
+    const dLon = (p.lon - closestLon) * Math.PI / 180;
+    const a = Math.sin(dLat/2)**2 + Math.cos(closestLat*Math.PI/180) * Math.cos(p.lat*Math.PI/180) * Math.sin(dLon/2)**2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  }
+
+  const evaluationPromises = globalActiveData.map(async (report, index) => {
+    const trailCoordinates = await renderBackgroundTrailForReport(report);
+    if (!trailCoordinates || trailCoordinates.length < 2) return null;
+
+    let matchFound = false;
+    for (let i = 0; i < trailCoordinates.length - 1; i++) {
+      const p1 = trailCoordinates[i];
+      const p2 = trailCoordinates[i + 1];
+
+      const distanceKM = distanceToSegment(tracerCoords, p1, p2);
+      const maxAllowedDistance = BASE_RADIUS_KM + (DISPERSION_RATE_KM_H * (i + 1) * (6 / trailCoordinates.length));
+
+      if (distanceKM <= maxAllowedDistance) {
+        matchFound = true;
+        
+        const dispersionIndicator = L.circle([p1.lat, p1.lon], {
+          radius: maxAllowedDistance * 1000,
+          color: '#ff8800',
+          fillColor: 'transparent',
+          weight: 1,
+          dashArray: '5, 5',
+          opacity: 0.4,
+          interactive: false
+        }).addTo(map);
+        tracerVisualCircles.push(dispersionIndicator);
+        break; 
+      }
+    }
+
+    if (matchFound) {
+      return { report, index };
+    }
+    return null;
+  });
+
+  const results = await Promise.all(evaluationPromises);
+  results.forEach(res => {
+    if (res) {
+      renderPin(res.report, res.index);
+      activeReportsToDrawTrails.push(res.report);
+    }
+  });
+  
+  generateAllBackgroundTrails(activeReportsToDrawTrails);
+
+  const n = reportMarkers.length;
+  const rcEl = document.getElementById('reportCount');
+  if(rcEl) rcEl.textContent = n + ' ' + (n === 1 ? t('reportCount1') : t('reportCount'));
+}
+
+/* ═══════════════════════════════════════════════════
+   REPORT ACTION
+═══════════════════════════════════════════════════ */
 async function reportBadAir(){
   const coords=pinMode&&manualCoords ? manualCoords : userCoords;
   if(!coords){ alert(t('waitGps')); return; }
@@ -1625,6 +1677,7 @@ async function reportBadAir(){
       wind_direction:c.wind_direction_10m,
       sea_level_pressure:c.pressure_msl
     }]);
+    
     if(error) throw error;
 
     document.getElementById('category').selectedIndex = 0;
@@ -1635,9 +1688,13 @@ async function reportBadAir(){
     alert(t('submitted'));
     clearActivePlacementLayers();
     loadPinsByWindow();
+
   } catch(err){ alert(err.message); }
 }
 
+/* ═══════════════════════════════════════════════════
+   CSV EXPORT
+═══════════════════════════════════════════════════ */
 async function downloadCSV(){
   const data=await fetchAll();
   if(!data.length) return;
@@ -1650,21 +1707,25 @@ async function downloadCSV(){
   const visible=data.filter(r=>{
     if(!bounds.contains(L.latLng(r.latitude,r.longitude))) return false;
     const ts = new Date(r.created_at).getTime();
-    return !(ts < filterStart || ts > filterEnd);
+    if(ts < filterStart || ts > filterEnd) return false;
+    return true;
   });
 
   if(!visible.length){ alert(t('noReports')); return; }
 
   let csv='ID,Date,Latitude,Longitude,Category,Intensity,WindSpeed,WindDirection,Pressure,Comment\n';
   visible.forEach(r=>{
-    csv+=`${r.id},${r.created_at},${r.latitude},${r.longitude},${r.category},${r.intensity||''},${r.wind_speed},${r.wind_direction},${r.sea_level_pressure||''},"${r.comment||''}"\n`;
+    csv+=`${r.id},${r.created_at},${r.latitude},${r.longitude},${r.category},${r.intensity||''},${r.wind_speed},${r.wind_direction},${r.sea_level_pressure},"${r.comment||''}"\n`;
   });
 
   let filename = 'TraceTheToxin.csv';
   if (fp.selectedDates.length === 2) {
     const pad = (n) => String(n).padStart(2, '0');
-    const d1 = fp.selectedDates[0]; const d2 = fp.selectedDates[1];
-    filename = `TraceTheToxin_${pad(d1.getDate())}${pad(d1.getMonth() + 1)}${d1.getFullYear()}_${pad(d2.getDate())}${pad(d2.getMonth() + 1)}${d2.getFullYear()}.csv`;
+    const d1 = fp.selectedDates[0];
+    const d2 = fp.selectedDates[1];
+    const startStr = `${pad(d1.getDate())}${pad(d1.getMonth() + 1)}${d1.getFullYear()}`;
+    const endStr = `${pad(d2.getDate())}${pad(d2.getMonth() + 1)}${d2.getFullYear()}`;
+    filename = `TraceTheToxin_${startStr}_${endStr}.csv`;
   }
 
   const a=document.createElement('a');
@@ -1673,13 +1734,18 @@ async function downloadCSV(){
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
 }
 
-/* ── APP ARRANGEMENT STARTUP ──────────────────────── */
+/* ═══════════════════════════════════════════════════
+   ORCHESTRATION ARCHITECTURE
+═══════════════════════════════════════════════════ */
 initCalendarFilter();
 applyLang(); 
+
 loadPinsByWindow();
 
 setInterval(() => {
-  if (!traceMode) loadPinsByWindow();
+  if (!traceMode) {
+    loadPinsByWindow();
+  }
 }, 60000);
 
 </script>
