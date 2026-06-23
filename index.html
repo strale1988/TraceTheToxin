@@ -1164,31 +1164,49 @@ function buildRawVectorTrail(baseLat, baseLon, steps, pinSpeed = null, pinDir = 
 function computePlumeEnvelopeRing(smoothedSpine, expansionAngleDeg = 12) {
   const leftBoundCoords = [];
   const rightBoundCoords = [];
+  const lastPoint = smoothedSpine[smoothedSpine.length - 1];
 
   smoothedSpine.forEach((point, index) => {
-    if (index === 0) {
-      leftBoundCoords.push([point.lat, point.lon]);
-    } else {
-      const prev = smoothedSpine[index - 1];
-      const dy = point.lat - prev.lat;
-      const dx = (point.lon - prev.lon) * Math.cos(prev.lat * Math.PI / 180);
-      const baseBearingRad = Math.atan2(dx, dy);
-      
-      const progressFactor = index / smoothedSpine.length;
-      const spreadDistanceFactor = 0.012 * progressFactor; 
+    // Calculate the bearing at this specific point to determine width
+    const prev = (index === 0) ? point : smoothedSpine[index - 1];
+    const dy = point.lat - prev.lat;
+    const dx = (point.lon - prev.lon) * Math.cos(point.lat * Math.PI / 180);
+    const baseBearingRad = Math.atan2(dx, dy);
+    
+    const progressFactor = index / smoothedSpine.length;
+    const spreadDistance = 0.012 * progressFactor; 
 
-      const leftLat = point.lat + Math.cos(baseBearingRad - Math.PI/2) * spreadDistanceFactor;
-      const leftLon = point.lon + (Math.sin(baseBearingRad - Math.PI/2) * spreadDistanceFactor) / Math.cos(point.lat * Math.PI / 180);
-      
-      const rightLat = point.lat + Math.cos(baseBearingRad + Math.PI/2) * spreadDistanceFactor;
-      const rightLon = point.lon + (Math.sin(baseBearingRad + Math.PI/2) * spreadDistanceFactor) / Math.cos(point.lat * Math.PI / 180);
+    // Create boundaries
+    const leftLat = point.lat + Math.cos(baseBearingRad - Math.PI/2) * spreadDistance;
+    const leftLon = point.lon + (Math.sin(baseBearingRad - Math.PI/2) * spreadDistance) / Math.cos(point.lat * Math.PI / 180);
+    
+    const rightLat = point.lat + Math.cos(baseBearingRad + Math.PI/2) * spreadDistance;
+    const rightLon = point.lon + (Math.sin(baseBearingRad + Math.PI/2) * spreadDistance) / Math.cos(point.lat * Math.PI / 180);
 
-      leftBoundCoords.push([leftLat, leftLon]);
-      rightBoundCoords.unshift([rightLat, rightLon]);
-    }
+    leftBoundCoords.push([leftLat, leftLon]);
+    rightBoundCoords.unshift([rightLat, rightLon]);
   });
 
-  return leftBoundCoords.concat(rightBoundCoords);
+  // --- ADDING THE SEMI-CIRCLE CAP ---
+  const lastWidth = 0.012; // Matches the max spreadDistance at the end
+  const arcPoints = [];
+  const numArcPoints = 8; // Adjust for smoothness
+  
+  // Calculate angle of the last segment to center the arc
+  const p1 = smoothedSpine[smoothedSpine.length - 2];
+  const p2 = smoothedSpine[smoothedSpine.length - 1];
+  const angle = Math.atan2(p2.lon - p1.lon, p2.lat - p1.lat);
+
+  for (let i = 0; i <= numArcPoints; i++) {
+    // Sweep from -PI/2 to PI/2 relative to the trajectory direction
+    const sweep = (i / numArcPoints) * Math.PI - Math.PI/2;
+    const arcLat = lastPoint.lat + Math.cos(angle + sweep) * lastWidth;
+    const arcLon = lastPoint.lon + Math.sin(angle + sweep) * lastWidth / Math.cos(lastPoint.lat * Math.PI / 180);
+    arcPoints.push([arcLat, arcLon]);
+  }
+
+  // Combine: Left side -> Arc Cap -> Right side
+  return leftBoundCoords.concat(arcPoints, rightBoundCoords);
 }
 
 async function renderBackgroundTrailForReport(report) {
