@@ -1174,7 +1174,7 @@ function computePlumeEnvelopeRing(smoothedSpine, expansionAngleDeg = 12) {
     const baseBearingRad = Math.atan2(dx, dy);
     
     const progressFactor = index / smoothedSpine.length;
-    const spreadDistance = 0.012 * progressFactor; 
+    const spreadDistance = 0.02 * progressFactor; 
 
     // Create boundaries
     const leftLat = point.lat + Math.cos(baseBearingRad - Math.PI/2) * spreadDistance;
@@ -1188,9 +1188,9 @@ function computePlumeEnvelopeRing(smoothedSpine, expansionAngleDeg = 12) {
   });
 
   // --- ADDING THE SEMI-CIRCLE CAP ---
-  const lastWidth = 0.012; // Matches the max spreadDistance at the end
+  const lastWidth = 0.02; // Matches the max spreadDistance at the end
   const arcPoints = [];
-  const numArcPoints = 8; // Adjust for smoothness
+  const numArcPoints = 10; // Adjust for smoothness
   
   // Calculate angle of the last segment to center the arc
   const p1 = smoothedSpine[smoothedSpine.length - 2];
