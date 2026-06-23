@@ -1161,7 +1161,7 @@ function buildRawVectorTrail(baseLat, baseLon, steps, pinSpeed = null, pinDir = 
   return trail;
 }
 
-function computePlumeEnvelopeRing(smoothedSpine, expansionAngleDeg = 12) {
+function computePlumeEnvelopeRing(smoothedSpine, expansionAngleDeg = 6) {
   const leftBoundCoords = [];
   const rightBoundCoords = [];
   const lastPoint = smoothedSpine[smoothedSpine.length - 1];
@@ -1190,7 +1190,7 @@ function computePlumeEnvelopeRing(smoothedSpine, expansionAngleDeg = 12) {
   // --- ADDING THE SEMI-CIRCLE CAP ---
   const lastWidth = 0.02; // Matches the max spreadDistance at the end
   const arcPoints = [];
-  const numArcPoints = 10; // Adjust for smoothness
+  const numArcPoints = 6; // Adjust for smoothness
   
   // Calculate angle of the last segment to center the arc
   const p1 = smoothedSpine[smoothedSpine.length - 2];
