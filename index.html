@@ -11,8 +11,7 @@
   
   <link rel="icon" type="image/png" href="favicon.png">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-  <!-- Flatpickr Calendar Styling -->
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/themes/dark.css">
   <style>
@@ -396,10 +395,6 @@ button{
     <input type="text" id="dateRangePicker" placeholder="Select date range..." readonly>
   </div>
 </div>
-
-
-
-<div id="compassWidget" style="display:none; flex-direction: column; align-items: center; gap: 6px;">
 
 </div>
 
@@ -934,7 +929,7 @@ map.on('click', async (e) => {
       }).addTo(map);
     }
     checkFormReady();
-    await fetchLiveWind(manualCoords.lat, manualCoords.lon);
+    await getWeatherData(manualCoords.lat, manualCoords.lon);
     evaluateActiveNearbyClusters();
     // updateActivePlacementCone(manualCoords.lat, manualCoords.lon);
   }
@@ -960,67 +955,37 @@ map.on('click', async (e) => {
    LIVE WIND SYSTEM
 ═══════════════════════════════════════════════════ */
 /**
- * Unified Wind & Meteorological Data Fetcher
- * Powered entirely by Open-Meteo (Live & Historical)
+ * Consolidated Weather Fetcher
+ * Fetches data from Open-Meteo with built-in timeout and error handling.
  */
-async function fetchLiveWind(lat, lng, datetime = null) {
-  const TIMEOUT_MS = 6000; // 6-second timeout threshold
-
-  // Helper to enforce timeouts on fetch operations
-  async function fetchWithTimeout(resource, options = {}) {
-    const controller = new AbortController();
-    const id = setTimeout(() => controller.abort(), TIMEOUT_MS);
-    try {
-      const response = await fetch(resource, { ...options, signal: controller.signal });
-      clearTimeout(id);
-      return response;
-    } catch (error) {
-      clearTimeout(id);
-      throw error;
-    }
-  }
+async function getWeatherData(lat, lng, datetime = null) {
+  const TIMEOUT_MS = 6000;
+  const isHistorical = datetime && new Date(datetime).getTime() < (Date.now() - 24 * 60 * 60 * 1000);
+  
+  // Construct URL based on endpoint
+  const baseURL = isHistorical ? 'https://archive-api.open-meteo.com/v1/archive' : 'https://api.open-meteo.com/v1/forecast';
+  const queryParams = isHistorical 
+    ? `?latitude=${lat}&longitude=${lng}&start_date=${datetime.split('T')[0]}&end_date=${datetime.split('T')[0]}&hourly=wind_speed_10m,wind_direction_10m,pressure_msl`
+    : `?latitude=${lat}&longitude=${lng}&current=wind_speed_10m,wind_direction_10m,pressure_msl`;
+  
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
   try {
-    let url = "";
-    // Check if data request is older than 24 hours to determine if historical archive is needed
-    const isHistorical = datetime && new Date(datetime).getTime() < (Date.now() - 24 * 60 * 60 * 1000);
+    const response = await fetch(baseURL + queryParams, { signal: controller.signal });
+    clearTimeout(timeoutId);
 
-    if (isHistorical) {
-      console.log(`Querying Open-Meteo Historical Archive API for [${lat}, ${lng}] at ${datetime}...`);
-      const dateString = new Date(datetime).toISOString().split('T')[0];
-      url = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lng}&start_date=${dateString}&end_date=${dateString}&hourly=wind_speed_10m,wind_direction_10m,pressure_msl`;
-    } else {
-      console.log(`Querying Open-Meteo Live Forecast API for current coordinates [${lat}, ${lng}]...`);
-      url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=wind_speed_10m,wind_direction_10m,pressure_msl`;
-    }
-
-    const response = await fetchWithTimeout(url);
-    if (!response.ok) {
-      throw new Error(`Open-Meteo responded with HTTP status ${response.status}`);
-    }
-
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
-    let windSpeed, windDirection, pressure;
 
-    // Parse live vs archive data response layouts
+    // Parse Data
+    let windSpeed, windDirection, pressure;
     if (data.current) {
-      windSpeed = data.current.wind_speed_10m;
-      windDirection = data.current.wind_direction_10m;
-      pressure = data.current.pressure_msl;
-    } else if (data.hourly && data.hourly.wind_speed_10m.length > 0) {
-      // For historical records, extract the observation corresponding to the hour offset or use index 0
-      let hourIndex = 0;
-      if (datetime) {
-        const targetHour = new Date(datetime).getUTCHours();
-        if (data.hourly.time && data.hourly.time.length > targetHour) {
-          hourIndex = targetHour;
-        }
-      }
-      windSpeed = data.hourly.wind_speed_10m[hourIndex];
-      windDirection = data.hourly.wind_direction_10m[hourIndex];
-      pressure = data.hourly.pressure_msl[hourIndex];
-    } else {
-      throw new Error("Open-Meteo payload missing expected data structures.");
+      ({ wind_speed_10m: windSpeed, wind_direction_10m: windDirection, pressure_msl: pressure } = data.current);
+    } else if (data.hourly) {
+      windSpeed = data.hourly.wind_speed_10m[0];
+      windDirection = data.hourly.wind_direction_10m[0];
+      pressure = data.hourly.pressure_msl[0];
     }
 
     return {
@@ -1031,81 +996,16 @@ async function fetchLiveWind(lat, lng, datetime = null) {
     };
 
   } catch (error) {
-    console.error(`Open-Meteo Fetch Failure: ${error.message}`);
-    // Safe UI default fallback structures to keep maps from freezing up
-    return {
-      wind_speed: 0,
-      wind_direction: 0,
-      sea_level_pressure: null,
-      source: "Fallback Safe Default (Offline)"
-    };
-  }
-}
-
-/**
- * Fallback Mechanism: Open-Meteo API
- * Automatically selected if Windy API fails, times out, or hits limits.
- */
-async function fetchOpenMeteoFallback(lat, lng, datetime, fetchWithTimeout) {
-  try {
-    let url = "";
-    const isHistorical = datetime && new Date(datetime).getTime() < (Date.now() - 24 * 60 * 60 * 1000);
-
-    if (isHistorical) {
-      // Historical Archive Endpoint
-      const dateString = new Date(datetime).toISOString().split('T')[0];
-      url = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lng}&start_date=${dateString}&end_date=${dateString}&hourly=wind_speed_10m,wind_direction_10m,pressure_msl`;
-    } else {
-      // Live/Forecast Endpoint
-      url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=wind_speed_10m,wind_direction_10m,pressure_msl`;
-    }
-
-    const response = await fetchWithTimeout(url);
-    if (!response.ok) {
-      throw new Error(`Open-Meteo fallback failed with HTTP status ${response.status}`);
-    }
-
-    const data = await response.json();
-    let windSpeed, windDirection, pressure;
-
-    if (data.current) {
-      windSpeed = data.current.wind_speed_10m;
-      windDirection = data.current.wind_direction_10m;
-      pressure = data.current.pressure_msl;
-    } else if (data.hourly && data.hourly.wind_speed_10m.length > 0) {
-      // Extract the first available observation index from historical hourly arrays
-      windSpeed = data.hourly.wind_speed_10m[0];
-      windDirection = data.hourly.wind_direction_10m[0];
-      pressure = data.hourly.pressure_msl[0];
-    } else {
-      throw new Error("Open-Meteo returned an un-parseable data payload.");
-    }
-
-    console.log("Successfully extracted data from Open-Meteo Fallback.");
-    return {
-      wind_speed: windSpeed ? parseFloat(windSpeed.toFixed(1)) : 0,
-      wind_direction: windDirection ? Math.round(windDirection) : 0,
-      sea_level_pressure: pressure ? parseFloat(pressure.toFixed(1)) : null,
-      source: "Open-Meteo Fallback"
-    };
-
-  } catch (fallbackError) {
-    console.error(`Fallback Weather API also failed: ${fallbackError.message}`);
-    
-    // Return standard, safe default structures instead of throwing to avoid breaking the UI workflow
-    return {
-      wind_speed: 0,
-      wind_direction: 0,
-      sea_level_pressure: null,
-      source: "Failed (Default Values Applied)"
-    };
+    console.error("Weather Fetch Error:", error.message);
+    // Return safe defaults
+    return { wind_speed: 0, wind_direction: 0, sea_level_pressure: null, source: "Offline/Default" };
   }
 }
 
 function triggerWindUpdate() {
   const activeLoc = (pinMode && manualCoords) ? manualCoords : userCoords;
   if(activeLoc) {
-    fetchLiveWind(activeLoc.lat, activeLoc.lon);
+    getWeatherData(activeLoc.lat, activeLoc.lon);
   }
 }
 
