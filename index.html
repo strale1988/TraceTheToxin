@@ -1335,53 +1335,6 @@ async function generateAllBackgroundTrails(reports) {
   await Promise.all(trailPromises);
 }
 
-/* ═══════════════════════════════════════════════════
-   LIVE 6H CONE AND CURVE PLACEMENT INTERACTION
-═══════════════════════════════════════════════════ */
-async function updateActivePlacementCone(lat, lon) {
-  clearActivePlacementLayers();
-  try {
-    const now = new Date();
-    const startTime = new Date(now.getTime() - 6 * 3600000);
-    const hourly = await fetchHistoricWind(lat, lon, startTime.toISOString(), now.toISOString());
-    if (!hourly?.time?.length) return;
-
-    const steps = [];
-    for (let i = hourly.time.length - 1; i >= 0; i--) {
-      const ts = new Date(hourly.time[i]);
-      if (ts >= startTime && ts <= now)
-        steps.push({ spd: hourly.wind_speed_10m[i], dir: hourly.wind_direction_10m[i] });
-    }
-    if (!steps.length) return;
-
-    const rawTrail = buildRawVectorTrail(lat, lon, steps, liveTrackedWindSpeed, liveTrackedWindDir);
-    const curvedSpine = smoothPathChaikin(rawTrail, 3);
-    const plumePolygonRing = computePlumeEnvelopeRing(curvedSpine, 12);
-
-    const cyanPlumeVolume = L.polygon(plumePolygonRing, {
-      color: '#00d0ff',
-      fillColor: '#00d0ff',
-      fillOpacity: 0.10,
-      weight: 1,
-      dashArray: '3, 4',
-      pointerEvents: 'none'
-    }).addTo(map);
-    activePlacementLayers.push(cyanPlumeVolume);
-
-    const latlngs = curvedSpine.map(p => [p.lat, p.lon]);
-    const cyanSpineLine = L.polyline(latlngs, {
-      color: '#00d0ff',
-      weight: 3,
-      opacity: 0.75,
-      dashArray: '6, 6',
-      pointerEvents: 'none'
-    }).addTo(map);
-    activePlacementLayers.push(cyanSpineLine);
-
-  } catch (err) {
-    console.warn('Active placement cone processing error:', err);
-  }
-}
 
 /* ═══════════════════════════════════════════════════
    CROWD VALIDATION & CLUSTERING ENGINE
@@ -1584,10 +1537,47 @@ async function loadPinsByWindow() {
 /* ═══════════════════════════════════════════════════
    HIGH-PRECISION SPLINE SEGMENT INTERCEPT TRACER
 ═══════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════
+   HIGH-PRECISION SPLINE SEGMENT INTERCEPT TRACER
+═══════════════════════════════════════════════════ */
+let activeTraceRequestId = 0;
+
+function distanceToSegment(p, p1, p2) {
+  const R = 6371; // Earth's radius in km
+  const latMid = (p1.lat + p2.lat) / 2 * Math.PI / 180;
+  const cosLat = Math.cos(latMid);
+  
+  const x = p.lon * cosLat;
+  const y = p.lat;
+  const x1 = p1.lon * cosLat;
+  const y1 = p1.lat;
+  const x2 = p2.lon * cosLat;
+  const y2 = p2.lat;
+  
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const l2 = dx * dx + dy * dy;
+  
+  let tVal = 0;
+  if (l2 > 0) {
+    tVal = ((x - x1) * dx + (y - y1) * dy) / l2;
+    tVal = Math.max(0, Math.min(1, tVal));
+  }
+  
+  const closestLat = y1 + tVal * dy;
+  const closestLon = (x1 + tVal * dx) / cosLat;
+  
+  const dLat = (p.lat - closestLat) * Math.PI / 180;
+  const dLon = (p.lon - closestLon) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(closestLat*Math.PI/180) * Math.cos(p.lat*Math.PI/180) * Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
 async function filterPinsBySourceTrajectory(tracerCoords) {
   const BASE_RADIUS_KM = 0.5; 
   const DISPERSION_RATE_KM_H = 1.2; 
-
+  const currentRequestId = ++activeTraceRequestId;
+  
   clearMarkers();
   clearBackgroundTrails();
   
@@ -1607,95 +1597,9 @@ async function filterPinsBySourceTrajectory(tracerCoords) {
 
   let activeReportsToDrawTrails = [];
 
-// Add a global token variable at the top of your <script> to mitigate race conditions
-let activeTraceRequestId = 0;
-
-/**
- * Robust Distance to Segment Projection
- */
-function distanceToSegment(p, p1, p2) {
-  const R = 6371; // Earth's radius in km
-  
-  // 1. Convert to local flat-surface grid coordinates (meters or relative kilometers)
-  const latMid = (p1.lat + p2.lat) / 2 * Math.PI / 180;
-  const cosLat = Math.cos(latMid);
-  
-  const x = p.lon * cosLat;
-  const y = p.lat;
-  
-  const x1 = p1.lon * cosLat;
-  const y1 = p1.lat;
-  
-  const x2 = p2.lon * cosLat;
-  const y2 = p2.lat;
-  
-  // 2. Perform Euclidean Vector Projection
-  const dx = x2 - x1;
-  const dy = y2 - y1;
-  const l2 = dx * dx + dy * dy;
-  
-  let tVal = 0;
-  if (l2 > 0) {
-    tVal = ((x - x1) * dx + (y - y1) * dy) / l2;
-    tVal = Math.max(0, Math.min(1, tVal));
-  }
-  
-  // 3. Reconstruct geodetic point coordinates
-  const closestLat = y1 + tVal * dy;
-  const closestLon = (x1 + tVal * dx) / cosLat;
-  
-  // 4. Calculate final accurate distance using Haversine
-  const dLat = (p.lat - closestLat) * Math.PI / 180;
-  const dLon = (p.lon - closestLon) * Math.PI / 180;
-  const a = Math.sin(dLat/2)**2 + Math.cos(closestLat*Math.PI/180) * Math.cos(p.lat*Math.PI/180) * Math.sin(dLon/2)**2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-}
-
-/**
- * Race-Condition Insulated and Viewport-Preserved Filter
- */
-async function filterPinsBySourceTrajectory(tracerCoords) {
-  // Lock request ID to prevent async overlap collisions
-  const currentRequestId = ++activeTraceRequestId;
-  
-  clearMarkers();
-  clearBackgroundTrails();
-  
-  // Utilize evaluation promises map as before
-  const evaluationPromises = globalActiveData.map(async (report) => {
-    const trailCoordinates = await renderBackgroundTrailForReport(report);
-    if (currentRequestId !== activeTraceRequestId) return null; // Abort out-of-order execution thread
-    
-    if (!trailCoordinates || trailCoordinates.length < 2) return null;
-    
-    let matchFound = false;
-    for (let i = 0; i < trailCoordinates.length - 1; i++) {
-      const distanceKM = distanceToSegment(tracerCoords, trailCoordinates[i], trailCoordinates[i + 1]);
-      if (distanceKM <= 1.5) { // Intercept radius bounds matching
-        matchFound = true;
-        break;
-      }
-    }
-    return matchFound ? report : null;
-  });
-
-  const results = await Promise.all(evaluationPromises);
-  
-  // Guard clause against stale concurrent async responses
-  if (currentRequestId !== activeTraceRequestId) return;
-
-  const validFilteredReports = results.filter(r => r !== null);
-  
-  // Render only the matches to map layers smoothly
-  validFilteredReports.forEach((report, index) => {
-    renderReportMarkerToMap(report, index);
-  });
-  
-  document.getElementById('reportCount').textContent = `${validFilteredReports.length} ${t('reportCount')}`;
-}
-
   const evaluationPromises = globalActiveData.map(async (report, index) => {
     const trailCoordinates = await renderBackgroundTrailForReport(report);
+    if (currentRequestId !== activeTraceRequestId) return null; 
     if (!trailCoordinates || trailCoordinates.length < 2) return null;
 
     let matchFound = false;
@@ -1723,13 +1627,12 @@ async function filterPinsBySourceTrajectory(tracerCoords) {
       }
     }
 
-    if (matchFound) {
-      return { report, index };
-    }
-    return null;
+    return matchFound ? { report, index } : null;
   });
 
   const results = await Promise.all(evaluationPromises);
+  if (currentRequestId !== activeTraceRequestId) return;
+
   results.forEach(res => {
     if (res) {
       renderPin(res.report, res.index);
