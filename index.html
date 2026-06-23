@@ -815,14 +815,10 @@ function startWatching(){
         }).addTo(map);
         if(!pinMode) map.setView([userCoords.lat,userCoords.lon],13);
       } else {
-        userMarker.setLatLng([userCoords.lat,userCoords.lon]);
         updateActivePlacementCone(userCoords.lat, userCoords.lon);
       }
       checkFormReady();
       evaluateActiveNearbyClusters();
-      if (!pinMode) {
-        // updateActivePlacementCone(userCoords.lat, userCoords.lon);
-      }
     },
     err => {
       if(err.code === 1) showGpsModal(); 
