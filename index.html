@@ -708,16 +708,16 @@ function buildHelpModalContent() {
     contentEl.innerHTML = `
       <p style="margin-top:10px;"><b>1. Prijava lošeg vazduha:</b> Izaberite vrstu mirisa i intenzitet na donjem panelu, upišite opcionu napomenu i kliknite na <b>"PRIJAVI LOŠ VAZDUH"</b>. Prijava automatski snima vremenske podatke i smer vetra.</p>
       <p><b>2. Ručno postavljanje lokacije (📍):</b> Ako vam je GPS isključen, aktivirajte narandžastu ikonicu piona u donjem levom uglu i dodirnite mapu da biste ručno postavili tačku prijave.</p>
-      <p><b>3. Praćenje kretanja vetra unazad (Plume Cone):</b> Klikom na bilo koji podneti pion na mapi, sistem iscrtava zakrivljenu, glatku aerodinamičnu putanju i narandžasti konus koji simulira širenje vazduha do 6 sati unazad.</p>
-      <p><b>4. Alat za praćenje izvora (🔍):</b> Uključite crveno dugme sa lupom i kliknite bilo gde na mapi. Sistem će prikazati samo one prijave čije se projektovane linije vetra ukrštaju sa lokacijom koju ste izabrali.</p>
+      <p><b>3. Praćenje kretanja vetra unazad (Plume Cone):</b> Simulira širenje vazduha do 6 sati unazad.</p>
+      <p><b>4. Alat za praćenje izvora (🔍):</b> Uključite dugme sa lupom i kliknite bilo gde na mapi. Sistem će prikazati samo one prijave čije se projektovane linije vetra ukrštaju sa lokacijom koju ste izabrali.</p>
       <p><b>5. Filtriranje i Izvoz:</b> Koristite kalendarski prozor da odaberete opseg datuma, a zatim kliknite na dugme <b>CSV</b> kako biste preuzeli trenutno filtrirane podatke.</p>
     `;
   } else {
     contentEl.innerHTML = `
       <p style="margin-top:10px;"><b>1. Reporting Odors:</b> Select the smell category and intensity on the bottom panel, type optional notes, and press <b>"REPORT BAD AIR"</b>. Submissions automatically log real-time meteorological data.</p>
       <p><b>2. Manual Pin Placement (📍):</b> If your GPS is disabled, toggle the orange pin button on the lower left and tap anywhere on the map to set your report coordinates manually.</p>
-      <p><b>3. Wind Backtracking (Plume Cone):</b> Tap any active map report marker to generate a curved spline line and expanding plume cone envelope, projecting air mass coordinates and trajectory spread dispersion up to 6 hours upwind.</p>
-      <p><b>4. Source Intercept Tracer (🔍):</b> Toggle the red magnifying glass icon and click any point on the map. The view will automatically isolate only the reports whose dynamic upwind dispersion patterns intersect with that chosen location.</p>
+      <p><b>3. Wind Backtracking (Plume Cone):</b> Simalates projected air mass coordinates and trajectory spread dispersion up to 6 hours upwind.</p>
+      <p><b>4. Source Intercept Tracer (🔍):</b> Toggle magnifying glass icon and click any point on the map. The view will automatically isolate only the reports whose dynamic upwind dispersion patterns intersect with that chosen location.</p>
       <p><b>5. Filtering & Exporting:</b> Adjust the calendar input field to focus on specific dates, and tap the <b>CSV</b> button to download visible logs labeled by their chronological ranges.</p>
     `;
   }
