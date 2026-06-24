@@ -617,7 +617,7 @@ async function updateActivePlacementCone(lat, lon) {
   const smoothed = smoothPathChaikin(rawTrail, 2);
 
   // Generate the cone geometry
-  const envelope = computePlumeEnvelopeRing(smoothed, 12);
+  const envelope = computePlumeEnvelopeRing(smoothed, 1);
 
   // Render the cone
   const cone = L.polygon(envelope, {
@@ -1364,7 +1364,7 @@ function computePlumeEnvelopeRing(smoothedSpine, expansionAngleDeg = 6) {
 async function renderBackgroundTrailForReport(report) {
   // Use the report's wind direction and a fixed speed/distance
   const windDeg = parseFloat(report.wind_direction);
-  const distKm = 7.5; // Set your desired fixed length (5-10km)
+  const distKm = 10; // Set your desired fixed length (5-10km)
 
   // Create a simple two-point trail: origin -> target
   const start = { lat: report.latitude, lon: report.longitude };
@@ -1689,8 +1689,8 @@ function distanceToSegment(p, p1, p2) {
 }
 
 async function filterPinsBySourceTrajectory(tracerCoords) {
-  const BASE_RADIUS_KM = 0.5; 
-  const DISPERSION_RATE_KM_H = 1.2; 
+  const BASE_RADIUS_KM = 0.25; 
+  const DISPERSION_RATE_KM_H = 0.5; 
   const currentRequestId = ++activeTraceRequestId;
   
   clearMarkers();
