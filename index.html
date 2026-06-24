@@ -429,19 +429,13 @@ button{
       <option value="10">10 – Overwhelming</option>
     </select>
 
-    <input type="number" 
-       id="manualWind" 
-       placeholder="Wind Dir (0-360)" 
-       min="0" 
-       max="360" 
-       oninput="checkFormReady()" 
-       style="flex:1; padding:11px 10px; border-radius:8px; background:#262626; color:white; border:none;">
-
-    <div class="row">
-    <input type="time" id="reportTime" step="900" 
-         style="flex:1; padding:11px 10px; border-radius:8px; background:#262626; color:white; border:none;">
+<div class="row" style="display: flex; gap: 8px; flex-wrap: wrap;">
+  <input type="time" id="reportTime" step="900" 
+         style="flex: 1 1 140px; padding: 11px; border-radius: 8px; background: #262626; color: white; border: none;">
   
-    </div>
+  <input type="number" id="manualWind" placeholder="Wind Dir (0-360)" min="0" max="360" oninput="checkFormReady()"
+         style="flex: 1 1 140px; padding: 11px; border-radius: 8px; background: #262626; color: white; border: none;">
+</div>
 
   </div>
 
