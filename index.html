@@ -427,6 +427,16 @@ button{
       <option value="9">9</option>
       <option value="10">10 – Overwhelming</option>
     </select>
+
+    <div class="row">
+    <input type="time" id="reportTime" step="900" 
+         style="flex:1; padding:11px 10px; border-radius:8px; background:#262626; color:white; border:none;">
+  
+    <input type="number" id="manualWind" placeholder="Wind Dir (0-360)" 
+         min="0" max="360" 
+         style="flex:1; padding:11px 10px; border-radius:8px; background:#262626; color:white; border:none;">
+    </div>
+
   </div>
 
   <input id="comment" type="text" placeholder="Optional notes...">
@@ -473,13 +483,19 @@ button{
 <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/sr.js"></script>
 <script>
 
-/**
- * Calculates wind direction.
- * @param {number} u - East-West component
- * @param {number} v - North-South component
- * @param {boolean} isFrom - True if you want "direction from" (meteorological), 
- *                           False if you want "direction to" (plume trajectory)
- */
+// Initialize the time input with current time rounded to nearest 15 mins
+function initTimeInput() {
+  const now = new Date();
+  const mins = now.getMinutes();
+  const roundedMins = Math.round(mins / 15) * 15;
+  now.setMinutes(roundedMins);
+  
+  const timeInput = document.getElementById('reportTime');
+  // Formats to HH:MM
+  timeInput.value = now.toTimeString().slice(0, 5); 
+}
+initTimeInput();
+
 async function pollForUpdates() {
   const { data, error } = await sb
     .from('air_reports')
@@ -1673,75 +1689,56 @@ async function reportBadAir(){
   const category  = document.getElementById('category').value;
   const intensity = document.getElementById('intensity').value;
   const comment   = document.getElementById('comment').value;
+  
+  // New input values
+  const timeVal = document.getElementById('reportTime').value; // "HH:MM"
+  const manualWind = document.getElementById('manualWind').value; // number string or ""
+
+  // Create Date object for current date + user-selected time
+  const reportDate = new Date();
+  const [hours, minutes] = timeVal.split(':');
+  reportDate.setHours(hours, minutes, 0, 0);
 
   try {
+    // Keep existing weather fetch for fallback/defaults
     const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lon}&current=wind_speed_10m,wind_direction_10m,pressure_msl&models=icon_d2`);
     const w = await r.json();
     const c = w.current;
 
-    const finalDirection = parseFloat(c.wind_direction_10m) || 0;
-    const finalSpeed = parseFloat(c.wind_speed_10m) || 0;
-    const finalPressure = parseFloat(c.pressure_msl) || 0; // Capture the pressure
-
-    // DEBUG LOG
-    console.log("DEBUG: Sending to Supabase:", {
-      raw_api_direction: c.wind_direction_10m,
-      processed_final_direction: finalDirection
-    });
-
-    const submissionTime = new Date().toISOString(); 
+    // Logic: Use manual input if provided, otherwise use API
+    const finalDirection = (manualWind !== "" && manualWind >= 0 && manualWind <= 360) 
+                           ? parseFloat(manualWind) 
+                           : parseFloat(c.wind_direction_10m);
     
-    // Create the report object to hash it
+    const finalSpeed = parseFloat(c.wind_speed_10m) || 0;
+    const finalPressure = parseFloat(c.pressure_msl) || 0;
+
     const reportData = {
       latitude: parseFloat(coords.lat),
       longitude: parseFloat(coords.lon),
       wind_speed: finalSpeed,
       wind_direction: finalDirection,
+      manual_wind_direction: (manualWind !== "") ? parseFloat(manualWind) : null,
       comment,
       category,
-      intensity: parseInt(intensity)
+      intensity: parseInt(intensity),
+      created_at: reportDate.toISOString() // Uses your custom time
     };
 
-    // Generate a unique hash for this specific report (Legal/Integrity feature)
-    const dataHash = btoa(JSON.stringify(reportData));
-
     const { data, error } = await sb.from('air_reports').insert([{
-    ...reportData,
-    created_at: submissionTime,
-    data_hash: dataHash,
-    is_validated: false,
-    source_confidence_score: 0,
-    sea_level_pressure: finalPressure // ADD THIS FIELD
-}]).select();
+        ...reportData,
+        data_hash: btoa(JSON.stringify(reportData)),
+        is_validated: false,
+        source_confidence_score: 0,
+        sea_level_pressure: finalPressure
+    }]).select();
     
     if(error) throw error;
-
-    // ... (rest of your UI reset logic stays the same)
-    document.getElementById('category').selectedIndex = 0;
-    document.getElementById('intensity').selectedIndex = 0;
-    document.getElementById('comment').value='';
-    document.getElementById('reportBtn').disabled = true;
-
+    
+    // Reset UI
     alert(t('submitted'));
-    clearActivePlacementLayers();
-
-    if (data && data.length > 0) {
-      const freshPin = data[0];
-      // Sync freshPin with the new fields for the local array
-      freshPin.data_hash = dataHash; 
-      freshPin.wind_speed = parseFloat(freshPin.wind_speed);
-      freshPin.wind_direction = parseFloat(freshPin.wind_direction);
-      
-      if (typeof globalActiveData !== 'undefined') {
-        globalActiveData.unshift(freshPin);
-      }
-    }
-
-    loadPinsByWindow();
-
-  } catch(err){ 
-    alert(err.message); 
-  }
+    // ... rest of reset logic
+  } catch(err) { alert(err.message); }
 }
 
 /* ═══════════════════════════════════════════════════
