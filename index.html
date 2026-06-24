@@ -494,19 +494,6 @@ async function pollForUpdates() {
   }
 }
 
-function getWindDegrees(u, v, isFrom = true) {
-  // Math.atan2(u, v) gives the angle relative to the y-axis (North)
-  let deg = (Math.atan2(u, v) * 180 / Math.PI);
-  
-  if (isFrom) {
-    // Meteorological: Wind from direction
-    return (deg + 180 + 360) % 360;
-  } else {
-    // Plume: Wind to direction (add 0 or 360)
-    return (deg + 360) % 360;
-  }
-}
-
 /* ═══════════════════════════════════════════════════
    GLOBAL STATE DECLARATIONS
 ═══════════════════════════════════════════════════ */
@@ -796,6 +783,30 @@ function hideGpsModal(){
 /* ═══════════════════════════════════════════════════
    GPS INIT
 ═══════════════════════════════════════════════════ */
+function enableManualPinMode() {
+  // If not already in pin mode, enable it
+  if (!pinMode) {
+    togglePinMode(); 
+  }
+  
+  // Center map and place the manual pin
+  const center = map.getCenter();
+  manualCoords = { lat: center.lat, lon: center.lng };
+  
+  if (manualMarker) {
+    manualMarker.setLatLng(center);
+  } else {
+    manualMarker = L.marker(center, {
+      icon: L.divIcon({
+        className: '',
+        html: `<div style="width:20px;height:20px;background:#f5a623;border-radius:50%;border:2px solid white;box-shadow:0 3px 8px rgba(0,0,0,0.4)"></div>`,
+        iconAnchor: [10, 10]
+      })
+    }).addTo(map);
+  }
+  checkFormReady();
+}
+
 function checkFormReady(){
   const cat = document.getElementById('category').value;
   const intVal = document.getElementById('intensity').value;
@@ -804,53 +815,49 @@ function checkFormReady(){
   if(btn) btn.disabled = !(cat && intVal && hasLoc);
 }
 
-function startWatching(){
-  navigator.geolocation.watchPosition(
+function startWatching() {
+  navigator.geolocation.getCurrentPosition(
     pos => {
-      userCoords = { lat:pos.coords.latitude, lon:pos.coords.longitude };
+      userCoords = { lat: pos.coords.latitude, lon: pos.coords.longitude };
       hideGpsModal();
-      if(!userMarker){
-        userMarker = L.circleMarker([userCoords.lat,userCoords.lon],{
-          radius:8, color:'#00d0ff', fillColor:'#00d0ff', fillOpacity:.85, weight:2
+      
+      // Only show the user's blue dot if we have a position
+      if (!userMarker) {
+        userMarker = L.circleMarker([userCoords.lat, userCoords.lon], {
+          radius: 8, color: '#00d0ff', fillColor: '#00d0ff', fillOpacity: .85, weight: 2
         }).addTo(map);
-        if(!pinMode) map.setView([userCoords.lat,userCoords.lon],13);
-      } else {
+        map.setView([userCoords.lat, userCoords.lon], 13);
       }
       checkFormReady();
       evaluateActiveNearbyClusters();
     },
     err => {
-      if(err.code === 1) showGpsModal(); 
-      else setTimeout(()=>{ if(!userCoords) showGpsModal(); }, 5000);
+      // If GPS fails, switch to manual mode automatically
+      showGpsModal();
+      enableManualPinMode();
     },
-    { enableHighAccuracy:true, timeout:12000 }
+    { enableHighAccuracy: true, timeout: 12000 }
   );
 }
 
-function initGps(){
-  if(!navigator.geolocation){ showGpsModal(); return; }
-
-  if(navigator.permissions && navigator.permissions.query){
-    navigator.permissions.query({ name:'geolocation' }).then(result=>{
-      if(result.state === 'denied'){
-        showGpsModal();
-      } else {
-        startWatching();
-        if(result.state === 'prompt')
-          setTimeout(()=>{ if(!userCoords) showGpsModal(); }, 9000);
-      }
-      result.onchange = ()=>{
-        if(result.state === 'denied') showGpsModal();
-        else { hideGpsModal(); startWatching(); }
-      };
-    }).catch(()=>{
-      startWatching();
-      setTimeout(()=>{ if(!userCoords) showGpsModal(); }, 10000);
-    });
-  } else {
-    startWatching();
-    setTimeout(()=>{ if(!userCoords) showGpsModal(); }, 10000);
+function initGps() {
+  if (!navigator.geolocation) {
+    enableManualPinMode();
+    return;
   }
+
+  // Check permission state directly
+  navigator.permissions.query({ name: 'geolocation' }).then(result => {
+    if (result.state === 'denied') {
+      showGpsModal();
+      enableManualPinMode();
+    } else {
+      startWatching();
+    }
+  }).catch(() => {
+    // If permissions API not supported, just try to get the position
+    startWatching();
+  });
 }
 
 initGps();
@@ -876,14 +883,32 @@ function clearActivePlacementLayers() {
   activePlacementLayers.forEach(l => map.removeLayer(l));
   activePlacementLayers = [];
 }
-
-function togglePinMode(){
+function togglePinMode() {
   pinMode = !pinMode;
   
   if (pinMode) {
     if (traceMode) toggleTraceMode(); 
-    // Do NOT set manualCoords here. 
-    // Just activate the mode and wait for the click listener.
+    
+    // 1. Get the current center
+    const center = map.getCenter();
+    manualCoords = { lat: center.lat, lon: center.lng };
+    
+    // 2. Pre-place the marker
+    if (manualMarker) {
+      manualMarker.setLatLng(center);
+      manualMarker.addTo(map);
+    } else {
+      manualMarker = L.marker(center, {
+        icon: L.divIcon({
+          className: '',
+          html: `<div style="width:20px;height:20px;background:#f5a623;border-radius:50%;border:2px solid white;box-shadow:0 3px 8px rgba(0,0,0,0.4)"></div>`,
+          iconAnchor: [10, 10]
+        })
+      }).addTo(map);
+    }
+    
+    // 3. Optional: Trigger weather for the center point immediately
+    getWeatherData(center.lat, center.lng);
   }
   
   const btn = document.getElementById('pinMapBtn');
@@ -891,10 +916,12 @@ function togglePinMode(){
   
   if(!pinMode) {
     if(manualMarker){ map.removeLayer(manualMarker); manualMarker = null; }
-    manualCoords = null; // Reset coordinates when exiting mode
+    manualCoords = null; 
     loadPinsByWindow();
   }
+  checkFormReady();
 }
+
 function toggleTraceMode() {
   traceMode = !traceMode;
   if (traceMode) {
@@ -955,17 +982,26 @@ map.on('click', async (e) => {
  * Consolidated Weather Fetcher
  * Fetches data from Open-Meteo with built-in timeout and error handling.
  */
+// Helper to keep the degrees within 0-360 without corrupting the value
+function getProcessedWindDirection(rawDegrees) {
+  if (rawDegrees == null) return 0;
+  return (parseFloat(rawDegrees) % 360 + 360) % 360;
+}
+
 async function getWeatherData(lat, lng, datetime = null) {
   const TIMEOUT_MS = 6000;
+  
   const isHistorical = datetime && new Date(datetime).getTime() < (Date.now() - 24 * 60 * 60 * 1000);
   
-  // Construct URL based on endpoint
-  const baseURL = isHistorical ? 'https://archive-api.open-meteo.com/v1/archive' : 'https://api.open-meteo.com/v1/forecast';
+  const baseURL = isHistorical 
+    ? 'https://archive-api.open-meteo.com/v1/archive' 
+    : 'https://api.open-meteo.com/v1/forecast';
+
   const queryParams = isHistorical 
     ? `?latitude=${lat}&longitude=${lng}&start_date=${datetime.split('T')[0]}&end_date=${datetime.split('T')[0]}&hourly=wind_speed_10m,wind_direction_10m,pressure_msl`
-    : `?latitude=${lat}&longitude=${lng}&current=wind_speed_10m,wind_direction_10m,pressure_msl`;
-  
+    : `?latitude=${lat}&longitude=${lng}&current=wind_speed_10m,wind_direction_10m,pressure_msl&timezone=auto&models=icon_d2`;
   const controller = new AbortController();
+
   const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
   try {
@@ -975,35 +1011,55 @@ async function getWeatherData(lat, lng, datetime = null) {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
 
-    // Parse Data
     let windSpeed, windDirection, pressure;
+    
     if (data.current) {
       ({ wind_speed_10m: windSpeed, wind_direction_10m: windDirection, pressure_msl: pressure } = data.current);
     } else if (data.hourly) {
-      windSpeed = data.hourly.wind_speed_10m[0];
-      windDirection = data.hourly.wind_direction_10m[0];
-      pressure = data.hourly.pressure_msl[0];
+      const hourIndex = datetime ? new Date(datetime).getHours() : 0;
+      windSpeed = data.hourly.wind_speed_10m[hourIndex];
+      windDirection = data.hourly.wind_direction_10m[hourIndex];
+      pressure = data.hourly.pressure_msl[hourIndex];
     }
 
     return {
-      wind_speed: windSpeed ? parseFloat(windSpeed.toFixed(1)) : 0,
-      wind_direction: windDirection ? Math.round(windDirection) : 0,
-      sea_level_pressure: pressure ? parseFloat(pressure.toFixed(1)) : null,
-      source: "Open-Meteo API"
+      wind_speed: windSpeed != null ? parseFloat(windSpeed.toFixed(1)) : 0,
+      // Removed Math.round, kept 2 decimals for precision
+      wind_direction: windDirection != null ? parseFloat(getProcessedWindDirection(windDirection).toFixed(2)) : 0,
+      sea_level_pressure: pressure != null ? parseFloat(pressure.toFixed(1)) : null,
+      source: isHistorical ? "Open-Meteo Archive" : "Open-Meteo Current"
     };
 
   } catch (error) {
     console.error("Weather Fetch Error:", error.message);
-    // Return safe defaults
     return { wind_speed: 0, wind_direction: 0, sea_level_pressure: null, source: "Offline/Default" };
   }
 }
 
-function triggerWindUpdate() {
-  const activeLoc = (pinMode && manualCoords) ? manualCoords : userCoords;
-  if(activeLoc) {
-    getWeatherData(activeLoc.lat, activeLoc.lon);
+async function triggerWindUpdate() {
+  if (typeof manualCoords === 'undefined' || !manualCoords) return;
+  
+  // Fetch new data
+  const weather = await getWeatherData(manualCoords.lat, manualCoords.lon);
+  
+  // Update your global variables or UI here
+  console.log("Updated Wind:", weather);
+  
+  // Example: If you have a global state
+  currentWeatherData = weather;
+  
+  // Update your marker/UI if needed
+  if (typeof updateWindMarker === 'function') {
+    updateWindMarker(weather.wind_direction);
   }
+}
+
+function getProcessedWindDirection(rawDegrees) {
+  if (rawDegrees == null) return 0;
+  
+  // Ensure the value stays within 0-360 range
+  let deg = parseFloat(rawDegrees);
+  return (deg % 360 + 360) % 360;
 }
 
 function startWindWhenReady(){
@@ -1171,7 +1227,7 @@ function computePlumeEnvelopeRing(smoothedSpine, expansionAngleDeg = 6) {
     const baseBearingRad = Math.atan2(dx, dy);
     
     const progressFactor = index / smoothedSpine.length;
-    const spreadDistance = 0.02 * progressFactor; 
+    const spreadDistance = 0.04 * progressFactor; 
 
     // Create boundaries
     const leftLat = point.lat + Math.cos(baseBearingRad - Math.PI/2) * spreadDistance;
@@ -1207,25 +1263,18 @@ function computePlumeEnvelopeRing(smoothedSpine, expansionAngleDeg = 6) {
 }
 
 async function renderBackgroundTrailForReport(report) {
-  try {
-    const reportTime = new Date(report.created_at);
-    const startTime = new Date(reportTime.getTime() - 6 * 3600000); 
-    const hourly = await fetchHistoricWind(report.latitude, report.longitude, startTime.toISOString(), reportTime.toISOString());
-    if (!hourly?.time?.length) return null;
+  // Use the report's wind direction and a fixed speed/distance
+  const windDeg = parseFloat(report.wind_direction);
+  const distKm = 7.5; // Set your desired fixed length (5-10km)
 
-    const steps = [];
-    for (let i = hourly.time.length - 1; i >= 0; i--) {
-      const ts = new Date(hourly.time[i]);
-      if (ts >= startTime && ts <= reportTime)
-        steps.push({ spd: hourly.wind_speed_10m[i], dir: hourly.wind_direction_10m[i] });
-    }
-    if (!steps.length) return null;
+  // Create a simple two-point trail: origin -> target
+  const start = { lat: report.latitude, lon: report.longitude };
+  
+  // Project the point 5km upwind
+  const end = moveUpwind(report.latitude, report.longitude, windDeg, distKm);
 
-    const rawTrail = buildRawVectorTrail(report.latitude, report.longitude, steps, report.wind_speed, report.wind_direction);
-    return smoothPathChaikin(rawTrail, 3);
-  } catch (err) {
-    return null;
-  }
+  // Return as a path array
+  return [start, end];
 }
 
 async function startBacktrack(lat, lon, createdAt) {
@@ -1626,12 +1675,19 @@ async function reportBadAir(){
   const comment   = document.getElementById('comment').value;
 
   try {
-const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lon}&current=wind_speed_10m,wind_direction_10m,pressure_msl`);    const w = await r.json(); 
+    const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lon}&current=wind_speed_10m,wind_direction_10m,pressure_msl&models=icon_d2`);
+    const w = await r.json();
     const c = w.current;
 
-    const finalSpeed = parseFloat(c.wind_speed_10m) || 0;
     const finalDirection = parseFloat(c.wind_direction_10m) || 0;
+    const finalSpeed = parseFloat(c.wind_speed_10m) || 0;
     const finalPressure = parseFloat(c.pressure_msl) || 0; // Capture the pressure
+
+    // DEBUG LOG
+    console.log("DEBUG: Sending to Supabase:", {
+      raw_api_direction: c.wind_direction_10m,
+      processed_final_direction: finalDirection
+    });
 
     const submissionTime = new Date().toISOString(); 
     
