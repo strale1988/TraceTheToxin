@@ -412,6 +412,7 @@ button{
       <option value="Plastic"  data-sr="Plastika">Plastic</option>
       <option value="Dust"     data-sr="Prašina">Dust</option>
       <option value="Unknown"  data-sr="Nepoznato">Unknown</option>
+      
     </select>
 
     <select id="intensity" onchange="checkFormReady()">
@@ -428,13 +429,18 @@ button{
       <option value="10">10 – Overwhelming</option>
     </select>
 
+    <input type="number" 
+       id="manualWind" 
+       placeholder="Wind Dir (0-360)" 
+       min="0" 
+       max="360" 
+       oninput="checkFormReady()" 
+       style="flex:1; padding:11px 10px; border-radius:8px; background:#262626; color:white; border:none;">
+
     <div class="row">
     <input type="time" id="reportTime" step="900" 
          style="flex:1; padding:11px 10px; border-radius:8px; background:#262626; color:white; border:none;">
   
-    <input type="number" id="manualWind" placeholder="Wind Dir (0-360)" 
-         min="0" max="360" 
-         style="flex:1; padding:11px 10px; border-radius:8px; background:#262626; color:white; border:none;">
     </div>
 
   </div>
@@ -823,12 +829,22 @@ function enableManualPinMode() {
   checkFormReady();
 }
 
-function checkFormReady(){
-  const cat = document.getElementById('category').value;
-  const intVal = document.getElementById('intensity').value;
+function checkFormReady() {
+  const category = document.getElementById('category').value;
+  const intensity = document.getElementById('intensity').value;
+  const manualWind = document.getElementById('manualWind').value;
+  
+  // Also check if we have a location (GPS or manual pin)
   const hasLoc = !!(userCoords || manualCoords);
+  
   const btn = document.getElementById('reportBtn');
-  if(btn) btn.disabled = !(cat && intVal && hasLoc);
+  
+  // Logic: All must have values, and manualWind must be a valid number string
+  const isReady = category && intensity && manualWind !== "" && hasLoc;
+  
+  if (btn) {
+    btn.disabled = !isReady;
+  }
 }
 
 function startWatching() {
