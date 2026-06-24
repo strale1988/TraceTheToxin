@@ -388,11 +388,11 @@ button{
   box-shadow:0 2px 10px rgba(0,0,0,.45);
   margin-bottom:4px;
 ">
-  <span class="legend-item"><span class="legend-dot" style="background:#ff1a1a"></span><span class="leg" data-en="&lt;1h"  data-sr="&lt;1h"  style="color:#ddd;font-size:10px;">&lt;1h</span></span>
-  <span class="legend-item"><span class="legend-dot" style="background:#ff6600"></span><span class="leg" data-en="1–2h"  data-sr="1–2h"   style="color:#ddd;font-size:10px;">1–2h</span></span>
-  <span class="legend-item"><span class="legend-dot" style="background:#e09000"></span><span class="leg" data-en="2–6h"  data-sr="2–6h"   style="color:#ddd;font-size:10px;">2–6h</span></span>
-  <span class="legend-item"><span class="legend-dot" style="background:#b4be5c"></span><span class="leg" data-en="6–12h" data-sr="6–12h"  style="color:#ddd;font-size:10px;">6–12h</span></span>
-  <span class="legend-item"><span class="legend-dot" style="background:#5b8e86"></span>   <span class="leg" data-en="12–24h" data-sr="12–24h" style="color:#ddd;font-size:10px;">12–24h</span></span>
+  <span class="legend-item"><span class="legend-dot" style="background:#a32222"></span><span class="leg" data-en="&lt;1h"  data-sr="&lt;1h"  style="color:#ddd;font-size:10px;">&lt;1h</span></span>
+  <span class="legend-item"><span class="legend-dot" style="background:#a33822"></span><span class="leg" data-en="1–2h"  data-sr="1–2h"   style="color:#ddd;font-size:10px;">1–2h</span></span>
+  <span class="legend-item"><span class="legend-dot" style="background:#a34d22"></span><span class="leg" data-en="2–6h"  data-sr="2–6h"   style="color:#ddd;font-size:10px;">2–6h</span></span>
+  <span class="legend-item"><span class="legend-dot" style="background:#a36322"></span><span class="leg" data-en="6–12h" data-sr="6–12h"  style="color:#ddd;font-size:10px;">6–12h</span></span>
+  <span class="legend-item"><span class="legend-dot" style="background:#a37822"></span>   <span class="leg" data-en="12–24h" data-sr="12–24h" style="color:#ddd;font-size:10px;">12–24h</span></span>
   <span class="legend-item"><span class="legend-dot" style="background:#444;border:1px solid #666"></span><span class="leg" data-en="24h+" data-sr="24h+" style="color:#ddd;font-size:10px;">24h+</span></span>
 </div>
 
@@ -1177,12 +1177,12 @@ startWindWhenReady();
 ═══════════════════════════════════════════════════ */
 function ageColor(createdAt){
   const h=(Date.now()-new Date(createdAt))/3600000;
-  if(h<1)   return '#ff1a1a'; 
-  if(h<2)   return '#ff6600'; 
-  if(h<6)   return '#e09000'; 
-  if(h<12)  return '#b4be5c'; 
-  if(h<24)  return '#5b8e86'; 
-  if(h<48)  return '#555555'; 
+  if(h<1)   return '#a32222'; 
+  if(h<2)   return '#a33822'; 
+  if(h<6)   return '#a34d22'; 
+  if(h<12)  return '#a36322'; 
+  if(h<24)  return '#a37822'; 
+  if(h<48)  return '#a1a1a1'; 
   return     '#333333';        
 }
 
@@ -1425,15 +1425,22 @@ async function generateAllBackgroundTrails(reports) {
     const smoothedTrail = await renderBackgroundTrailForReport(report);
     if (!smoothedTrail) return;
 
+    // Calculate age in hours
+    const reportDate = new Date(report.created_at);
+    const hoursOld = (new Date() - reportDate) / (1000 * 60 * 60);
+    
+    // Apply higher transparency if 24h+ old
+    const dynamicOpacity = hoursOld >= 24 ? 0.05 : 0.25;
+
     // Generate the envelope (the "cone" area)
     const envelope = computePlumeEnvelopeRing(smoothedTrail, 12);
 
-    // Render the cone as a polygon instead of a line
+    // Render the cone with dynamic opacity
     const cone = L.polygon(envelope, {
       color: ageColor(report.created_at),
       fillColor: ageColor(report.created_at),
       weight: 1,
-      fillOpacity: 0.2, // Light shading for the cone
+      fillOpacity: dynamicOpacity, // Updated to use dynamic variable
       opacity: 0.4,
       className: 'bg-trail-teal'
     }).addTo(map);
@@ -1591,7 +1598,6 @@ function renderPin(report, index = 0){
     <div class="popup-title">${t('popupTitle')}</div>
     <b>${t('popupCat')}:</b> ${report.category||'Unknown'}${intensity}<br>
     <b>${t('popupDate')}:</b> ${formattedDate}<br>
-    ${formattedUpdated ? `<b>Updated:</b> ${formattedUpdated}<br>` : ''}
     <b>${t('popupWind')}:</b> ${report.wind_speed} km/h<br>
     <b>${t('popupDir')}:</b> ${report.wind_direction}° ${card}<br>
     <b>${t('popupNotes')}:</b> ${report.comment||t('popupNone')}
@@ -1903,7 +1909,6 @@ setInterval(() => {
    href="https://www.windfinder.com/#13/45.2235/19.8118/spot" 
    target="_blank" 
    style="display:none; width:44px; height:44px; background:rgba(20,20,20,.88); border:1px solid #3a3a3a; border-radius:8px; align-items:center; justify-content:center; text-decoration:none; color:white; font-size:20px; box-shadow:0 2px 8px rgba(0,0,0,.55); cursor:pointer; z-index: 1000;">
-   💨
 </a>
 
 </body>
