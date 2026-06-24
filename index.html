@@ -149,6 +149,16 @@ header p{ font-size:11px; opacity:.7; margin-top:2px; }
   align-items: center;
 }
 
+input[type=number]::-webkit-inner-spin-button, 
+input[type=number]::-webkit-outer-spin-button { 
+  -webkit-appearance: none; 
+  margin: 0; 
+}
+
+input[type=number] {
+  -moz-appearance: textfield; /* Firefox support */
+}
+
 .select-wrap {
   display: flex;
   flex-direction: column;
@@ -164,6 +174,7 @@ header p{ font-size:11px; opacity:.7; margin-top:2px; }
   flex-direction:column;
   gap:8px;
   flex-shrink: 0; 
+  
 }
 
 .row{ display:flex; gap:8px; }
@@ -434,10 +445,17 @@ button{
     <input type="time" id="reportTime" step="900" oninput="checkFormReady()"
            style="flex: 1; padding: 11px; border-radius: 8px; background: #262626; color: white; border: none;">
     
-    <input type="number" id="manualWind" placeholder="Wind Dir (0-360)" min="0" max="360" oninput="checkFormReady()"
-           style="flex: 1; padding: 11px; border-radius: 8px; background: #262626; color: white; border: none;">
+<input type="number" 
+       id="manualWind" 
+       placeholder="Wind Dir (0-360)" 
+       min="0" 
+       max="360" 
+       oninput="checkFormReady()"
+       onblur="validateRange(this)"
+       style="flex: 1; padding: 11px; border-radius: 8px; background: #262626; color: white; border: none;">
+
   </div>
-  
+
   <input id="comment" type="text" placeholder="Optional notes...">
 
   <div class="row" style="align-items:stretch;">
@@ -483,6 +501,14 @@ button{
 <script>
 
 // Initialize the time input with current time rounded to nearest 15 mins
+function validateRange(input) {
+  let val = parseFloat(input.value);
+  if (val < 0) input.value = 0;
+  if (val > 360) input.value = 360;
+  if (isNaN(val)) input.value = "";
+  checkFormReady(); // Re-check button state
+}
+
 function initTimeInput() {
   const now = new Date();
   const mins = now.getMinutes();
@@ -825,15 +851,17 @@ function enableManualPinMode() {
 function checkFormReady() {
   const category = document.getElementById('category').value;
   const intensity = document.getElementById('intensity').value;
-  const manualWind = document.getElementById('manualWind').value;
+  const manualWindInput = document.getElementById('manualWind');
+  const manualWind = manualWindInput.value;
   
-  // Also check if we have a location (GPS or manual pin)
   const hasLoc = !!(userCoords || manualCoords);
-  
   const btn = document.getElementById('reportBtn');
-  
-  // Logic: All must have values, and manualWind must be a valid number string
-  const isReady = category && intensity && manualWind !== "" && hasLoc;
+
+  // Parse and validate range
+  const windVal = parseFloat(manualWind);
+  const isWindValid = manualWind !== "" && windVal >= 0 && windVal <= 360;
+
+  const isReady = category && intensity && isWindValid && hasLoc;
   
   if (btn) {
     btn.disabled = !isReady;
