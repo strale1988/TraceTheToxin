@@ -1625,30 +1625,41 @@ async function reportBadAir(){
   const comment   = document.getElementById('comment').value;
 
   try {
-    const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lon}&current=wind_speed_10m,wind_direction_10m`);
-    const w = await r.json(); 
+const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lon}&current=wind_speed_10m,wind_direction_10m,pressure_msl`);    const w = await r.json(); 
     const c = w.current;
 
     const finalSpeed = parseFloat(c.wind_speed_10m) || 0;
     const finalDirection = parseFloat(c.wind_direction_10m) || 0;
-    
-    // FIX: Generate a single unified local timestamp for both the DB and local memory arrays
-    const submissionTime = new Date().toISOString(); 
+    const finalPressure = parseFloat(c.pressure_msl) || 0; // Capture the pressure
 
-    const { data, error } = await sb.from('air_reports').insert([{
-      latitude: parseFloat(coords.lat), 
+    const submissionTime = new Date().toISOString(); 
+    
+    // Create the report object to hash it
+    const reportData = {
+      latitude: parseFloat(coords.lat),
       longitude: parseFloat(coords.lon),
-      category, 
-      intensity: parseInt(intensity), 
-      comment,
       wind_speed: finalSpeed,
       wind_direction: finalDirection,
-      created_at: submissionTime // FORCE Supabase to use this exact synchronized timestamp
-    }]).select();
+      comment,
+      category,
+      intensity: parseInt(intensity)
+    };
+
+    // Generate a unique hash for this specific report (Legal/Integrity feature)
+    const dataHash = btoa(JSON.stringify(reportData));
+
+    const { data, error } = await sb.from('air_reports').insert([{
+    ...reportData,
+    created_at: submissionTime,
+    data_hash: dataHash,
+    is_validated: false,
+    source_confidence_score: 0,
+    sea_level_pressure: finalPressure // ADD THIS FIELD
+}]).select();
     
     if(error) throw error;
 
-    // Reset Form UI Elements
+    // ... (rest of your UI reset logic stays the same)
     document.getElementById('category').selectedIndex = 0;
     document.getElementById('intensity').selectedIndex = 0;
     document.getElementById('comment').value='';
@@ -1659,6 +1670,8 @@ async function reportBadAir(){
 
     if (data && data.length > 0) {
       const freshPin = data[0];
+      // Sync freshPin with the new fields for the local array
+      freshPin.data_hash = dataHash; 
       freshPin.wind_speed = parseFloat(freshPin.wind_speed);
       freshPin.wind_direction = parseFloat(freshPin.wind_direction);
       
@@ -1691,15 +1704,26 @@ function downloadCSV() {
 
   if(!visible.length){ alert(t('noReports')); return; }
 
-  // Create localized timestamp for the file header
   const downloadTimestamp = new Date().toLocaleString(lang === 'sr' ? 'sr-RS' : 'en-US');
 
-  // Insert the download timestamp row right above your columns data matrix
-  let csv = `Report Generated/Downloaded On: ${downloadTimestamp}\n\n`;
-  csv += 'ID,Date,Latitude,Longitude,Category,Intensity,WindSpeed,WindDirection,Comment\n';
-  
+  // UPDATED HEADER: Added ConfidenceScore, DataHash, and IsValidated
+ let csv = `Report Generated/Downloaded On: ${new Date().toLocaleString()}\n\n`;
+  csv += 'ID,Date,Latitude,Longitude,Category,Intensity,WindSpeed,WindDirection,SeaLevelPressure,ConfidenceScore,IsValidated,DataHash,Comment\n';
+  // 2. Explicitly map each field from the report object 'r'
   visible.forEach(r => {
-    csv += `${r.id},${r.created_at},${r.latitude},${r.longitude},${r.category},${r.intensity||''},${r.wind_speed},${r.wind_direction},"${r.comment||''}"\n`;
+    csv += `${r.id},` +
+           `${r.created_at},` +
+           `${r.latitude},` +
+           `${r.longitude},` +
+           `${r.category},` +
+           `${r.intensity || ''},` +
+           `${r.wind_speed || 0},` +
+           `${r.wind_direction || 0},` +
+           `${r.sea_level_pressure || 0},` + // ADD THIS FIELD
+           `${r.source_confidence_score || 0},` +
+           `${!!r.is_validated},` +
+           `"${r.data_hash || ''}",` +
+           `"${(r.comment || '').replace(/"/g, '""')}"\n`;
   });
 
   let filename = 'TraceTheToxin.csv';
