@@ -442,18 +442,14 @@ button{
   </div>
 
   <div style="display: flex; gap: 8px;">
-    <input type="time" id="reportTime" step="900" oninput="checkFormReady()"
-           style="flex: 1; padding: 11px; border-radius: 8px; background: #262626; color: white; border: none;">
+    <select id="reportTime" onchange="checkFormReady()" 
+            style="flex: 1; padding: 11px; border-radius: 8px; background: #262626; color: white; border: none; appearance: none;">
+      <option value="">Time (HH:MM)</option>
+    </select>
     
-<input type="number" 
-       id="manualWind" 
-       placeholder="Wind Dir (0-360)" 
-       min="0" 
-       max="360" 
-       oninput="checkFormReady()"
-       onblur="validateRange(this)"
-       style="flex: 1; padding: 11px; border-radius: 8px; background: #262626; color: white; border: none;">
-
+    <input type="number" id="manualWind" placeholder="Wind Dir (0-360)" min="0" max="360" 
+          oninput="checkFormReady()" onblur="validateRange(this)"
+          style="flex: 1; padding: 11px; border-radius: 8px; background: #262626; color: white; border: none;">
   </div>
 
   <input id="comment" type="text" placeholder="Optional notes...">
@@ -500,14 +496,49 @@ button{
 <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/sr.js"></script>
 <script>
 
-// Initialize the time input with current time rounded to nearest 15 mins
+// 1. Populate Time Dropdown
+function populateTimeOptions() {
+  const select = document.getElementById('reportTime');
+  const intervals = ['00', '15', '30', '45'];
+  for (let h = 0; h < 24; h++) {
+    const hour = String(h).padStart(2, '0');
+    intervals.forEach(min => {
+      const timeVal = `${hour}:${min}`;
+      const opt = document.createElement('option');
+      opt.value = timeVal; opt.textContent = timeVal;
+      select.appendChild(opt);
+    });
+  }
+}
+
+// 2. Validate Wind Input Range
 function validateRange(input) {
   let val = parseFloat(input.value);
-  if (val < 0) input.value = 0;
-  if (val > 360) input.value = 360;
-  if (isNaN(val)) input.value = "";
-  checkFormReady(); // Re-check button state
+  if (isNaN(val)) { input.value = ""; }
+  else {
+    if (val < 0) input.value = 0;
+    if (val > 360) input.value = 360;
+  }
+  checkFormReady();
 }
+
+// 3. Updated checkFormReady
+function checkFormReady() {
+  const category = document.getElementById('category').value;
+  const intensity = document.getElementById('intensity').value;
+  const time = document.getElementById('reportTime').value;
+  const wind = document.getElementById('manualWind').value;
+  const hasLoc = !!(userCoords || manualCoords);
+  
+  const windVal = parseFloat(wind);
+  const isWindValid = wind !== "" && windVal >= 0 && windVal <= 360;
+  
+  const btn = document.getElementById('reportBtn');
+  btn.disabled = !(category && intensity && time && isWindValid && hasLoc);
+}
+
+// Initialize on load
+populateTimeOptions();
 
 function initTimeInput() {
   const now = new Date();
@@ -734,19 +765,19 @@ function buildHelpModalContent() {
   const contentEl = document.getElementById('helpModalContent');
   if (lang === 'sr') {
     contentEl.innerHTML = `
-      <p style="margin-top:10px;"><b>1. Prijava lošeg vazduha:</b> Izaberite vrstu mirisa i intenzitet na donjem panelu, upišite opcionu napomenu i kliknite na <b>"PRIJAVI LOŠ VAZDUH"</b>. Prijava automatski snima vremenske podatke i smer vetra.</p>
-      <p><b>2. Ručno postavljanje lokacije (📍):</b> Ako vam je GPS isključen, aktivirajte narandžastu ikonicu piona u donjem levom uglu i dodirnite mapu da biste ručno postavili tačku prijave.</p>
-      <p><b>3. Praćenje kretanja vetra unazad (Plume Cone):</b> Simulira širenje vazduha do 6 sati unazad.</p>
-      <p><b>4. Alat za praćenje izvora (🔍):</b> Uključite dugme sa lupom i kliknite bilo gde na mapi. Sistem će prikazati samo one prijave čije se projektovane linije vetra ukrštaju sa lokacijom koju ste izabrali.</p>
-      <p><b>5. Filtriranje i Izvoz:</b> Koristite kalendarski prozor da odaberete opseg datuma, a zatim kliknite na dugme <b>CSV</b> kako biste preuzeli trenutno filtrirane podatke.</p>
+      <p style="margin-top:10px;"><b>1. Prijava lošeg vazduha:</b> Izaberite miris, intenzitet, tačno vreme i unesite smer vetra (0-360°). Kliknite na <b>"PRIJAVI LOŠ VAZDUH"</b>.</p>
+      <p><b>2. Ručna lokacija (📍):</b> Ako je GPS isključen, koristite 📍 dugme i kliknite na mapu da postavite lokaciju.</p>
+      <p><b>3. Praćenje izvora (🔍):</b> Uključite lupu i kliknite na mapu da vidite koje prijave se ukrštaju sa tom tačkom.</p>
+      <p><b>4. Windfinder:</b> Koristite ikonicu u donjem desnom uglu da pristupite detaljnom smeru vetra na Windfinder-u koji treba prepisati u polje za smer vetra.</p>
+      <p><b>5. Izvoz:</b> Izaberite vremenski opseg u kalendaru i preuzmite CSV izveštaj.</p>
     `;
   } else {
     contentEl.innerHTML = `
-      <p style="margin-top:10px;"><b>1. Reporting Odors:</b> Select the smell category and intensity on the bottom panel, type optional notes, and press <b>"REPORT BAD AIR"</b>. Submissions automatically log real-time meteorological data.</p>
-      <p><b>2. Manual Pin Placement (📍):</b> If your GPS is disabled, toggle the orange pin button on the lower left and tap anywhere on the map to set your report coordinates manually.</p>
-      <p><b>3. Wind Backtracking (Plume Cone):</b> Simalates projected air mass coordinates and trajectory spread dispersion up to 6 hours upwind.</p>
-      <p><b>4. Source Intercept Tracer (🔍):</b> Toggle magnifying glass icon and click any point on the map. The view will automatically isolate only the reports whose dynamic upwind dispersion patterns intersect with that chosen location.</p>
-      <p><b>5. Filtering & Exporting:</b> Adjust the calendar input field to focus on specific dates, and tap the <b>CSV</b> button to download visible logs labeled by their chronological ranges.</p>
+      <p style="margin-top:10px;"><b>1. Reporting Odors:</b> Select smell, intensity, precise time, and enter wind direction (0-360°). Press <b>"REPORT BAD AIR"</b>.</p>
+      <p><b>2. Manual Pin Placement (📍):</b> If GPS is disabled, toggle 📍 and tap the map to set your location.</p>
+      <p><b>3. Source Tracing (🔍):</b> Toggle the magnifying glass and click the map to isolate reports intersecting that point.</p>
+      <p><b>4. Windfinder:</b> Use the icon in the bottom right to access detailed wind direction on Windfinder which should be copied to the wind direction field.</p>
+      <p><b>5. Export:</b> Use the calendar to select a date range and download your CSV report.</p>
     `;
   }
 }
@@ -782,6 +813,8 @@ function initCalendarFilter(optionalDefaultDates) {
   });
 }
 
+
+
 /* ═══════════════════════════════════════════════════
    MAP
 ═══════════════════════════════════════════════════ */
@@ -796,6 +829,39 @@ let reportMarkers = [];
 let pinMode       = false;
 let manualCoords  = null;
 let manualMarker  = null;
+
+const WindfinderControl = L.Control.extend({
+  options: { position: 'bottomright' },
+onAdd: function(map) {
+    const container = L.DomUtil.create('a', 'leaflet-bar leaflet-control leaflet-control-custom');
+    
+    // Set up the link
+    container.href = 'https://www.windfinder.com/#13/45.2294/19.8276/2026-06-25T00:00Z/spot';
+    container.target = '_blank';
+    
+    // Add the Logo Image
+    // Using a reliable transparent PNG icon
+    container.innerHTML = `<img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAACwklEQVR4AWIYseAiK6DbcoCZHIjieNLp2cZMz7Zt27Zt2wwP4dm2bbPT3d5n2zbedb5o03Sb9eEl/+gl79d5LGlDET7tcrChUE1CETlPOQwij3e67sUVmhRmQJEjaSKDMxWoUcc1r0ZVxijgMAY10U+ng+XipDRF+DIDqiU5O/0GhAdQk1erZeSrdHAK2L1s3aIUkeMMYk5U6QO5YcP8DofT/EIjyhEfBtEVwu8dDhcRGUE5nKSCaUpC5LBD4RJPtlNNmLYoIrMcWG98Wwvi0WaA+QzwpIvdcLdi9UpTRL6bgyR//AaBM1do+jwKkcr2zXeRahVFjsh6ac6MiIKU75KWLwdGj+ZshxeqUUWBe+nBDeUbA7PspGQNPwmzGf6rAKlFORykB2fyGzMXmGUEhWjtAGobvHBVJe04wJIuj7/7FJjFXbunNQFvrYZ7la5VXOQINQ0kV2kF4XsPQ6pohMzQcEh6+R68uo8CWWgFuVlZkJuTA54dh2gsIXLfKjhbmRSR56ZBfPpPhOz4BFBbTkoqxF68xXxmJ4Aict269YrwRdMARtwiD5CbmQkJ959B0OKNeS83VmoG3j3HQMyJS0ALVtdZQviqxXCJI2vUAbz7jofQzfvzgGpf+K6DwMx36DS9LXjRIjg7lyKHsxSBpfKfuBCYZcfFg3vjHrZnwKNYnbIiR0KsgTPRQjUg1eAGzDLDIzXXMVvdFtSdPLQYrNKv2h0hzc0LmOWkprJmVJfgsS5cQsI0y4HakorVhtCN+yDlhwHSfQPY1Jhm4K1u6imHYyyB2C4i66ReOO1MOBM1dwskXujifHieAsw13msHpDdBkcyaWNFRiRM2UVRlipHH3QwFhBpetWrl14QbeNLNgq9PYsFFpYslRI5Tnmxnv1YiL/SR81dpwO6F7X+zCN9lwdmIUBacI1soIjNUwf9P+w1d6+FOXuVcggAAAABJRU5ErkJggg==" 
+                             style="width: 28px; height: 28px; display: block; object-fit: contain;">`;
+    
+    // Styles
+    container.style.backgroundColor = 'rgba(20,20,20,0.88)';
+    container.style.width = '44px';
+    container.style.height = '44px';
+    container.style.display = 'flex';
+    container.style.alignItems = 'center';
+    container.style.justifyContent = 'center';
+    container.style.borderRadius = '8px';
+    container.style.border = '1px solid #3a3a3a';
+    container.style.cursor = 'pointer';
+
+    L.DomEvent.disableClickPropagation(container);
+    return container;
+}
+});
+
+// Add it to your map instance
+map.addControl(new WindfinderControl());
 
 /* ═══════════════════════════════════════════════════
    GPS MODAL
@@ -846,26 +912,6 @@ function enableManualPinMode() {
     }).addTo(map);
   }
   checkFormReady();
-}
-
-function checkFormReady() {
-  const category = document.getElementById('category').value;
-  const intensity = document.getElementById('intensity').value;
-  const manualWindInput = document.getElementById('manualWind');
-  const manualWind = manualWindInput.value;
-  
-  const hasLoc = !!(userCoords || manualCoords);
-  const btn = document.getElementById('reportBtn');
-
-  // Parse and validate range
-  const windVal = parseFloat(manualWind);
-  const isWindValid = manualWind !== "" && windVal >= 0 && windVal <= 360;
-
-  const isReady = category && intensity && isWindValid && hasLoc;
-  
-  if (btn) {
-    btn.disabled = !isReady;
-  }
 }
 
 function startWatching() {
@@ -1852,7 +1898,13 @@ setInterval(() => {
   }
 }, 60000);
 
-
 </script>
+<a id="windfinderBtn" 
+   href="https://www.windfinder.com/#13/45.2294/19.8276/2026-06-25T00:00Z/spot" 
+   target="_blank" 
+   style="display:none; width:44px; height:44px; background:rgba(20,20,20,.88); border:1px solid #3a3a3a; border-radius:8px; align-items:center; justify-content:center; text-decoration:none; color:white; font-size:20px; box-shadow:0 2px 8px rgba(0,0,0,.55); cursor:pointer; z-index: 1000;">
+   💨
+</a>
+
 </body>
 </html>
