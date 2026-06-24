@@ -815,7 +815,6 @@ function startWatching(){
         }).addTo(map);
         if(!pinMode) map.setView([userCoords.lat,userCoords.lon],13);
       } else {
-        updateActivePlacementCone(userCoords.lat, userCoords.lon);
       }
       checkFormReady();
       evaluateActiveNearbyClusters();
@@ -826,7 +825,6 @@ function startWatching(){
     },
     { enableHighAccuracy:true, timeout:12000 }
   );
-  
 }
 
 function initGps(){
@@ -881,16 +879,19 @@ function clearActivePlacementLayers() {
 
 function togglePinMode(){
   pinMode = !pinMode;
+  
   if (pinMode) {
-    if (traceMode) toggleTraceMode(); // Force exit trace mode
+    if (traceMode) toggleTraceMode(); 
+    // Do NOT set manualCoords here. 
+    // Just activate the mode and wait for the click listener.
   }
+  
   const btn = document.getElementById('pinMapBtn');
   btn.classList.toggle('active', pinMode);
   
   if(!pinMode) {
     if(manualMarker){ map.removeLayer(manualMarker); manualMarker = null; }
-    manualCoords = null;
-    clearActivePlacementLayers();
+    manualCoords = null; // Reset coordinates when exiting mode
     loadPinsByWindow();
   }
 }
@@ -925,9 +926,9 @@ map.on('click', async (e) => {
       }).addTo(map);
     }
     checkFormReady();
+    // Only fetch weather AFTER the click
     await getWeatherData(manualCoords.lat, manualCoords.lon);
     evaluateActiveNearbyClusters();
-    // updateActivePlacementCone(manualCoords.lat, manualCoords.lon);
   }
   
   if (traceMode) {
