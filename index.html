@@ -379,16 +379,16 @@ button{
 <div class="panel">
   <div class="row">
     <select id="category" onchange="checkFormReady()">
-      <option value="" disabled selected>Select smell…</option>
-      <option value="Chemical" data-sr="Hemijsko">Chemical</option>
-      <option value="Smoke"    data-sr="Dim">Smoke</option>
-      <option value="Sulfur"   data-sr="Sumpor">Sulfur</option>
-      <option value="Sewage"   data-sr="Kanalizacija">Sewage</option>
-      <option value="Plastic"  data-sr="Plastika">Plastic</option>
-      <option value="Dust"     data-sr="Prašina">Dust</option>
-      <option value="Unknown"  data-sr="Nepoznato">Unknown</option>
-      
-    </select>
+        <option value="" disabled selected>Izaberite miris…</option>
+        <option value="Smoke" data-sr="Dim">Dim</option>
+        <option value="Sewage" data-sr="Kanalizacija">Kanalizacija</option>
+        <option value="Sulfur (rotten egg smell)" data-sr="Sumpor (miris pokvarenih jaja)">Sumpor (miris pokvarenih jaja)</option>
+        <option value="Burnt plastic or rubber" data-sr="Spaljena plastika / guma">Spaljena plastika / guma</option>
+        <option value="Chemical solvents (paint, gasoline, glue, industrial)" data-sr="Hemijski rastvarači (farba, benzin, lepak, industrijske hemikalije)">Hemijski rastvarači (farba, benzin, lepak, industrijske hemikalije)</option>
+        <option value="Waste / Compost / Humidity" data-sr="Otpad / kompost / vlaga">Otpad / kompost / vlaga</option>
+        <option value="Unknown" data-sr="Nepoznato">Nepoznato</option>
+        <option value="Other" data-sr="Ostalo">Ostalo</option>
+      </select>
 
     <select id="intensity" onchange="checkFormReady()">
       <option value="" disabled selected>Intensity…</option>
@@ -656,8 +656,8 @@ function applyLang(){
 
   const catEl = document.getElementById('category');
   const catLabels = lang === 'sr'
-    ? ['Hemijsko','Dim','Sumpor','Kanalizacija','Plastika','Prašina','Nepoznato']
-    : ['Chemical','Smoke','Sulfur','Sewage','Plastic','Dust','Unknown'];
+    ? ['Dim','Kanalizacija','Sumpor (miris pokvarenih jaja)','Spaljena plastika ili guma','Hemijski rastvarači (farba, benzin, lepak, industrijske hemikalije)','Otpad / kompost / vlaga','Nepoznato', 'Ostalo']
+    : ['Smoke','Sewage','Sulfur (rotten egg smell','Burnt plastic or rubber','Chemical solvents (paint, gasoline, glue, industrial)','Waste / Compost / Humidity','Unknown', 'Other'];
   
   Array.from(catEl.options).slice(1).forEach((opt, i) => {
     opt.textContent = catLabels[i];
