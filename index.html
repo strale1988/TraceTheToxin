@@ -886,11 +886,11 @@ initGps();
 ═══════════════════════════════════════════════════ */
 const PinControl = L.Control.extend({
   options:{ position:'bottomleft' },
-  onAdd(){ 
+  onAdd(){
     const btn = document.getElementById('pinMapBtn');
     // Stop the click from traveling through the button to the map canvas
     L.DomEvent.disableClickPropagation(btn);
-    return btn; 
+    return btn;
   }
 });
 new PinControl().addTo(map);
@@ -898,7 +898,12 @@ document.getElementById('pinMapBtn').style.display = 'flex';
 
 const TraceControl = L.Control.extend({
   options:{ position:'bottomleft' },
-  onAdd(){ return document.getElementById('traceSourceBtn'); }
+  onAdd(){
+    const btn = document.getElementById('traceSourceBtn');
+    // CRITICAL FIX: Stop trace toggle click from dropping a point onto the canvas below!
+    L.DomEvent.disableClickPropagation(btn);
+    return btn;
+  }
 });
 new TraceControl().addTo(map);
 document.getElementById('traceSourceBtn').style.display = 'flex';
