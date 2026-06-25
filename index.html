@@ -719,12 +719,14 @@ function initCalendarFilter(optionalDefaultDates) {
     dateFormat: "d.m.Y", 
     locale: lang === 'sr' ? flatpickr.l10ns.sr : 'default',
     defaultDate: initialDates,
-    onClose: function(selectedDates) {
+    onClose: async function(selectedDates) {
       if (selectedDates.length === 2) {
+        // Step 1: Always ensure pins and window state variables update first
+        await loadPinsByWindow();
+        
+        // Step 2: If currently tracing, re-run the trace calculations using the fresh data window
         if (traceMode && tracerMarker) {
           filterPinsBySourceTrajectory(tracerMarker.getLatLng());
-        } else {
-          loadPinsByWindow();
         }
       }
     }
@@ -1594,21 +1596,17 @@ async function filterPinsBySourceTrajectory(tracerCoords) {
   const activeReportsToDrawTrails = [];
   const BASE_RADIUS_KM = 0.5; // Constant baseline radius near the pin origin
 
+  // Checks the entire historical record in globalActiveData completely
   const evaluationPromises = globalActiveData.map(async (report, index) => {
-    const reportTimestamp = new Date(report.created_at).getTime();
-    const filterStart = fp.selectedDates[0];
-    const filterEnd = fp.selectedDates[1];
-    if (reportTimestamp < filterStart.getTime() || reportTimestamp > filterEnd.getTime()) return null;
-
     const startLat = parseFloat(report.latitude);
     const startLon = parseFloat(report.longitude);
     const windDeg = parseFloat(report.wind_direction);
 
-    // Reconstruct the 10km step markers identically to the visual plume paths
+    // Completely aligned with your updated 3-segment mobile optimized layout
     const totalDistKm = 25;
-    const totalSegments = 3;
+    const totalSegments = 3; 
     const stepDistKm = totalDistKm / totalSegments;
-    const expansionAngleDeg = 25; // Synced completely with visual trails spread!
+    const expansionAngleDeg = 25; 
 
     const trailCoordinates = [{ lat: startLat, lon: startLon }];
     for (let i = 1; i <= totalSegments; i++) {
@@ -1622,10 +1620,10 @@ async function filterPinsBySourceTrajectory(tracerCoords) {
       const p1 = trailCoordinates[i];
       const p2 = trailCoordinates[i + 1];
 
-      // Measure the perpendicular distance from the 🔍 tracer click point to this segment
+      // Measure the perpendicular distance from the click point to this segment
       const distanceKM = distanceToSegment(tracerCoords, p1, p2);
 
-      // CRITICAL FIX: The further upwind the segment goes, the wider the acceptable search radius grows
+      // The further upwind the segment goes, the wider the acceptable search radius grows
       const segmentDistanceTravelled = i * stepDistKm;
       const coneExpansionWidth = segmentDistanceTravelled * Math.sin(expansionAngleDeg * Math.PI / 180);
       const dynamicMaxAllowedDistance = BASE_RADIUS_KM + coneExpansionWidth;
@@ -1642,7 +1640,7 @@ async function filterPinsBySourceTrajectory(tracerCoords) {
           dashArray: '5, 5',
           opacity: 0.3,
           interactive: false
-        }).addTo(map);
+        })
         tracerVisualCircles.push(dispersionIndicator);
         break;
       }
