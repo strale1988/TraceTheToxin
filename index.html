@@ -41,35 +41,6 @@ header{
 header h1{ font-size:19px; }
 header p{ font-size:11px; opacity:.7; margin-top:2px; }
 
-/* ── Active Event Banner ──────────────────────────── */
-.alert-banner {
-  background: #ff8800;
-  color: white;
-  padding: 10px 14px;
-  font-size: 13px;
-  font-weight: 600;
-  display: none;
-  justify-content: space-between;
-  align-items: center;
-  gap: 10px;
-  animation: slideDown 0.3s ease-out;
-}
-@keyframes slideDown {
-  from { transform: translateY(-100%); }
-  to { transform: translateY(0); }
-}
-.alert-btn {
-  background: white;
-  color: #ff8800;
-  border: none;
-  padding: 6px 12px;
-  border-radius: 6px;
-  font-weight: bold;
-  font-size: 11px;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
 .right-controls{
   display:flex;
   gap:8px;
@@ -153,10 +124,6 @@ input[type=number]::-webkit-inner-spin-button,
 input[type=number]::-webkit-outer-spin-button { 
   -webkit-appearance: none; 
   margin: 0; 
-}
-
-input[type=number] {
-  -moz-appearance: textfield; /* Firefox support */
 }
 
 .select-wrap {
@@ -366,11 +333,6 @@ button{
   </div>
 </header>
 
-<div id="eventAlertBanner" class="alert-banner">
-  <span id="eventAlertText">An active air issue is reported nearby.</span>
-  <button class="alert-btn" id="eventAlertBtn" onclick="quickVerifyCurrentEvent()">I SMELL IT TOO</button>
-</div>
-
 <div id="map"></div>
 
 <div id="mapLegend" style="display:none;
@@ -552,20 +514,6 @@ function initTimeInput() {
 }
 initTimeInput();
 
-async function pollForUpdates() {
-  const { data, error } = await sb
-    .from('air_reports')
-    .select('*')
-    .gt('updated_at', lastSyncTimestamp) // Get only changed/new rows
-    .order('updated_at', { ascending: false });
-
-  if (data && data.length > 0) {
-    console.log(`Updates found: ${data.length}`);
-    lastSyncTimestamp = data[0].updated_at;
-    loadPinsByWindow(); // Refresh the markers/paths
-  }
-}
-
 /* ═══════════════════════════════════════════════════
    GLOBAL STATE DECLARATIONS
 ═══════════════════════════════════════════════════ */
@@ -602,37 +550,6 @@ let tracerMarker = null;
 let tracerVisualCircles = []; 
 let globalActiveData = [];
 
-
-let activePlacementLayers = [];
-
-async function updateActivePlacementCone(lat, lon) {
-  // Clear previous
-  activePlacementLayers.forEach(l => map.removeLayer(l));
-  activePlacementLayers = [];
-
-  // Generate a simulated path upwind (e.g., 5 steps)
-  // We use liveTrackedWindSpeed/Dir or a default if not fetched yet
-  const steps = Array(5).fill({ spd: liveTrackedWindSpeed || 5, dir: liveTrackedWindDir || 0 });
-  const rawTrail = buildRawVectorTrail(lat, lon, steps);
-  const smoothed = smoothPathChaikin(rawTrail, 2);
-
-  // Generate the cone geometry
-  const envelope = computePlumeEnvelopeRing(smoothed, 1);
-
-  // Render the cone
-  const cone = L.polygon(envelope, {
-    color: '#00d0ff',
-    fillColor: '#00d0ff',
-    weight: 1,
-    fillOpacity: 0.15,
-    interactive: false
-  }).addTo(map);
-
-  activePlacementLayers.push(cone);
-}
-
-
-let targetActiveClusterEvent = null; 
 let fp = null; 
 
 let liveTrackedWindSpeed = 12.0; 
@@ -684,8 +601,6 @@ const T = {
   noReports:    { en:'No reports in current map view.',  sr:'Nema prijava u vidljivoj oblasti.' },
   traceModeOn:  { en:'Tap map to trace source',          sr:'Tapni kartu za praćenje izvora' },
   traceModeOff: { en:'Trace Possible Source',            sr:'Prati potencijalni izvor' },
-  alertText:    { en:'Prijavljen aktivan miris u blizini:',    sr:'Prijavljen aktivan miris u blizini:' },
-  alertBtnText: { en:'I SMELL IT TOO',                   sr:'I JA OSEĆAM' },
   calendarPH:   { en:'Select date range...',            sr:'Izaberi vremenski opseg...' },
   helpTitle:    { en:'How to use TraceTheToxin',         sr:'Kako se koristi TraceTheToxin' },
   helpClose:    { en:'Close',                            sr:'Zatvori' }
@@ -743,7 +658,6 @@ function applyLang(){
   const gm = document.getElementById('gpsModal');
   if(gm && gm.style.display!=='none') updateGpsModalText();
 
-  updateAlertBannerUI();
   buildHelpModalContent();
 }
 
@@ -978,10 +892,6 @@ const TraceControl = L.Control.extend({
 new TraceControl().addTo(map);
 document.getElementById('traceSourceBtn').style.display = 'flex';
 
-function clearActivePlacementLayers() {
-  activePlacementLayers.forEach(l => map.removeLayer(l));
-  activePlacementLayers = [];
-}
 function togglePinMode() {
   pinMode = !pinMode;
   
@@ -1430,7 +1340,7 @@ async function generateAllBackgroundTrails(reports) {
     const hoursOld = (new Date() - reportDate) / (1000 * 60 * 60);
     
     // Apply higher transparency if 24h+ old
-    const dynamicOpacity = hoursOld >= 24 ? 0.05 : 0.25;
+    const dynamicOpacity = hoursOld >= 24 ? 0.015 : 0.25;
 
     // Generate the envelope (the "cone" area)
     const envelope = computePlumeEnvelopeRing(smoothedTrail, 12);
@@ -1457,7 +1367,6 @@ async function generateAllBackgroundTrails(reports) {
 function evaluateActiveNearbyClusters() {
   const currentLoc = pinMode && manualCoords ? manualCoords : userCoords;
   if (!currentLoc || !globalActiveData.length) {
-    hideAlertBanner();
     return;
   }
 
@@ -1474,7 +1383,6 @@ function evaluateActiveNearbyClusters() {
   });
 
   if (!candidateReports.length) {
-    hideAlertBanner();
     return;
   }
 
@@ -1493,80 +1401,8 @@ function evaluateActiveNearbyClusters() {
   }
 
   if (maxCount >= 2) {
-    targetActiveClusterEvent = {
-      category: topCategory,
-      lat: currentLoc.lat,
-      lon: currentLoc.lon
-    };
-    showAlertBanner(topCategory, maxCount);
-  } else {
-    hideAlertBanner();
+    console.log(`Active community cluster detected for category: ${topCategory} (${maxCount} reports)`);
   }
-}
-
-function showAlertBanner(category, count) {
-  const banner = document.getElementById('eventAlertBanner');
-  if (!banner) return;
-  
-  targetActiveClusterEvent.localizedCategoryLabel = category;
-  
-  const mappedOptions = Array.from(document.getElementById('category').options);
-  const matchedOpt = mappedOptions.find(o => o.value === category);
-  if (matchedOpt) {
-    targetActiveClusterEvent.localizedCategoryLabel = matchedOpt.textContent;
-  }
-
-  updateAlertBannerUI();
-  banner.style.display = 'flex';
-}
-
-function hideAlertBanner() {
-  const banner = document.getElementById('eventAlertBanner');
-  if (banner) banner.style.display = 'none';
-  targetActiveClusterEvent = null;
-}
-
-function updateAlertBannerUI() {
-  if (!targetActiveClusterEvent) return;
-  const textEl = document.getElementById('eventAlertText');
-  const btnEl = document.getElementById('eventAlertBtn');
-  
-  if (textEl) {
-    textEl.textContent = `${t('alertText')} "${targetActiveClusterEvent.localizedCategoryLabel}"`;
-  }
-  if (btnEl) {
-    btnEl.textContent = t('alertBtnText');
-  }
-}
-
-async function quickVerifyCurrentEvent() {
-  if (!targetActiveClusterEvent) return;
-  
-  const currentLoc = pinMode && manualCoords ? manualCoords : userCoords;
-  if (!currentLoc) { alert(t('waitGps')); return; }
-
-  try {
-    const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${currentLoc.lat}&longitude=${currentLoc.lon}&current=wind_speed_10m,wind_direction_10m,pressure_msl`);
-    const w = await r.json(); const c = w.current;
-
-    const { error } = await sb.from('air_reports').insert([{
-      latitude: currentLoc.lat, 
-      longitude: currentLoc.lon,
-      category: targetActiveClusterEvent.category, 
-      intensity: 7, 
-      comment: "Quick-verify community report endorsement",
-      wind_speed: c.wind_speed_10m,
-      wind_direction: c.wind_direction_10m,
-      sea_level_pressure: c.pressure_msl
-    }]);
-    
-    if (error) throw error;
-
-    alert(t('submitted'));
-    hideAlertBanner();
-    loadPinsByWindow();
-
-  } catch(err) { alert(err.message); }
 }
 
 /* ═══════════════════════════════════════════════════
@@ -1587,7 +1423,6 @@ function renderPin(report, index = 0){
   };
 
   const formattedDate = formatDate(report.created_at);
-  const formattedUpdated = formatDate(report.updated_at);
   
   const color = ageColor(report.created_at);
   const card  = degToCardinal(report.wind_direction);
@@ -1771,6 +1606,30 @@ async function filterPinsBySourceTrajectory(tracerCoords) {
 /* ═══════════════════════════════════════════════════
    REPORT ACTION
 ═══════════════════════════════════════════════════ */
+function resetReportingForm() {
+  // 1. Reset dropdown select boxes to their default placeholder states
+  const categorySelect = document.getElementById('category');
+  const intensitySelect = document.getElementById('intensity');
+  
+  categorySelect.selectedIndex = 0;
+  intensitySelect.selectedIndex = 0;
+
+  // 2. Clear out the wind direction input field
+  const windInput = document.getElementById('manualWind');
+  windInput.value = "";
+
+  // 3. Clear the optional notes/comments field if any text was entered
+  document.getElementById('comment').value = "";
+
+  // 4. Refresh the time dropdown select input to the current nearest 15 mins
+  initTimeInput();
+
+  // 5. Explicitly lock the report button back to its native disabled state 
+  // until the user fills out the refreshed fields again
+  const btn = document.getElementById('reportBtn');
+  btn.disabled = true;
+}
+
 async function reportBadAir(){
   const coords = pinMode && manualCoords ? manualCoords : userCoords;
   if(!coords){ alert(t('waitGps')); return; }
@@ -1811,23 +1670,29 @@ async function reportBadAir(){
       comment,
       category,
       intensity: parseInt(intensity),
-      created_at: reportDate.toISOString() // Uses your custom time
+      created_at: reportDate.toISOString()
     };
 
-    const { data, error } = await sb.from('air_reports').insert([{
+    // REMOVE .select() from the chain here
+    const { error } = await sb.from('air_reports').insert([{
         ...reportData,
-        data_hash: btoa(JSON.stringify(reportData)),
-        is_validated: false,
-        source_confidence_score: 0,
         sea_level_pressure: finalPressure
-    }]).select();
+    }]);
     
-    if(error) throw error;
+    if (error) throw error;
     
-    // Reset UI
+    // 1. Fire the success alert exactly ONCE
     alert(t('submitted'));
-    // ... rest of reset logic
-  } catch(err) { alert(err.message); }
+    
+    // 2. Run your brand new form cleanup logic
+    resetReportingForm();
+    
+    // 3. Force the map UI to re-render using the updated records
+    await loadPinsByWindow();
+
+  } catch(err) { 
+    alert(err.message); 
+  }
 }
 
 /* ═══════════════════════════════════════════════════
@@ -1851,7 +1716,7 @@ function downloadCSV() {
 
   // UPDATED HEADER: Added ConfidenceScore, DataHash, and IsValidated
  let csv = `Report Generated/Downloaded On: ${new Date().toLocaleString()}\n\n`;
-  csv += 'ID,Date,Latitude,Longitude,Category,Intensity,WindSpeed,WindDirection,SeaLevelPressure,ConfidenceScore,IsValidated,DataHash,Comment\n';
+  csv += 'ID,Date,Latitude,Longitude,Category,Intensity,WindSpeed,WindDirection,SeaLevelPressure,Comment\n';
   // 2. Explicitly map each field from the report object 'r'
   visible.forEach(r => {
     csv += `${r.id},` +
@@ -1863,9 +1728,6 @@ function downloadCSV() {
            `${r.wind_speed || 0},` +
            `${r.wind_direction || 0},` +
            `${r.sea_level_pressure || 0},` + // ADD THIS FIELD
-           `${r.source_confidence_score || 0},` +
-           `${!!r.is_validated},` +
-           `"${r.data_hash || ''}",` +
            `"${(r.comment || '').replace(/"/g, '""')}"\n`;
   });
 
@@ -1894,15 +1756,6 @@ initCalendarFilter();
 applyLang(); 
 
 loadPinsByWindow();
-
-// Check for updates every 60 seconds (60000ms)
-setInterval(() => {
-  // Only poll if we aren't currently in a state where 
-  // it might disrupt the user (e.g., if they are mid-report)
-  if (typeof traceMode === 'undefined' || !traceMode) {
-    pollForUpdates();
-  }
-}, 60000);
 
 </script>
 <a id="windfinderBtn" 
