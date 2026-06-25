@@ -660,7 +660,7 @@ function applyLang(){
 
   const catEl = document.getElementById('category');
   const catLabels = lang === 'sr'
-    ? ['Dim','Kanalizacija','Sumpor (miris pokvarenih jaja)','Spaljena plastika ili guma','Hemijski rastvarači (farba, lepak, ind. hemikalije)','Otpad / kompost / vlaga','Nepoznato', ]
+    ? ['Dim','Kanalizacija','Sumpor (miris pokvarenih jaja)','Spaljena plastika ili guma','Hemijski rastvarači (farba, lepak, ind. hemikalije)','Otpad / kompost / vlaga','Nepoznato', 'Ostalo' ]
     : ['Smoke','Sewage','Sulfur (rotten egg smell)','Burnt plastic or rubber','Chemical solvents (paint, glue, industrial)','Waste / Compost / Humidity','Unknown', 'Other'];
   
   Array.from(catEl.options).slice(1).forEach((opt, i) => {
