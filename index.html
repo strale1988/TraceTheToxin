@@ -1348,10 +1348,10 @@ async function generateAllBackgroundTrails(reports) {
     const startLon = parseFloat(report.longitude);
     const windDeg = parseFloat(report.wind_direction);
     
-    const totalDistKm = 20; // Total plume reach length
+    const totalDistKm = 10; // Total plume reach length
     const totalSegments = 3; 
     const stepDistKm = totalDistKm / totalSegments;
-    const expansionAngleDeg = 20; // Set crisp wedge expansion angle spread
+    const expansionAngleDeg = 15; // Set crisp wedge expansion angle spread
     
     const baseColor = ageColor(report.created_at);
 
@@ -1584,56 +1584,67 @@ function distanceToSegment(p, p1, p2) {
 }
 
 async function filterPinsBySourceTrajectory(tracerCoords) {
-  const BASE_RADIUS_KM = 0.25; 
-  const DISPERSION_RATE_KM_H = 0.5; 
-  const currentRequestId = ++activeTraceRequestId;
-  
+  activeTraceRequestId++;
+  const currentRequestId = activeTraceRequestId;
+
   clearMarkers();
-  clearBackgroundTrails();
-  
   tracerVisualCircles.forEach(c => map.removeLayer(c));
   tracerVisualCircles = [];
 
-  const primaryRadiusCircle = L.circle([tracerCoords.lat, tracerCoords.lon], {
-    radius: BASE_RADIUS_KM * 1000, 
-    color: '#ff4d4d',
-    fillColor: '#ff4d4d',
-    fillOpacity: 0.15,
-    weight: 1.5,
-    dashArray: '3, 4',
-    interactive: false
-  }).addTo(map);
-  tracerVisualCircles.push(primaryRadiusCircle);
-
-  let activeReportsToDrawTrails = [];
+  const activeReportsToDrawTrails = [];
+  const BASE_RADIUS_KM = 0.5; // Constant baseline radius near the pin origin
 
   const evaluationPromises = globalActiveData.map(async (report, index) => {
-    const trailCoordinates = await renderBackgroundTrailForReport(report);
-    if (currentRequestId !== activeTraceRequestId) return null; 
-    if (!trailCoordinates || trailCoordinates.length < 2) return null;
+    const reportTimestamp = new Date(report.created_at).getTime();
+    const filterStart = fp.selectedDates[0];
+    const filterEnd = fp.selectedDates[1];
+    if (reportTimestamp < filterStart.getTime() || reportTimestamp > filterEnd.getTime()) return null;
+
+    const startLat = parseFloat(report.latitude);
+    const startLon = parseFloat(report.longitude);
+    const windDeg = parseFloat(report.wind_direction);
+
+    // Reconstruct the 10km step markers identically to the visual plume paths
+    const totalDistKm = 25;
+    const totalSegments = 3;
+    const stepDistKm = totalDistKm / totalSegments;
+    const expansionAngleDeg = 20; // Synced completely with visual trails spread!
+
+    const trailCoordinates = [{ lat: startLat, lon: startLon }];
+    for (let i = 1; i <= totalSegments; i++) {
+      trailCoordinates.push(moveUpwind(startLat, startLon, windDeg, i * stepDistKm));
+    }
 
     let matchFound = false;
+
+    // Loop through each piece of the spine trail line
     for (let i = 0; i < trailCoordinates.length - 1; i++) {
       const p1 = trailCoordinates[i];
       const p2 = trailCoordinates[i + 1];
 
+      // Measure the perpendicular distance from the 🔍 tracer click point to this segment
       const distanceKM = distanceToSegment(tracerCoords, p1, p2);
-      const maxAllowedDistance = BASE_RADIUS_KM + (DISPERSION_RATE_KM_H * (i + 1) * (6 / trailCoordinates.length));
 
-      if (distanceKM <= maxAllowedDistance) {
+      // CRITICAL FIX: The further upwind the segment goes, the wider the acceptable search radius grows
+      const segmentDistanceTravelled = i * stepDistKm;
+      const coneExpansionWidth = segmentDistanceTravelled * Math.sin(expansionAngleDeg * Math.PI / 180);
+      const dynamicMaxAllowedDistance = BASE_RADIUS_KM + coneExpansionWidth;
+
+      if (distanceKM <= dynamicMaxAllowedDistance) {
         matchFound = true;
         
+        // Render helper diagnostic target halos showing the matched region width
         const dispersionIndicator = L.circle([p1.lat, p1.lon], {
-          radius: maxAllowedDistance * 1000,
+          radius: dynamicMaxAllowedDistance * 1000,
           color: '#ff8800',
           fillColor: 'transparent',
           weight: 1,
           dashArray: '5, 5',
-          opacity: 0.4,
+          opacity: 0.3,
           interactive: false
         }).addTo(map);
         tracerVisualCircles.push(dispersionIndicator);
-        break; 
+        break;
       }
     }
 
@@ -1649,12 +1660,12 @@ async function filterPinsBySourceTrajectory(tracerCoords) {
       activeReportsToDrawTrails.push(res.report);
     }
   });
-  
+
   generateAllBackgroundTrails(activeReportsToDrawTrails);
 
   const n = reportMarkers.length;
   const rcEl = document.getElementById('reportCount');
-  if(rcEl) rcEl.textContent = n + ' ' + (n === 1 ? t('reportCount1') : t('reportCount'));
+  if (rcEl) rcEl.textContent = n + ' ' + (n === 1 ? t('reportCount1') : t('reportCount'));
 }
 
 /* ═══════════════════════════════════════════════════
