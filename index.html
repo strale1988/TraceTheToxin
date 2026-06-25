@@ -1608,7 +1608,7 @@ async function filterPinsBySourceTrajectory(tracerCoords) {
     const totalDistKm = 25;
     const totalSegments = 3;
     const stepDistKm = totalDistKm / totalSegments;
-    const expansionAngleDeg = 20; // Synced completely with visual trails spread!
+    const expansionAngleDeg = 25; // Synced completely with visual trails spread!
 
     const trailCoordinates = [{ lat: startLat, lon: startLon }];
     for (let i = 1; i <= totalSegments; i++) {
