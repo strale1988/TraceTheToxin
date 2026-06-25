@@ -989,8 +989,27 @@ function toggleTraceMode() {
 }
 
 map.on('click', async function(e) {
+
   if (pinMode) {
-    // Your existing manual pin logic here...
+
+    manualCoords = {
+      lat: e.latlng.lat,
+      lon: e.latlng.lng
+    };
+
+    if (manualMarker) {
+      manualMarker.setLatLng(e.latlng);
+    } else {
+      manualMarker = L.marker(e.latlng, {
+        icon: L.divIcon({
+          className: '',
+          html: `<div style="width:20px;height:20px;background:#f5a623;border-radius:50%;border:2px solid white;box-shadow:0 3px 8px rgba(0,0,0,.4)"></div>`,
+          iconAnchor: [10,10]
+        })
+      }).addTo(map);
+    }
+
+    checkFormReady();
     return;
   }
   
