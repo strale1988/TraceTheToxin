@@ -1283,7 +1283,7 @@ function computePlumeEnvelopeRing(smoothedSpine, expansionAngleDeg = 6) {
 async function renderBackgroundTrailForReport(report) {
   // Use the report's wind direction and a fixed speed/distance
   const windDeg = parseFloat(report.wind_direction);
-  const distKm = 10; // Set your desired fixed length (5-10km)
+  const distKm = 15;
 
   // Create a simple two-point trail: origin -> target
   const start = { lat: report.latitude, lon: report.longitude };
@@ -1338,34 +1338,79 @@ function clearBackgroundTrails() {
 
 async function generateAllBackgroundTrails(reports) {
   clearBackgroundTrails();
-  if (!reports || !reports.length) return;
 
-  const trailPromises = reports.map(async (report) => {
-    const smoothedTrail = await renderBackgroundTrailForReport(report);
-    if (!smoothedTrail) return;
+  // Create a shallow copy and sort it so that older reports are drawn first, 
+  // and the newest reports are drawn LAST (putting them on top visually)
+  const sortedReports = [...reports].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
 
-    // Calculate age in hours
-    const reportDate = new Date(report.created_at);
-    const hoursOld = (new Date() - reportDate) / (1000 * 60 * 60);
+  const trailPromises = sortedReports.map(async (report) => {
+    const startLat = parseFloat(report.latitude);
+    const startLon = parseFloat(report.longitude);
+    const windDeg = parseFloat(report.wind_direction);
     
-    // Apply higher transparency if 24h+ old
-    const dynamicOpacity = hoursOld >= 24 ? 0.015 : 0.25;
+    const totalDistKm = 15; // Total plume reach length
+    const totalSegments = 5; 
+    const stepDistKm = totalDistKm / totalSegments;
+    const expansionAngleDeg = 15; // Set crisp wedge expansion angle spread
+    
+    const baseColor = ageColor(report.created_at);
 
-    // Generate the envelope (the "cone" area)
-    const envelope = computePlumeEnvelopeRing(smoothedTrail, 12);
+    // Calculate the general opposite upwind heading angle in radians
+    const upwindBearingRad = ((windDeg + 180) % 360) * Math.PI / 180;
 
-    // Render the cone with dynamic opacity
-    const cone = L.polygon(envelope, {
-      color: ageColor(report.created_at),
-      fillColor: ageColor(report.created_at),
-      weight: 1,
-      fillOpacity: dynamicOpacity, // Updated to use dynamic variable
-      opacity: 0.4,
-      className: 'bg-trail-teal'
-    }).addTo(map);
+    for (let i = 0; i < totalSegments; i++) {
+      const currentSegmentDistStart = i * stepDistKm;
+      const currentSegmentDistEnd = (i + 1) * stepDistKm;
 
-    bgTrailLayers.push(cone);
+      const pStart = moveUpwind(startLat, startLon, windDeg, currentSegmentDistStart);
+      const pEnd = moveUpwind(startLat, startLon, windDeg, currentSegmentDistEnd);
+
+      const widthStart = currentSegmentDistStart * Math.sin(expansionAngleDeg * Math.PI / 180);
+      const widthEnd = currentSegmentDistEnd * Math.sin(expansionAngleDeg * Math.PI / 180);
+
+      const leftAngle = upwindBearingRad - Math.PI / 2;
+      const rightAngle = upwindBearingRad + Math.PI / 2;
+
+      const cosStartLat = Math.cos(pStart.lat * Math.PI / 180);
+      const cosEndLat = Math.cos(pEnd.lat * Math.PI / 180);
+
+      const pStartLeftLat = pStart.lat + (Math.cos(leftAngle) * widthStart) / 111.32;
+      const pStartLeftLon = pStart.lon + (Math.sin(leftAngle) * widthStart) / (111.32 * cosStartLat);
+
+      const pStartRightLat = pStart.lat + (Math.cos(rightAngle) * widthStart) / 111.32;
+      const pStartRightLon = pStart.lon + (Math.sin(rightAngle) * widthStart) / (111.32 * cosStartLat);
+
+      const pEndLeftLat = pEnd.lat + (Math.cos(leftAngle) * widthEnd) / 111.32;
+      const pEndLeftLon = pEnd.lon + (Math.sin(leftAngle) * widthEnd) / (111.32 * cosEndLat);
+
+      const pEndRightLat = pEnd.lat + (Math.cos(rightAngle) * widthEnd) / 111.32;
+      const pEndRightLon = pEnd.lon + (Math.sin(rightAngle) * widthEnd) / (111.32 * cosEndLat);
+
+      const segmentEnvelope = [
+        [pStartLeftLat, pStartLeftLon],
+        [pEndLeftLat, pEndLeftLon],
+        [pEndRightLat, pEndRightLon],
+        [pStartRightLat, pStartRightLon]
+      ];
+
+      const segmentFactor = i / totalSegments; 
+      const segmentFillOpacity = 0.35 * (1.0 - segmentFactor); 
+      const segmentStrokeOpacity = 0.15 * (1.0 - segmentFactor);
+
+      const coneSegment = L.polygon(segmentEnvelope, {
+        color: baseColor,
+        fillColor: baseColor,
+        weight: 1,
+        fillOpacity: segmentFillOpacity,
+        opacity: segmentStrokeOpacity,
+        className: 'bg-trail-teal',
+        interactive: false
+      }).addTo(map);
+
+      bgTrailLayers.push(coneSegment);
+    }
   });
+
   await Promise.all(trailPromises);
 }
 
