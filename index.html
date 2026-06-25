@@ -354,8 +354,10 @@ button{
   <span class="legend-item"><span class="legend-dot" style="background:#a33822"></span><span class="leg" data-en="1–2h"  data-sr="1–2h"   style="color:#ddd;font-size:10px;">1–2h</span></span>
   <span class="legend-item"><span class="legend-dot" style="background:#a34d22"></span><span class="leg" data-en="2–6h"  data-sr="2–6h"   style="color:#ddd;font-size:10px;">2–6h</span></span>
   <span class="legend-item"><span class="legend-dot" style="background:#a36322"></span><span class="leg" data-en="6–12h" data-sr="6–12h"  style="color:#ddd;font-size:10px;">6–12h</span></span>
-  <span class="legend-item"><span class="legend-dot" style="background:#a37822"></span>   <span class="leg" data-en="12–24h" data-sr="12–24h" style="color:#ddd;font-size:10px;">12–24h</span></span>
-  <span class="legend-item"><span class="legend-dot" style="background:#444;border:1px solid #666"></span><span class="leg" data-en="24h+" data-sr="24h+" style="color:#ddd;font-size:10px;">24h+</span></span>
+  <span class="legend-item"><span class="legend-dot" style="background:#a37822"></span><span class="leg" data-en="12–24h" data-sr="12–24h" style="color:#ddd;font-size:10px;">12–24h</span></span>
+  <span class="legend-item"><span class="legend-dot" style="background:#9f8a5f"></span><span class="leg" data-en="24-48h" data-sr="24-48h" style="color:#ddd;font-size:10px;">24-48h</span></span>
+  <span class="legend-item"><span class="legend-dot" style="background:#333333"></span><span class="leg" data-en="48+h" data-sr="48h+" style="color:#ddd;font-size:10px;">48h+</span></span>
+
 </div>
 
 <div class="filter-label-row">
@@ -1120,7 +1122,7 @@ function ageColor(createdAt){
   if(h<6)   return '#a34d22'; 
   if(h<12)  return '#a36322'; 
   if(h<24)  return '#a37822'; 
-  if(h<48)  return '#a1a1a1'; 
+  if(h<48)  return '#9f8a5f';
   return     '#333333';        
 }
 
