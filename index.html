@@ -458,6 +458,7 @@ button{
 <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/sr.js"></script>
 <script>
 
+
 // 1. Populate Time Dropdown
 function populateTimeOptions() {
   const select = document.getElementById('reportTime');
@@ -602,8 +603,17 @@ const T = {
   traceModeOn:  { en:'Tap map to trace source',          sr:'Tapni kartu za praćenje izvora' },
   traceModeOff: { en:'Trace Possible Source',            sr:'Prati potencijalni izvor' },
   calendarPH:   { en:'Select date range...',            sr:'Izaberi vremenski opseg...' },
-  helpTitle:    { en:'How to use TraceTheToxin',         sr:'Kako se koristi TraceTheToxin' },
-  helpClose:    { en:'Close',                            sr:'Zatvori' }
+helpTitle:    { en:'How to use TraceTheToxin',         sr:'Kako se koristi TraceTheToxin' },
+  helpClose:    { en:'Close',                            sr:'Zatvori' },
+  // ADD THESE STRINGS HERE:
+  helpStep1:    { en:'1. Report Bad Air:',               sr:'1. Prijava lošeg vazduha:' },
+  helpStep1Body:{ en:'Select the smell type and its intensity from the dropdown options.', sr:'Izaberite vrstu mirisa i njegov intenzitet iz padajućih menija.' },
+  helpStep2:    { en:'2. Set Your Location:',            sr:'2. Odredite vašu lokaciju:' },
+  helpStep2Body:{ en:'Ensure your device GPS is turned on, or tap the manual pin button (📍) to manually drop a point anywhere on the map grid.', sr:'Proverite da li je GPS uključen, ili pritisnite dugme za ručnu lokaciju (📍) da sami postavite tačku bilo gde na mapi.' },
+  helpStep3:    { en:'3. Enter Wind Direction:',         sr:'3. Unesite smer vetra:' },
+  helpStep3Body:{ en:'Click the Windfinder icon in the bottom right corner. On their website map, click directly on your current location, read the wind direction degree value (0-360°), and type it back into this application.', sr:'Kliknite na ikonicu Windfinder u donjem desnom uglu. Na mapi na njihovom sajtu kliknite na vašu lokaciju, pročitajte vrednost smera vetra u stepenima (0-360°) i upišite je u polje u ovoj aplikaciji.' },
+  helpStep4:    { en:'4. Submit:',                       sr:'4. Pošalji:' },
+  helpStep4Body:{ en:'Verify the recorded time reflects when you noticed the odor, and tap the "REPORT BAD AIR" button.', sr:'Proverite da li izabrano vreme odgovara trenutku kada ste primetili miris, a zatim pritisnite dugme "PRIJAVI LOŠ VAZDUH".' }
 };
 
 function t(k){ return T[k]?.[lang] ?? k; }
@@ -677,23 +687,17 @@ function buildHelpModalContent() {
   document.getElementById('helpModalBtn').textContent = t('helpClose');
 
   const contentEl = document.getElementById('helpModalContent');
-  if (lang === 'sr') {
-    contentEl.innerHTML = `
-      <p style="margin-top:10px;"><b>1. Prijava lošeg vazduha:</b> Izaberite miris, intenzitet, tačno vreme i unesite smer vetra (0-360°). Kliknite na <b>"PRIJAVI LOŠ VAZDUH"</b>.</p>
-      <p><b>2. Ručna lokacija (📍):</b> Ako je GPS isključen, koristite 📍 dugme i kliknite na mapu da postavite lokaciju.</p>
-      <p><b>3. Praćenje izvora (🔍):</b> Uključite lupu i kliknite na mapu da vidite koje prijave se ukrštaju sa tom tačkom.</p>
-      <p><b>4. Windfinder:</b> Koristite ikonicu u donjem desnom uglu da pristupite detaljnom smeru vetra na Windfinder-u koji treba prepisati u polje za smer vetra.</p>
-      <p><b>5. Izvoz:</b> Izaberite vremenski opseg u kalendaru i preuzmite CSV izveštaj.</p>
-    `;
-  } else {
-    contentEl.innerHTML = `
-      <p style="margin-top:10px;"><b>1. Reporting Odors:</b> Select smell, intensity, precise time, and enter wind direction (0-360°). Press <b>"REPORT BAD AIR"</b>.</p>
-      <p><b>2. Manual Pin Placement (📍):</b> If GPS is disabled, toggle 📍 and tap the map to set your location.</p>
-      <p><b>3. Source Tracing (🔍):</b> Toggle the magnifying glass and click the map to isolate reports intersecting that point.</p>
-      <p><b>4. Windfinder:</b> Use the icon in the bottom right to access detailed wind direction on Windfinder which should be copied to the wind direction field.</p>
-      <p><b>5. Export:</b> Use the calendar to select a date range and download your CSV report.</p>
-    `;
-  }
+  
+  contentEl.innerHTML = `
+    <div style="text-align: left; font-size: 13px; line-height: 1.6; display: flex; flex-direction: column; gap: 12px; margin-top: 10px;">
+      <p><strong>${t('helpStep1')}</strong> ${t('helpStep1Body')}</p>
+      <p><strong>${t('helpStep2')}</strong> ${t('helpStep2Body')}</p>
+      <div style="background: rgba(245, 166, 35, 0.1); border-left: 3px solid #f5a623; padding: 10px 12px; border-radius: 4px;">
+        <strong>${t('helpStep3')}</strong> ${t('helpStep3Body')}
+      </div>
+      <p><strong>${t('helpStep4')}</strong> ${t('helpStep4Body')}</p>
+    </div>
+  `;
 }
 
 /* ═══════════════════════════════════════════════════
@@ -880,7 +884,12 @@ initGps();
 ═══════════════════════════════════════════════════ */
 const PinControl = L.Control.extend({
   options:{ position:'bottomleft' },
-  onAdd(){ return document.getElementById('pinMapBtn'); }
+  onAdd(){ 
+    const btn = document.getElementById('pinMapBtn');
+    // Stop the click from traveling through the button to the map canvas
+    L.DomEvent.disableClickPropagation(btn);
+    return btn; 
+  }
 });
 new PinControl().addTo(map);
 document.getElementById('pinMapBtn').style.display = 'flex';
@@ -1754,7 +1763,7 @@ function downloadCSV() {
 ═══════════════════════════════════════════════════ */
 initCalendarFilter();
 applyLang(); 
-
+showHelpModal();
 loadPinsByWindow();
 
 </script>
