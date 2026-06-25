@@ -1349,9 +1349,9 @@ async function generateAllBackgroundTrails(reports) {
     const windDeg = parseFloat(report.wind_direction);
     
     const totalDistKm = 15; // Total plume reach length
-    const totalSegments = 5; 
+    const totalSegments = 3; 
     const stepDistKm = totalDistKm / totalSegments;
-    const expansionAngleDeg = 15; // Set crisp wedge expansion angle spread
+    const expansionAngleDeg = 20; // Set crisp wedge expansion angle spread
     
     const baseColor = ageColor(report.created_at);
 
