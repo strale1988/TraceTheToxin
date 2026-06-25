@@ -145,7 +145,11 @@ input[type=number]::-webkit-outer-spin-button {
 }
 
 .row{ display:flex; gap:8px; }
-
+/* Stack Category and Intensity vertically */
+.panel .row:first-child {
+  flex-direction: column;
+  gap: 8px; /* Maintains the spacing between them */
+}
 select{
   flex:1;
   padding:11px 10px;
