@@ -838,6 +838,13 @@ function initCalendarFilter(optionalDefaultDates) {
    MAP
 ═══════════════════════════════════════════════════ */
 const map = L.map('map').setView([45.25,19.85],11);
+map.createPane('conePane');
+map.getPane('conePane').style.zIndex = 390; // below splinePane
+map.getPane('conePane').style.pointerEvents = 'none';
+map.createPane('splinePane');
+map.getPane('splinePane').style.zIndex = 450;
+map.getPane('splinePane').style.pointerEvents = 'none';
+
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
   attribution:'© OpenStreetMap'
 }).addTo(map);
@@ -1328,8 +1335,16 @@ function moveUpwind(lat,lon,windFromDeg,distKm){
 }
 
 async function fetchHistoricWind(lat,lon,isoStart,isoEnd){
-  const cacheKey = `${lat.toFixed(3)}_${lon.toFixed(3)}_${isoStart.slice(0,13)}`;
-  if(weatherCache[cacheKey]) return weatherCache[cacheKey];
+const cacheKey = `${lat.toFixed(3)}_${lon.toFixed(3)}_${isoStart.slice(0,13)}`;
+const reportAgeHours = (Date.now() - new Date(isoStart).getTime()) / 3600000;
+
+// Skip spline entirely for reports newer than 6 hours
+if (reportAgeHours < 6) return null;
+
+// For archive data (>7 days), cache permanently — it never changes
+// For recent data (6h–7d), cache is valid for the session since we only
+// enter this branch once the report is old enough to have settled data
+if (weatherCache[cacheKey]) return weatherCache[cacheKey];
 
   const daysDiff=(Date.now()-new Date(isoStart))/86400000;
   let url = '';
@@ -1422,11 +1437,38 @@ async function renderBackgroundTrailForReport(report) {
   // Create a simple two-point trail: origin -> target
   const start = { lat: report.latitude, lon: report.longitude };
   
-  // Project the point 5km upwind
+  // Project the point upwind
   const end = moveUpwind(report.latitude, report.longitude, windDeg, distKm);
 
   // Return as a path array
   return [start, end];
+}
+
+// Fetches 6 hours of historical wind data and builds a smoothed Chaikin spline trail
+async function renderHistoricSplineTrailForReport(report) {
+  // Do not draw spline for reports newer than 6 hours
+  const reportAgeHours = (Date.now() - new Date(report.created_at).getTime()) / 3600000;
+  if (reportAgeHours < 6) return null;
+
+  try {
+    const reportTime = new Date(report.created_at);
+    const startTime = new Date(reportTime.getTime() - 6 * 3600000);
+    const hourly = await fetchHistoricWind(report.latitude, report.longitude, startTime.toISOString(), reportTime.toISOString());
+    if (!hourly?.time?.length) return null;
+
+    const steps = [];
+    for (let i = hourly.time.length - 1; i >= 0; i--) {
+      const ts = new Date(hourly.time[i]);
+      if (ts >= startTime && ts <= reportTime)
+        steps.push({ spd: hourly.wind_speed_10m[i], dir: hourly.wind_direction_10m[i] });
+    }
+    if (!steps.length) return null;
+
+    const rawTrail = buildRawVectorTrail(report.latitude, report.longitude, steps, report.wind_speed, report.wind_direction);
+    return smoothPathChaikin(rawTrail, 3);
+  } catch (err) {
+    return null;
+  }
 }
 
 async function startBacktrack(lat, lon, createdAt) {
@@ -1477,19 +1519,18 @@ async function generateAllBackgroundTrails(reports) {
   // and the newest reports are drawn LAST (putting them on top visually)
   const sortedReports = [...reports].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
 
-  const trailPromises = sortedReports.map(async (report) => {
+  // PASS 1: Draw all solid cones synchronously (no API calls needed)
+  sortedReports.forEach((report) => {
     const startLat = parseFloat(report.latitude);
     const startLon = parseFloat(report.longitude);
     const windDeg = parseFloat(report.wind_direction);
-    
-    const totalDistKm = 10; // Total plume reach length
-    const totalSegments = 3; 
-    const stepDistKm = totalDistKm / totalSegments;
-    const expansionAngleDeg = 15; // Set crisp wedge expansion angle spread
-    
-    const baseColor = ageColor(report.created_at);
 
-    // Calculate the general opposite upwind heading angle in radians
+    const totalDistKm = 10;
+    const totalSegments = 3;
+    const stepDistKm = totalDistKm / totalSegments;
+    const expansionAngleDeg = 15;
+
+    const baseColor = ageColor(report.created_at);
     const upwindBearingRad = ((windDeg + 180) % 360) * Math.PI / 180;
 
     for (let i = 0; i < totalSegments; i++) {
@@ -1510,13 +1551,10 @@ async function generateAllBackgroundTrails(reports) {
 
       const pStartLeftLat = pStart.lat + (Math.cos(leftAngle) * widthStart) / 111.32;
       const pStartLeftLon = pStart.lon + (Math.sin(leftAngle) * widthStart) / (111.32 * cosStartLat);
-
       const pStartRightLat = pStart.lat + (Math.cos(rightAngle) * widthStart) / 111.32;
       const pStartRightLon = pStart.lon + (Math.sin(rightAngle) * widthStart) / (111.32 * cosStartLat);
-
       const pEndLeftLat = pEnd.lat + (Math.cos(leftAngle) * widthEnd) / 111.32;
       const pEndLeftLon = pEnd.lon + (Math.sin(leftAngle) * widthEnd) / (111.32 * cosEndLat);
-
       const pEndRightLat = pEnd.lat + (Math.cos(rightAngle) * widthEnd) / 111.32;
       const pEndRightLon = pEnd.lon + (Math.sin(rightAngle) * widthEnd) / (111.32 * cosEndLat);
 
@@ -1527,8 +1565,8 @@ async function generateAllBackgroundTrails(reports) {
         [pStartRightLat, pStartRightLon]
       ];
 
-      const segmentFactor = i / totalSegments; 
-      const segmentFillOpacity = 0.35 * (1.0 - segmentFactor); 
+      const segmentFactor = i / totalSegments;
+      const segmentFillOpacity = 0.35 * (1.0 - segmentFactor);
       const segmentStrokeOpacity = 0.15 * (1.0 - segmentFactor);
 
       const coneSegment = L.polygon(segmentEnvelope, {
@@ -1538,14 +1576,36 @@ async function generateAllBackgroundTrails(reports) {
         fillOpacity: segmentFillOpacity,
         opacity: segmentStrokeOpacity,
         className: 'bg-trail-teal',
-        interactive: false
+        interactive: false,
+        pane: 'conePane'
       }).addTo(map);
 
       bgTrailLayers.push(coneSegment);
     }
   });
 
-  await Promise.all(trailPromises);
+  // PASS 2: Fetch historic splines async and draw all dotted lines on top of all cones
+  const splinePromises = sortedReports.map(async (report) => {
+    const baseColor = ageColor(report.created_at);
+    const smoothedTrail = await renderHistoricSplineTrailForReport(report);
+    if (!smoothedTrail || smoothedTrail.length < 2) return;
+
+    const splineLatLngs = smoothedTrail.map(p => [p.lat, p.lon]);
+    const dottedSpline = L.polyline(splineLatLngs, {
+      color: baseColor,
+      weight: 2,
+      opacity: 0.75,
+      dashArray: '4, 7',
+      lineCap: 'round',
+      lineJoin: 'round',
+      className: 'bg-trail-teal',
+      interactive: false,
+      pane: 'splinePane'   // ← add this
+    }).addTo(map);
+    bgTrailLayers.push(dottedSpline);
+  });
+
+  await Promise.all(splinePromises);
 }
 
 
