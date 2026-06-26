@@ -360,7 +360,7 @@ button{
   <span class="legend-item"><span class="legend-dot" style="background:#a36322"></span><span class="leg" data-en="6–12h" data-sr="6–12h"  style="color:#ddd;font-size:10px;">6–12h</span></span>
   <span class="legend-item"><span class="legend-dot" style="background:#a37822"></span><span class="leg" data-en="12–24h" data-sr="12–24h" style="color:#ddd;font-size:10px;">12–24h</span></span>
   <span class="legend-item"><span class="legend-dot" style="background:#9f8a5f"></span><span class="leg" data-en="24-48h" data-sr="24-48h" style="color:#ddd;font-size:10px;">24-48h</span></span>
-  <span class="legend-item"><span class="legend-dot" style="background:#333333"></span><span class="leg" data-en="48+h" data-sr="48h+" style="color:#ddd;font-size:10px;">48h+</span></span>
+  <span class="legend-item"><span class="legend-dot" style="background:#333333"></span><span class="leg" data-en="48h+" data-sr="48h+" style="color:#ddd;font-size:10px;">48h+</span></span>
 
 </div>
 
@@ -388,8 +388,8 @@ button{
         <option value="Sewage" data-sr="Kanalizacija">Kanalizacija</option>
         <option value="Sulfur" data-sr="Sumpor">Sumpor (miris pokvarenih jaja)</option>
         <option value="Burnt plastic or rubber" data-sr="Spaljena plastika / guma">Spaljena plastika / guma</option>
-        <option value="Chemical" data-sr="Hemijsko">Hemijski rastvarači (farba, benzin, lepak, industrijske hemikalije)</option>
-        <option value="Waste" data-sr="Otpad">Otpad / kompost / vlaga</option>
+        <option value="Chemical solvents (paint, fuel, glue, industrial chemicals)" data-sr="Hemijski rastvarači (farba, benzin, lepak, industrijske hemikalije)">Hemijski rastvarači (farba, benzin, lepak, industrijske hemikalije)</option>
+        <option value="Waste / Trash / Garbage" data-sr="Otpad / kompost / vlaga">Otpad / kompost / vlaga</option>
         <option value="Unknown" data-sr="Nepoznato">Nepoznato</option>
         <option value="Other" data-sr="Ostalo">Ostalo</option>
       </select>
@@ -415,10 +415,14 @@ button{
       <option value="">Time (HH:MM)</option>
     </select>
     
-    <input type="number" id="manualWind" placeholder="Wind Dir (0-360)" min="0" max="360" 
+    <input type="number" id="manualWind" placeholder="Smer vetra (0-360)" min="0" max="360" 
           oninput="checkFormReady()" onblur="validateRange(this)"
           style="flex: 1; padding: 11px; border-radius: 8px; background: #262626; color: white; border: none;">
-  </div>
+
+          <input type="number" id="duration" placeholder="Trajanje (1-24h)" min="1" max="24" 
+         oninput="checkFormReady()" 
+         style="flex: 1; padding: 11px; border-radius: 8px; background: #262626; color: white; border: none;">
+   </div>
 
   <input id="comment" type="text" placeholder="Optional notes...">
 
@@ -455,6 +459,7 @@ button{
     <button class="generic-modal-close" onclick="hideHelpModal()" id="helpModalBtn" style="margin-top:14px;">Close</button>
   </div>
 </div>
+
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
@@ -493,6 +498,7 @@ function validateRange(input) {
 
 // 3. Updated checkFormReady
 function checkFormReady() {
+  const duration = document.getElementById('duration').value;
   const category = document.getElementById('category').value;
   const intensity = document.getElementById('intensity').value;
   const time = document.getElementById('reportTime').value;
@@ -584,6 +590,7 @@ const T = {
   legendLabel:  { en:'Age:',                             sr:'Starost:' },
   commentPH:    { en:'Optional notes...',                sr:'Opciona napomena...' },
   waitGps:      { en:'Waiting for GPS...',               sr:'Čekanje GPS-a...' },
+  
   submitted:    { en:'Report submitted.',                sr:'Prijava uspešna.' },
   popupTitle:   { en:'Air Report',                       sr:'Prijava vazduha' },
   popupCat:     { en:'Category',                         sr:'Kategorija' },
@@ -594,6 +601,9 @@ const T = {
   popupPres:    { en:'Pressure',                         sr:'Pritisak' },
   popupNotes:   { en:'Notes',                            sr:'Napomena' },
   popupNone:    { en:'None',                             sr:'Nema' },
+  popupDuration: { en: 'Duration',                      sr: 'Trajanje' },
+
+  hours:         { en: 'h',                         sr: 'h' },
   possSource:   { en:'⚠ Possible sources',               sr:'⚠ Mogući izvori' },
   backtrack:    { en:'backtrack',                        sr:'unazad' },
   timeFilter:   { en:'Time Window Filter',               sr:'Filter vremenskog prozora' },
@@ -609,9 +619,8 @@ const T = {
   traceModeOn:  { en:'Tap map to trace source',          sr:'Tapni kartu za praćenje izvora' },
   traceModeOff: { en:'Trace Possible Source',            sr:'Prati potencijalni izvor' },
   calendarPH:   { en:'Select date range...',            sr:'Izaberi vremenski opseg...' },
-helpTitle:    { en:'How to use TraceTheToxin',         sr:'Kako se koristi TraceTheToxin' },
+  helpTitle:    { en:'How to use TraceTheToxin',         sr:'Kako se koristi TraceTheToxin' },
   helpClose:    { en:'Close',                            sr:'Zatvori' },
-  // ADD THESE STRINGS HERE:
   helpStep1:    { en:'1. Report Bad Air:',               sr:'1. Prijava lošeg vazduha:' },
   helpStep1Body:{ en:'Select the smell type and its intensity from the dropdown options.', sr:'Izaberite vrstu mirisa i njegov intenzitet iz padajućih menija.' },
   helpStep2:    { en:'2. Set Your Location:',            sr:'2. Odredite vašu lokaciju:' },
@@ -619,7 +628,9 @@ helpTitle:    { en:'How to use TraceTheToxin',         sr:'Kako se koristi Trace
   helpStep3:    { en:'3. Enter Wind Direction:',         sr:'3. Unesite smer vetra:' },
   helpStep3Body:{ en:'Click the Windfinder icon in the bottom right corner. On their website map, click directly on your current location, read the wind direction degree value (0-360°), and type it back into this application.', sr:'Kliknite na ikonicu Windfinder u donjem desnom uglu. Na mapi na njihovom sajtu kliknite na vašu lokaciju, pročitajte vrednost smera vetra u stepenima (0-360°) i upišite je u polje u ovoj aplikaciji.' },
   helpStep4:    { en:'4. Submit:',                       sr:'4. Pošalji:' },
-  helpStep4Body:{ en:'Verify the recorded time reflects when you noticed the odor, and tap the "REPORT BAD AIR" button.', sr:'Proverite da li izabrano vreme odgovara trenutku kada ste primetili miris, a zatim pritisnite dugme "PRIJAVI LOŠ VAZDUH".' }
+  helpStep4Body:{ en:'Verify the recorded time reflects when you noticed the odor, and tap the "REPORT BAD AIR" button.', sr:'Proverite da li izabrano vreme odgovara trenutku kada ste primetili miris, a zatim pritisnite dugme "PRIJAVI LOŠ VAZDUH".' },
+  windDirPH:    { en:'Wind Dir (0-360)', sr:'Smer vetra (0-360)' },
+  durationPH:   { en:'Duration (1-24h)', sr:'Trajanje (1-24h)' }
 };
 
 function t(k){ return T[k]?.[lang] ?? k; }
@@ -635,10 +646,12 @@ function setLang(l){
     const savedDates = fp.selectedDates;
     fp.destroy();
     initCalendarFilter(savedDates);
+    loadPinsByWindow();
   }
 }
 
 function applyLang(){
+
   document.getElementById('subtitle').textContent         = t('subtitle');
   document.getElementById('reportBtnLabel').textContent   = t('reportBtn');
   document.getElementById('csvLabel').textContent         = t('csvLabel');
@@ -648,6 +661,8 @@ function applyLang(){
 
   document.getElementById('category').options[0].text  = t('catPH');
   document.getElementById('intensity').options[0].text = t('intPH');
+  document.getElementById('manualWind').placeholder = t('windDirPH');
+  document.getElementById('duration').placeholder   = t('durationPH');
 
   const intSel = document.getElementById('intensity');
   const intensityLabels = lang === 'sr'
@@ -714,7 +729,7 @@ function initCalendarFilter(optionalDefaultDates) {
   
   if (!initialDates || initialDates.length === 0) {
     const defaultStart = new Date();
-    defaultStart.setDate(defaultStart.getDate() - 7); 
+    defaultStart.setDate(defaultStart.getDate() - 3); 
     const defaultEnd = new Date();
     initialDates = [defaultStart, defaultEnd];
   }
@@ -1103,9 +1118,6 @@ async function triggerWindUpdate() {
   
   // Fetch new data
   const weather = await getWeatherData(manualCoords.lat, manualCoords.lon);
-  
-  // Update your global variables or UI here
-  console.log("Updated Wind:", weather);
   
   // Example: If you have a global state
   currentWeatherData = weather;
@@ -1510,6 +1522,29 @@ function clearMarkers(){
   reportMarkers.forEach(m=>map.removeLayer(m));
   reportMarkers=[];
 }
+function translateCategory(category) {
+  const srToEn = {
+    "Dim": "Smoke",
+    "Kanalizacija": "Sewage",
+    "Sumpor": "Sulfur",
+    "Spaljena plastika / guma": "Burnt plastic or rubber",
+    "Hemijski rastvarači (farba, benzin, lepak, industrijske hemikalije)":
+      "Chemical solvents (paint, fuel, glue, industrial chemicals)",
+    "Otpad / kompost / vlaga": "Waste / Trash / Garbage",
+    "Nepoznato": "Unknown",
+    "Ostalo": "Other"
+  };
+
+  const enToSr = Object.fromEntries(
+    Object.entries(srToEn).map(([sr, en]) => [en, sr])
+  );
+
+  return lang === 'en'
+    ? (srToEn[category] || category)
+    : (enToSr[category] || category);
+
+  return map[category] || category;
+}
 
 function renderPin(report, index = 0){ 
   // Helper to format dates consistently
@@ -1529,12 +1564,14 @@ function renderPin(report, index = 0){
 
   const popupHtml=`<div class="popup-inner">
     <div class="popup-title">${t('popupTitle')}</div>
-    <b>${t('popupCat')}:</b> ${report.category||'Unknown'}
-    <b>${t('popupInt')}:</b> ${report.intensity}<br>
-    <b>${t('popupDate')}:</b> ${formattedDate}<br>
-    <b>${t('popupDir')}:</b> ${report.wind_direction}° ${card}<br>
-    <b>${t('popupNotes')}:</b> ${report.comment||t('popupNone')}
+    <div><b>${t('popupCat')}:</b> ${translateCategory(report.category)}</div>
+    <div><b>${t('popupInt')}:</b> ${report.intensity}</div>
+    <div><b>${t('popupDuration')}:</b> ${report.duration || 1} ${t('hours')}</div>
+    <div><b>${t('popupDate')}:</b> ${formattedDate}<br></div>
+    <div><b>${t('popupDir')}:</b> ${report.wind_direction}° ${card}<br></div>
+    <div><b>${t('popupNotes')}:</b> ${report.comment||t('popupNone')}</div>
   </div>`;
+  
 
   const zIndexPriority = 10000 - index;
   const marker=L.marker([report.latitude,report.longitude],{
@@ -1542,7 +1579,7 @@ function renderPin(report, index = 0){
     zIndexOffset: zIndexPriority 
   }).addTo(map);
 
-  marker.bindPopup(popupHtml,{ maxWidth:250, minWidth:200 });
+  marker.bindPopup(popupHtml);
 marker.on('popupopen', () => startBacktrack(report.latitude, report.longitude, new Date().toISOString()));
   reportMarkers.push(marker);
 }
@@ -1723,9 +1760,18 @@ function resetReportingForm() {
   const windInput = document.getElementById('manualWind');
   windInput.value = "";
 
-  // 3. Clear the optional notes/comments field if any text was entered
   document.getElementById('comment').value = "";
 
+  const durationInput = document.getElementById('duration');
+  if (durationInput) {
+    // If it's a dropdown, use selectIndex = 0. If it's a number/text input, use = ""
+    if (durationInput.tagName === 'SELECT') {
+      durationInput.selectedIndex = 0;
+    } else {
+      durationInput.value = "";
+    }
+  }
+  
   // 4. Refresh the time dropdown select input to the current nearest 15 mins
   initTimeInput();
 
@@ -1742,7 +1788,9 @@ async function reportBadAir(){
   const category  = document.getElementById('category').value;
   const intensity = document.getElementById('intensity').value;
   const comment   = document.getElementById('comment').value;
-  
+  const durationInput = document.getElementById('duration').value;
+  const durationValue = durationInput && durationInput !== "" ? parseInt(durationInput) : 1;
+
   // New input values
   const timeVal = document.getElementById('reportTime').value; // "HH:MM"
   const manualWind = document.getElementById('manualWind').value; // number string or ""
@@ -1775,6 +1823,7 @@ async function reportBadAir(){
       comment,
       category,
       intensity: parseInt(intensity),
+      duration: durationValue,
       created_at: reportDate.toISOString()
     };
 
