@@ -317,6 +317,84 @@ button{
   filter: drop-shadow(0px 3px 5px rgba(0,0,0,0.45));
 }
 .pin-active { border: 2px solid #f5a623 !important; }
+
+/* ==========================================================================
+   FLATPICKR CUSTOM THEME OVERRIDES
+   ========================================================================== */
+.flatpickr-calendar {
+  background: #181818 !important;
+  border: 1px solid #333 !important;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6) !important;
+  border-radius: 12px !important;
+  font-family: inherit !important;
+}
+
+/* Header styling (Month & Year selectors) */
+.flatpickr-months .flatpickr-month,
+.flatpickr-months .flatpickr-prev-month, 
+.flatpickr-months .flatpickr-next-month {
+  color: #fff !important;
+  fill: #fff !important;
+}
+.flatpickr-months .flatpickr-prev-month:hover, 
+.flatpickr-months .flatpickr-next-month:hover {
+  background: #262626 !important;
+}
+.flatpickr-current-month .numInputWrapper span.arrowUp:after { border-bottom-color: #fff !important; }
+.flatpickr-current-month .numInputWrapper span.arrowDown:after { border-top-color: #fff !important; }
+
+/* Weekday column headers */
+span.flatpickr-weekday {
+  background: #181818 !important;
+  color: #888 !important;
+  font-weight: bold !important;
+}
+
+.flatpickr-day:hover, 
+.flatpickr-day.prevMonthDay:hover, 
+.flatpickr-day.nextMonthDay:hover {
+  background: #262626 !important;
+  border-color: #262626 !important;
+  color: #fff !important;
+}
+
+/* Days outside the current month scope */
+.flatpickr-day.prevMonthDay, 
+.flatpickr-day.nextMonthDay {
+  color: #444 !important;
+}
+
+/* Selected active range styling (Matching your app's main Teal accent) */
+.flatpickr-day.selected, 
+.flatpickr-day.startRange, 
+.flatpickr-day.endRange, 
+.flatpickr-day.selected.inRange, 
+.flatpickr-day.startRange.inRange, 
+.flatpickr-day.endRange.inRange, 
+.flatpickr-day.selected:focus, 
+.flatpickr-day.startRange:focus, 
+.flatpickr-day.endRange:focus, 
+.flatpickr-day.selected:hover, 
+.flatpickr-day.startRange:hover, 
+.flatpickr-day.endRange:hover {
+  background: #00a7b5 !important;
+  border-color: #00a7b5 !important;
+  color: white !important;
+}
+
+/* Between-dates range highlighting */
+.flatpickr-day.inRange,
+.flatpickr-day.prevMonthDay.inRange, 
+.flatpickr-day.nextMonthDay.inRange, 
+.flatpickr-day.today.inRange, 
+.flatpickr-day.prevMonthDay.today.inRange, 
+.flatpickr-day.nextMonthDay.today.inRange {
+  background: #00a7b5 !important;
+  border-color: transparent !important;
+  border-radius: 0 !important;
+}
+
+
 </style>
 </head>
 <body>
@@ -729,7 +807,7 @@ function initCalendarFilter(optionalDefaultDates) {
   
   if (!initialDates || initialDates.length === 0) {
     const defaultStart = new Date();
-    defaultStart.setDate(defaultStart.getDate() - 3); 
+    defaultStart.setDate(defaultStart.getDate() - 2); 
     const defaultEnd = new Date();
     initialDates = [defaultStart, defaultEnd];
   }
