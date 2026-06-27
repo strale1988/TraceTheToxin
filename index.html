@@ -959,7 +959,7 @@ function startWatching() {
     err => {
       // If GPS fails, switch to manual mode automatically
       showGpsModal();
-      enableManualPinMode();
+      //enableManualPinMode();
     },
     { enableHighAccuracy: true, timeout: 12000 }
   );
@@ -1116,7 +1116,6 @@ map.on('click', async function(e) {
   if (traceMode) {
     const tracerCoords = { lat: e.latlng.lat, lon: e.latlng.lng };
     
-    // Clear previous trace indicators before writing new ones
     tracerVisualCircles.forEach(c => map.removeLayer(c));
     tracerVisualCircles = [];
     
@@ -1213,14 +1212,6 @@ async function triggerWindUpdate() {
   }
 }
 
-function getProcessedWindDirection(rawDegrees) {
-  if (rawDegrees == null) return 0;
-  
-  // Ensure the value stays within 0-360 range
-  let deg = parseFloat(rawDegrees);
-  return (deg % 360 + 360) % 360;
-}
-
 function startWindWhenReady(){
   const activeLoc = (pinMode && manualCoords) ? manualCoords : userCoords;
   if(activeLoc){
@@ -1250,6 +1241,11 @@ function degToCardinal(deg){
   return ['N','NE','E','SE','S','SW','W','NW'][Math.round(deg/45)%8];
 }
 
+/* ═══════════════════════════════════════════════════
+   WIND & GEOMETRY UTILITIES
+═══════════════════════════════════════════════════ */
+
+// Returns distance in km between two lat/lon points using the Haversine formula.
 function getHaversineDistance(lat1, lon1, lat2, lon2) {
   const R = 6371; 
   const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -1259,6 +1255,50 @@ function getHaversineDistance(lat1, lon1, lat2, lon2) {
             Math.sin(dLon / 2) * Math.sin(dLon / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
+}
+
+function getBearing(lat1, lon1, lat2, lon2) {
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const y = Math.sin(dLon) * Math.cos(lat2 * Math.PI / 180);
+  const x = Math.cos(lat1 * Math.PI / 180) * Math.sin(lat2 * Math.PI / 180) -
+             Math.sin(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.cos(dLon);
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+}
+
+// Checks if wind data for this report is already in the session cache.
+// Must match the cache key format used in fetchHistoricWind exactly.
+function isWindCached(report) {
+  const reportTime = new Date(report.created_at);
+  const startTime = new Date(reportTime.getTime() - 6 * 3600000);
+  const lat = parseFloat(report.latitude);
+  const lon = parseFloat(report.longitude);
+  const cacheKey = `${lat.toFixed(3)}_${lon.toFixed(3)}_${startTime.toISOString().slice(0,13)}`;
+  return !!weatherCache[cacheKey];
+}
+
+async function getHistoricAvgBearing(report) {
+  const reportTime = new Date(report.created_at);
+  const startTime = new Date(reportTime.getTime() - 6 * 3600000);
+  const hourly = await fetchHistoricWind(
+    report.latitude, report.longitude,
+    startTime.toISOString(), reportTime.toISOString()
+  );
+  if (!hourly?.time?.length) return null;
+
+  // Collect wind directions in the 6h window
+  const dirs = [];
+  for (let i = 0; i < hourly.time.length; i++) {
+    const ts = new Date(hourly.time[i] + 'Z');
+    if (ts >= startTime && ts <= reportTime) {
+      dirs.push(hourly.wind_direction_10m[i]);
+    }
+  }
+  if (!dirs.length) return null;
+
+  // Average using circular mean to handle 0/360 wrap-around
+  const sinSum = dirs.reduce((s, d) => s + Math.sin(d * Math.PI / 180), 0);
+  const cosSum = dirs.reduce((s, d) => s + Math.cos(d * Math.PI / 180), 0);
+  return (Math.atan2(sinSum / dirs.length, cosSum / dirs.length) * 180 / Math.PI + 360) % 360;
 }
 
 function smoothPathChaikin(points, iterations = 3) {
@@ -1279,9 +1319,8 @@ function smoothPathChaikin(points, iterations = 3) {
       };
       const r = {
         lat: p0.lat * 0.25 + p1.lat * 0.75,
-        lon: p0.lon * 0.25 + p1.turn || p1.lon * 0.75
+        lon: p0.lon * 0.25 + p1.lon * 0.75
       };
-      r.lon = p0.lon * 0.25 + p1.lon * 0.75;
       
       nextArr.push(q);
       nextArr.push(r);
@@ -1326,6 +1365,9 @@ function clearBacktrack(){
   if(btAnimFrame){ cancelAnimationFrame(btAnimFrame); btAnimFrame=null; }
 }
 
+// Projects a point in the direction windFromDeg (meteorological: direction wind is BLOWING TOWARD)
+// by distKm kilometres. Wind FROM 270° blows eastward, so this moves the point east.
+// Used to trace where wind carries odours from a report location.
 function moveUpwind(lat,lon,windFromDeg,distKm){
   const R=6371, br=(windFromDeg*Math.PI)/180, d=distKm/R;
   const lat1=lat*Math.PI/180, lon1=lon*Math.PI/180;
@@ -1334,6 +1376,13 @@ function moveUpwind(lat,lon,windFromDeg,distKm){
   return { lat:lat2*180/Math.PI, lon:lon2*180/Math.PI };
 }
 
+/* ═══════════════════════════════════════════════════
+   HISTORICAL WEATHER & SPLINE GENERATION
+═══════════════════════════════════════════════════ */
+
+// Fetches hourly wind data from Open-Meteo for a given location and time window.
+// Uses forecast API for data < 7 days old, archive API for older data.
+// Results are cached by location+hour to avoid redundant API calls.
 async function fetchHistoricWind(lat,lon,isoStart,isoEnd){
 const cacheKey = `${lat.toFixed(3)}_${lon.toFixed(3)}_${isoStart.slice(0,13)}`;
 const reportAgeHours = (Date.now() - new Date(isoStart).getTime()) / 3600000;
@@ -1349,15 +1398,22 @@ if (weatherCache[cacheKey]) return weatherCache[cacheKey];
   const daysDiff=(Date.now()-new Date(isoStart))/86400000;
   let url = '';
   if(daysDiff<7){
-    url=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=wind_speed_10m,wind_direction_10m&wind_speed_unit=kmh&timezone=auto&past_days=7&forecast_days=1`;
+    url=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=wind_speed_10m,wind_direction_10m&wind_speed_unit=kmh&timezone=UTC&past_days=7&forecast_days=1`;
   } else {
     const sd=isoStart.slice(0,10), ed=isoEnd.slice(0,10);
-    url=`https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${sd}&end_date=${ed}&hourly=wind_speed_10m,wind_direction_10m&wind_speed_unit=kmh&timezone=auto`;
+    url=`https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${sd}&end_date=${ed}&hourly=wind_speed_10m,wind_direction_10m&wind_speed_unit=kmh&timezone=UTC`;
   }
   
   try {
-    const r=await fetch(url); 
-    const d=await r.json(); 
+    let r = await fetch(url);
+    // Retry once with backoff on rate limit
+    if (r.status === 429) {
+      await new Promise(res => setTimeout(res, 1500));
+      r = await fetch(url);
+    }
+    if (!r.ok) return null;
+    const d = await r.json();
+    if (!d.hourly) return null;
     weatherCache[cacheKey] = d.hourly;
     return d.hourly;
   } catch(e) {
@@ -1365,15 +1421,15 @@ if (weatherCache[cacheKey]) return weatherCache[cacheKey];
   }
 }
 
-function buildRawVectorTrail(baseLat, baseLon, steps, pinSpeed = null, pinDir = null) {
+// Builds a raw upwind vector trail from a series of hourly wind steps.
+// Each step moves the trail in the wind direction by wind_speed km.
+// Returns array of {lat, lon} points starting from the pin origin.
+function buildRawVectorTrail(baseLat, baseLon, steps) {
   const trail = [{ lat: baseLat, lon: baseLon }];
   let cLat = baseLat, cLon = baseLon;
   
-  steps.forEach((s, idx) => {
-    const useDir = (idx === 0 && pinDir !== null) ? pinDir : s.dir;
-    const useSpd = (idx === 0 && pinSpeed !== null) ? pinSpeed : s.spd;
-    
-    const m = moveUpwind(cLat, cLon, useDir, useSpd * 1.0);
+  steps.forEach(s => {
+    const m = moveUpwind(cLat, cLon, s.dir, s.spd * 1.0);
     cLat = m.lat; cLon = m.lon;
     trail.push({ lat: cLat, lon: cLon });
   });
@@ -1404,7 +1460,7 @@ function computePlumeEnvelopeRing(smoothedSpine, expansionAngleDeg = 6) {
     const rightLon = point.lon + (Math.sin(baseBearingRad + Math.PI/2) * spreadDistance) / Math.cos(point.lat * Math.PI / 180);
 
     leftBoundCoords.push([leftLat, leftLon]);
-    rightBoundCoords.unshift([rightLat, rightLon]);
+    rightBoundCoords.push([rightLat, rightLon]);
   });
 
   // --- ADDING THE SEMI-CIRCLE CAP ---
@@ -1425,8 +1481,8 @@ function computePlumeEnvelopeRing(smoothedSpine, expansionAngleDeg = 6) {
     arcPoints.push([arcLat, arcLon]);
   }
 
-  // Combine: Left side -> Arc Cap -> Right side
-  return leftBoundCoords.concat(arcPoints, rightBoundCoords);
+  // Combine: Left side -> Arc Cap -> Right side (reversed for correct polygon winding)
+  return leftBoundCoords.concat(arcPoints, rightBoundCoords.reverse());
 }
 
 async function renderBackgroundTrailForReport(report) {
@@ -1458,13 +1514,13 @@ async function renderHistoricSplineTrailForReport(report) {
 
     const steps = [];
     for (let i = hourly.time.length - 1; i >= 0; i--) {
-      const ts = new Date(hourly.time[i]);
+      const ts = new Date(hourly.time[i] + 'Z');
       if (ts >= startTime && ts <= reportTime)
         steps.push({ spd: hourly.wind_speed_10m[i], dir: hourly.wind_direction_10m[i] });
     }
     if (!steps.length) return null;
 
-    const rawTrail = buildRawVectorTrail(report.latitude, report.longitude, steps, report.wind_speed, report.wind_direction);
+    const rawTrail = buildRawVectorTrail(report.latitude, report.longitude, steps);
     return smoothPathChaikin(rawTrail, 3);
   } catch (err) {
     return null;
@@ -1485,34 +1541,39 @@ async function startBacktrack(lat, lon, createdAt) {
       Math.abs(parseFloat(r.longitude) - parseFloat(lon)) < 0.00001
     );
     
-    const pinSpd = matchedReport ? parseFloat(matchedReport.wind_speed) : parseFloat(liveTrackedWindSpeed);
-    const pinDir = matchedReport ? parseFloat(matchedReport.wind_direction) : parseFloat(liveTrackedWindDir);
-    
     // Now startTime is guaranteed to be defined
     const hourly = await fetchHistoricWind(lat, lon, startTime.toISOString(), reportTime.toISOString());
     if (!hourly?.time?.length) return;
 
     const steps = [];
     for(let i = hourly.time.length - 1; i >= 0; i--) {
-      const ts = new Date(hourly.time[i]);
+      const ts = new Date(hourly.time[i] + 'Z');
       if(ts >= startTime && ts <= reportTime)
         steps.push({ spd: hourly.wind_speed_10m[i], dir: hourly.wind_direction_10m[i] });
     }
     
     if(!steps.length) return;
 
-    // ... [rest of your existing logic remains the same]
+    const rawTrail = buildRawVectorTrail(lat, lon, steps);
+    const smoothed = smoothPathChaikin(rawTrail, 3);
+
+    if (smoothed.length < 2) return;
+
   } catch(err) { 
     console.error('Backtrack Error:', err); 
   }
 }
+
+/* ═══════════════════════════════════════════════════
+   BACKGROUND TRAIL RENDERING
+═══════════════════════════════════════════════════ */
 
 function clearBackgroundTrails() {
   bgTrailLayers.forEach(l => map.removeLayer(l));
   bgTrailLayers = [];
 }
 
-async function generateAllBackgroundTrails(reports) {
+async function generateAllBackgroundTrails(reports, tracerCoords = null) {
   clearBackgroundTrails();
 
   // Create a shallow copy and sort it so that older reports are drawn first, 
@@ -1526,16 +1587,22 @@ async function generateAllBackgroundTrails(reports) {
     const windDeg = parseFloat(report.wind_direction);
 
     const totalDistKm = 10;
-    const totalSegments = 3;
+    const totalSegments = 20;
     const stepDistKm = totalDistKm / totalSegments;
-    const expansionAngleDeg = 15;
+    const expansionAngleDeg = 30;
 
     const baseColor = ageColor(report.created_at);
     const upwindBearingRad = ((windDeg + 180) % 360) * Math.PI / 180;
 
+const coneClipDistKm = tracerCoords ? (() => {
+      const distToSource = getHaversineDistance(startLat, startLon, tracerCoords.lat, tracerCoords.lon);
+      return distToSource + 5.0;
+    })() : Infinity;
+
     for (let i = 0; i < totalSegments; i++) {
       const currentSegmentDistStart = i * stepDistKm;
       const currentSegmentDistEnd = (i + 1) * stepDistKm;
+      if (currentSegmentDistStart >= coneClipDistKm) continue;
 
       const pStart = moveUpwind(startLat, startLon, windDeg, currentSegmentDistStart);
       const pEnd = moveUpwind(startLat, startLon, windDeg, currentSegmentDistEnd);
@@ -1584,13 +1651,34 @@ async function generateAllBackgroundTrails(reports) {
     }
   });
 
-  // PASS 2: Fetch historic splines async and draw all dotted lines on top of all cones
-  const splinePromises = sortedReports.map(async (report) => {
-    const baseColor = ageColor(report.created_at);
+// PASS 2: Fetch historic splines sequentially to avoid rate limiting
+  for (const report of sortedReports) {
+    const baseColor = ageColorDark(report.created_at);
     const smoothedTrail = await renderHistoricSplineTrailForReport(report);
-    if (!smoothedTrail || smoothedTrail.length < 2) return;
+    if (!smoothedTrail || smoothedTrail.length < 2) continue;
 
-    const splineLatLngs = smoothedTrail.map(p => [p.lat, p.lon]);
+    let splineLatLngs = smoothedTrail.map(p => [p.lat, p.lon]);
+
+    // If called from tracer, clip spline 1km past the tracer point
+    if (tracerCoords) {
+      const startLat = parseFloat(report.latitude);
+      const startLon = parseFloat(report.longitude);
+      const distToSource = getHaversineDistance(startLat, startLon, tracerCoords.lat, tracerCoords.lon);
+      const clipDistKm = distToSource + 5.0;
+      let cumDist = 0;
+      const clipped = [splineLatLngs[0]];
+      for (let i = 1; i < splineLatLngs.length; i++) {
+        const segDist = getHaversineDistance(
+          splineLatLngs[i-1][0], splineLatLngs[i-1][1],
+          splineLatLngs[i][0], splineLatLngs[i][1]
+        );
+        cumDist += segDist;
+        if (cumDist >= clipDistKm) break;
+        clipped.push(splineLatLngs[i]);
+      }
+      splineLatLngs = clipped;
+    }
+
     const dottedSpline = L.polyline(splineLatLngs, {
       color: baseColor,
       weight: 2,
@@ -1603,12 +1691,19 @@ async function generateAllBackgroundTrails(reports) {
       pane: 'splinePane'   // ← add this
     }).addTo(map);
     bgTrailLayers.push(dottedSpline);
-  });
+  };
 
-  await Promise.all(splinePromises);
+  await new Promise(r => setTimeout(r, 150));
+  }
+
+  
+function ageColorDark(createdAt) {
+  const h = (Date.now() - new Date(createdAt)) / 3600000;
+  if(h < 12)  return '#7a3300';
+  if(h < 24)  return '#612900';
+  if(h < 48)  return '#471f00';
+  return               '#2e1400';
 }
-
-
 /* ═══════════════════════════════════════════════════
    CROWD VALIDATION & CLUSTERING ENGINE
 ═══════════════════════════════════════════════════ */
@@ -1763,7 +1858,7 @@ async function loadPinsByWindow() {
   if (rcEl) rcEl.textContent = n + ' ' + (n === 1 ? t('reportCount1') : t('reportCount'));
 
   evaluateActiveNearbyClusters();
-  generateAllBackgroundTrails(activeReports);
+  if (!traceMode) generateAllBackgroundTrails(activeReports);
 }
 
 /* ═══════════════════════════════════════════════════
@@ -1803,70 +1898,83 @@ function distanceToSegment(p, p1, p2) {
 }
 
 async function filterPinsBySourceTrajectory(tracerCoords) {
-  activeTraceRequestId++;
-  const currentRequestId = activeTraceRequestId;
+  const BASE_RADIUS_KM = 2.5;
+  const DISPERSION_RATE_KM_H = 2.5;
+  const currentRequestId = ++activeTraceRequestId;
 
   clearMarkers();
+  clearBackgroundTrails();
   tracerVisualCircles.forEach(c => map.removeLayer(c));
   tracerVisualCircles = [];
 
+  // Red radius circle around tracer dot
+  const primaryRadiusCircle = L.circle([tracerCoords.lat, tracerCoords.lon], {
+    radius: BASE_RADIUS_KM * 1000,
+    color: '#ff4d4d',
+    fillColor: '#ff4d4d',
+    fillOpacity: 0.15,
+    weight: 1.5,
+    dashArray: '3, 4',
+    interactive: false
+  }).addTo(map);
+  tracerVisualCircles.push(primaryRadiusCircle);
+
+  // Apply date filter
+  const filterStart = new Date(fp.selectedDates[0]); filterStart.setHours(0, 0, 0, 0);
+  const filterEnd = new Date(fp.selectedDates[1]); filterEnd.setHours(23, 59, 59, 999);
+  const timeFilteredData = globalActiveData.filter(r => {
+    const ts = new Date(r.created_at).getTime();
+    return ts >= filterStart.getTime() && ts <= filterEnd.getTime();
+  });
+
   const activeReportsToDrawTrails = [];
-  const BASE_RADIUS_KM = 0.5; // Constant baseline radius near the pin origin
+  const results = [];
 
-  // Checks the entire historical record in globalActiveData completely
-  const evaluationPromises = globalActiveData.map(async (report, index) => {
-    const startLat = parseFloat(report.latitude);
-    const startLon = parseFloat(report.longitude);
-    const windDeg = parseFloat(report.wind_direction);
+  for (const [index, report] of timeFilteredData.entries()) {
+    if (currentRequestId !== activeTraceRequestId) return;
 
-    // Completely aligned with your updated 3-segment mobile optimized layout
-    const totalDistKm = 20;
-    const totalSegments = 3; 
-    const stepDistKm = totalDistKm / totalSegments;
-    const expansionAngleDeg = 25; 
+    const reportAgeHours = (Date.now() - new Date(report.created_at).getTime()) / 3600000;
+    if (reportAgeHours < 6) {
+      results.push(null);
+      continue;
+    }
 
-    const trailCoordinates = [{ lat: startLat, lon: startLon }];
-    for (let i = 1; i <= totalSegments; i++) {
-      trailCoordinates.push(moveUpwind(startLat, startLon, windDeg, i * stepDistKm));
+    // Use the same trail as drawn on map — downwind from pin
+    const trailCoordinates = await renderHistoricSplineTrailForReport(report);
+
+    if (!trailCoordinates || trailCoordinates.length < 2) {
+      results.push(null);
+      if (!isWindCached(report)) await new Promise(r => setTimeout(r, 100));
+      continue;
     }
 
     let matchFound = false;
-
-    // Loop through each piece of the spine trail line
     for (let i = 0; i < trailCoordinates.length - 1; i++) {
       const p1 = trailCoordinates[i];
       const p2 = trailCoordinates[i + 1];
-
-      // Measure the perpendicular distance from the click point to this segment
       const distanceKM = distanceToSegment(tracerCoords, p1, p2);
+      const maxAllowedDistance = BASE_RADIUS_KM + (DISPERSION_RATE_KM_H * (i + 1) * (6 / trailCoordinates.length));
 
-      // The further upwind the segment goes, the wider the acceptable search radius grows
-      const segmentDistanceTravelled = i * stepDistKm;
-      const coneExpansionWidth = segmentDistanceTravelled * Math.sin(expansionAngleDeg * Math.PI / 180);
-      const dynamicMaxAllowedDistance = BASE_RADIUS_KM + coneExpansionWidth;
-
-      if (distanceKM <= dynamicMaxAllowedDistance) {
+      if (distanceKM <= maxAllowedDistance) {
         matchFound = true;
-        
-        // Render helper diagnostic target halos showing the matched region width
         const dispersionIndicator = L.circle([p1.lat, p1.lon], {
-          radius: dynamicMaxAllowedDistance * 1000,
+          radius: maxAllowedDistance * 1000,
           color: '#ff8800',
           fillColor: 'transparent',
           weight: 1,
           dashArray: '5, 5',
-          opacity: 0.3,
+          opacity: 0.4,
           interactive: false
-        })
+        }).addTo(map);
         tracerVisualCircles.push(dispersionIndicator);
         break;
       }
     }
 
-    return matchFound ? { report, index } : null;
-  });
+    results.push(matchFound ? { report, index } : null);
+    if (!isWindCached(report)) await new Promise(r => setTimeout(r, 100));
+  }
 
-  const results = await Promise.all(evaluationPromises);
   if (currentRequestId !== activeTraceRequestId) return;
 
   results.forEach(res => {
@@ -1876,12 +1984,13 @@ async function filterPinsBySourceTrajectory(tracerCoords) {
     }
   });
 
-  generateAllBackgroundTrails(activeReportsToDrawTrails);
+  generateAllBackgroundTrails(activeReportsToDrawTrails, tracerCoords);
 
   const n = reportMarkers.length;
   const rcEl = document.getElementById('reportCount');
   if (rcEl) rcEl.textContent = n + ' ' + (n === 1 ? t('reportCount1') : t('reportCount'));
 }
+
 
 /* ═══════════════════════════════════════════════════
    REPORT ACTION
