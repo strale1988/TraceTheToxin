@@ -312,10 +312,6 @@ button{
   padding-right: 32px !important;
 }
 
-/* Modern Minimalist Circular Pin Drop Shadow */
-.modern-marker-shadow {
-  filter: drop-shadow(0px 3px 5px rgba(0,0,0,0.45));
-}
 .pin-active { border: 2px solid #f5a623 !important; }
 
 /* ==========================================================================
@@ -647,6 +643,7 @@ let liveTrackedWindSpeed = 12.0;
 let liveTrackedWindDir = 0.0;
 
 const weatherCache = {};
+const splineCache = {};
 
 /* ═══════════════════════════════════════════════════
    SUPABASE
@@ -1504,41 +1501,98 @@ async function renderBackgroundTrailForReport(report) {
 
 // Fetches 6 hours of historical wind data and builds a smoothed Chaikin spline trail
 async function renderHistoricSplineTrailForReport(report) {
-  // Do not draw spline for reports newer than 6 hours
-  const reportAgeHours = (Date.now() - new Date(report.created_at).getTime()) / 3600000;
+
+  // Skip reports newer than 6 hours
+  const reportAgeHours =
+    (Date.now() - new Date(report.created_at).getTime()) / 3600000;
+
   if (reportAgeHours < 6) return null;
 
+  // -------- NEW --------
+  if (splineCache[report.id]) {
+    return splineCache[report.id];
+  }
+  // ---------------------
+
   try {
+
     const reportTime = new Date(report.created_at);
     const startTime = new Date(reportTime.getTime() - 6 * 3600000);
-    const hourly = await fetchHistoricWind(report.latitude, report.longitude, startTime.toISOString(), reportTime.toISOString());
+
+    const hourly = await fetchHistoricWind(
+      report.latitude,
+      report.longitude,
+      startTime.toISOString(),
+      reportTime.toISOString()
+    );
+
     if (!hourly?.time?.length) return null;
 
     const steps = [];
+
     for (let i = hourly.time.length - 1; i >= 0; i--) {
+
       const ts = new Date(hourly.time[i] + 'Z');
-      if (ts >= startTime && ts <= reportTime)
-        steps.push({ spd: hourly.wind_speed_10m[i], dir: hourly.wind_direction_10m[i] });
+
+      if (ts >= startTime && ts <= reportTime) {
+
+        steps.push({
+          spd: hourly.wind_speed_10m[i],
+          dir: hourly.wind_direction_10m[i]
+        });
+
+      }
+
     }
+
     if (!steps.length) return null;
 
-    // Piggyback: if this report is missing wind_speed, derive it from the
-    // same hourly data we just fetched — no extra API call needed.
     if (!report.wind_speed || report.wind_speed === 0) {
-      const speeds = steps.map(s => s.spd).filter(s => s != null);
+
+      const speeds = steps
+        .map(s => s.spd)
+        .filter(s => s != null);
+
       if (speeds.length) {
-        const avgSpeed = parseFloat((speeds.reduce((a, b) => a + b, 0) / speeds.length).toFixed(1));
-        report.wind_speed = avgSpeed; // update local object so popup shows it immediately
-        sb.from('air_reports').update({ wind_speed: avgSpeed }).eq('id', report.id)
-          .then(({ error }) => { if (error) console.warn('wind_speed save failed:', error.message); });
+
+        const avgSpeed = parseFloat(
+          (
+            speeds.reduce((a,b)=>a+b,0)
+            / speeds.length
+          ).toFixed(1)
+        );
+
+        report.wind_speed = avgSpeed;
+
+        sb.from('air_reports')
+          .update({ wind_speed: avgSpeed })
+          .eq('id', report.id);
+
       }
+
     }
 
-    const rawTrail = buildRawVectorTrail(report.latitude, report.longitude, steps);
-    return smoothPathChaikin(rawTrail, 3);
-  } catch (err) {
+    const rawTrail =
+      buildRawVectorTrail(
+        report.latitude,
+        report.longitude,
+        steps
+      );
+
+    const spline = smoothPathChaikin(rawTrail,2);
+
+    // -------- NEW --------
+    splineCache[report.id] = spline;
+    // ---------------------
+
+    return spline;
+
+  } catch(err) {
+
     return null;
+
   }
+
 }
 
 async function startBacktrack(lat, lon, createdAt) {
