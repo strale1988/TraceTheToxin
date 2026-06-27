@@ -1761,6 +1761,11 @@ function evaluateActiveNearbyClusters() {
     console.log(`Active community cluster detected for category: ${topCategory} (${maxCount} reports)`);
   }
 }
+const markerLayer = L.layerGroup().addTo(map);
+const trailLayer = L.layerGroup().addTo(map);
+const plumeLayer = L.layerGroup().addTo(map);
+const traceLayer = L.layerGroup().addTo(map);
+const uiLayer = L.layerGroup().addTo(map);
 
 /* ═══════════════════════════════════════════════════
    PINS RENDER ENGINE
