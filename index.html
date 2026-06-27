@@ -676,6 +676,8 @@ const T = {
   popupDate:    { en:'Date',                             sr:'Datum' },
   popupWind:    { en:'Wind',                             sr:'Vetar' },
   popupDir:     { en:'Direction',                        sr:'Smer' },
+  popupSpeed:     { en:'Speed',                        sr:'Brzina' },
+
   popupPres:    { en:'Pressure',                         sr:'Pritisak' },
   popupNotes:   { en:'Notes',                            sr:'Napomena' },
   popupNone:    { en:'None',                             sr:'Nema' },
@@ -1520,6 +1522,18 @@ async function renderHistoricSplineTrailForReport(report) {
     }
     if (!steps.length) return null;
 
+    // Piggyback: if this report is missing wind_speed, derive it from the
+    // same hourly data we just fetched — no extra API call needed.
+    if (!report.wind_speed || report.wind_speed === 0) {
+      const speeds = steps.map(s => s.spd).filter(s => s != null);
+      if (speeds.length) {
+        const avgSpeed = parseFloat((speeds.reduce((a, b) => a + b, 0) / speeds.length).toFixed(1));
+        report.wind_speed = avgSpeed; // update local object so popup shows it immediately
+        sb.from('air_reports').update({ wind_speed: avgSpeed }).eq('id', report.id)
+          .then(({ error }) => { if (error) console.warn('wind_speed save failed:', error.message); });
+      }
+    }
+
     const rawTrail = buildRawVectorTrail(report.latitude, report.longitude, steps);
     return smoothPathChaikin(rawTrail, 3);
   } catch (err) {
@@ -1587,7 +1601,7 @@ async function generateAllBackgroundTrails(reports, tracerCoords = null) {
     const windDeg = parseFloat(report.wind_direction);
 
     const totalDistKm = 10;
-    const totalSegments = 20;
+    const totalSegments = 5;
     const stepDistKm = totalDistKm / totalSegments;
     const expansionAngleDeg = 30;
 
@@ -1802,6 +1816,7 @@ function renderPin(report, index = 0){
     <div><b>${t('popupDuration')}:</b> ${report.duration || 1} ${t('hours')}</div>
     <div><b>${t('popupDate')}:</b> ${formattedDate}<br></div>
     <div><b>${t('popupDir')}:</b> ${report.wind_direction}° ${card}<br></div>
+    <div><b>${t('popupSpeed')}:</b> ${report.wind_speed != null ? report.wind_speed + ' km/h' : '–'}<br></div>
     <div><b>${t('popupNotes')}:</b> ${report.comment||t('popupNone')}</div>
   </div>`;
   
@@ -2058,13 +2073,13 @@ async function reportBadAir(){
                            ? parseFloat(manualWind) 
                            : parseFloat(c.wind_direction_10m);
     
-    const finalSpeed = parseFloat(c.wind_speed_10m) || 0;
+    const finalSpeed = c.wind_speed_10m != null ? parseFloat(parseFloat(c.wind_speed_10m).toFixed(1)) : null;
     const finalPressure = parseFloat(c.pressure_msl) || 0;
 
     const reportData = {
       latitude: parseFloat(coords.lat),
       longitude: parseFloat(coords.lon),
-      wind_speed: finalSpeed,
+      wind_speed: finalSpeed ?? null,
       wind_direction: finalDirection,
       manual_wind_direction: (manualWind !== "") ? parseFloat(manualWind) : null,
       comment,
