@@ -916,15 +916,6 @@ function hideGpsModal(){
    GPS INIT
 ═══════════════════════════════════════════════════ */
 function enableManualPinMode() {
-  // If not already in pin mode, enable it
-  if (!pinMode) {
-    //togglePinMode(); 
-  }
-  
-  // Center map and place the manual pin
-  const center = map.getCenter();
-  manualCoords = { lat: center.lat, lon: center.lng };
-  
   if (manualMarker) {
     manualMarker.setLatLng(center);
   } else {
