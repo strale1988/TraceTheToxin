@@ -1400,11 +1400,12 @@ function buildRawVectorTrail(baseLat, baseLon, steps) {
   const trail = [{ lat: baseLat, lon: baseLon }];
   let cLat = baseLat, cLon = baseLon;
   
-  steps.forEach(s => {
-    const m = moveUpwind(cLat, cLon, s.dir, s.spd * 1.0);
-    cLat = m.lat; cLon = m.lon;
-    trail.push({ lat: cLat, lon: cLon });
-  });
+steps.forEach(s => {
+  const upwindDir = (s.dir) % 360;
+  const m = moveUpwind(cLat, cLon, upwindDir, s.spd * 1.0);
+  cLat = m.lat; cLon = m.lon;
+  trail.push({ lat: cLat, lon: cLon });
+});
   
   return trail;
 }
@@ -1423,8 +1424,7 @@ function computePlumeEnvelopeRing(smoothedSpine, expansionAngleDeg = 6) {
   const leftBoundCoords = [];
   const rightBoundCoords = [];
   const lastPoint = smoothedSpine[smoothedSpine.length - 1];
-  const pres = hourly.pressure_msl?.[i];
-  steps.push({ spd, dir, pres });
+  
 
   smoothedSpine.forEach((point, index) => {
     // Calculate the bearing at this specific point to determine width
@@ -1433,9 +1433,17 @@ function computePlumeEnvelopeRing(smoothedSpine, expansionAngleDeg = 6) {
     const dx = (point.lon - prev.lon) * Math.cos(point.lat * Math.PI / 180);
     const baseBearingRad = Math.atan2(dx, dy);
     
-    const progressFactor = index / smoothedSpine.length;
-    const spreadDistance = 0.04 * progressFactor; 
+    // Progress from report (0) to oldest point (1)
+    const progressFactor = index / (smoothedSpine.length - 1);
 
+    // Width increases gradually farther upwind
+    const minWidth = 0.00015;   // ~17 m
+    const maxWidth = 0.012;     // ~1.3 km
+
+    const spreadDistance =
+    minWidth +
+    (maxWidth - minWidth) *
+    Math.pow(progressFactor, 1.8);
     // Create boundaries
     const leftLat = point.lat + Math.cos(baseBearingRad - Math.PI/2) * spreadDistance;
     const leftLon = point.lon + (Math.sin(baseBearingRad - Math.PI/2) * spreadDistance) / Math.cos(point.lat * Math.PI / 180);
@@ -1447,15 +1455,15 @@ function computePlumeEnvelopeRing(smoothedSpine, expansionAngleDeg = 6) {
     rightBoundCoords.push([rightLat, rightLon]);
   });
 
-  // --- ADDING THE SEMI-CIRCLE CAP ---
-  const lastWidth = 0.02; // Matches the max spreadDistance at the end
-  const arcPoints = [];
-  const numArcPoints = 6; // Adjust for smoothness
-  
-  // Calculate angle of the last segment to center the arc
-  const p1 = smoothedSpine[smoothedSpine.length - 2];
-  const p2 = smoothedSpine[smoothedSpine.length - 1];
-  const angle = Math.atan2(p2.lon - p1.lon, p2.lat - p1.lat);
+    // --- ADDING THE SEMI-CIRCLE CAP ---
+    const lastWidth = 0.02; // Matches the max spreadDistance at the end
+    const arcPoints = [];
+    const numArcPoints = 6; // Adjust for smoothness
+    
+    // Calculate angle of the last segment to center the arc
+    const p1 = smoothedSpine[smoothedSpine.length - 2];
+    const p2 = smoothedSpine[smoothedSpine.length - 1];
+    const angle = Math.atan2(p2.lon - p1.lon, p2.lat - p1.lat);
 
   for (let i = 0; i <= numArcPoints; i++) {
     // Sweep from -PI/2 to PI/2 relative to the trajectory direction
@@ -1576,14 +1584,24 @@ async function renderHistoricSplineTrailForReport(report) {
       await backfillWindSpeed(report.id, avgSpeed);
     }
 
-    // Always backfill wind_direction from the Open-Meteo historical circular mean.
-    // This replaces the user-typed manual value with a more accurate historical average.
-    // manual_wind_direction in Supabase retains the original user-reported value untouched.
-    const sinSum = steps.reduce((s, step) => s + Math.sin(step.dir * Math.PI / 180), 0);
-    const cosSum = steps.reduce((s, step) => s + Math.cos(step.dir * Math.PI / 180), 0);
-    const historicalAvgDir = (Math.atan2(sinSum / steps.length, cosSum / steps.length) * 180 / Math.PI + 360) % 360;
-    report.wind_direction = historicalAvgDir;
-    await backfillWindDirection(report.id, historicalAvgDir);
+    // Find the single hourly reading closest to the report time.
+    // This is what Open-Meteo says the wind was at that moment —
+    // a fair comparison to what the user read on Windfinder.
+    let closestStep = null;
+    let closestDiff = Infinity;
+    for (let i = 0; i < hourly.time.length; i++) {
+      const ts = Date.parse(hourly.time[i] + "Z");
+      const diff = Math.abs(ts - reportTime.getTime());
+      if (diff < closestDiff) {
+        closestDiff = diff;
+        closestStep = i;
+      }
+    }
+    const historicalDir = closestStep != null ? hourly.wind_direction_10m[closestStep] : null;
+    if (historicalDir != null) {
+      report.wind_direction = historicalDir;
+      await backfillWindDirection(report.id, historicalDir);
+    }
 
     const validPres = steps.filter(s => s.pres != null);
     if (validPres.length) {
@@ -1592,11 +1610,12 @@ async function renderHistoricSplineTrailForReport(report) {
       await backfillPressure(report.id, avgPressure);
     }
 
-    const rawTrail = buildRawVectorTrail(
-      report.latitude,
-      report.longitude,
-      steps
-    );
+steps.reverse(); // walk backwards from report time toward the source
+const rawTrail = buildRawVectorTrail(
+  report.latitude,
+  report.longitude,
+  steps
+);
 
     const spline = smoothPathChaikin(rawTrail, 2);
 
@@ -1636,7 +1655,7 @@ async function startBacktrack(lat, lon, createdAt) {
     if (!hourly?.time?.length) return;
 
     const steps = [];
-    for(let i = hourly.time.length - 1; i >= 0; i--) {
+    for(let i = 0; i < hourly.time.length; i++) {
       const ts = new Date(hourly.time[i] + 'Z');
       if(ts >= startTime && ts <= reportTime)
         steps.push({ spd: hourly.wind_speed_10m[i], dir: hourly.wind_direction_10m[i] });
@@ -1671,10 +1690,12 @@ async function generateAllBackgroundTrails(reports, tracerCoords = null) {
   const sortedReports = [...reports].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
 
   // PASS 1: Draw all solid cones synchronously (no API calls needed)
+  const coneEdges = new Map(); // report.id -> { left: [], right: [] }
   sortedReports.forEach((report) => {
     const startLat = parseFloat(report.latitude);
     const startLon = parseFloat(report.longitude);
-    const windDeg = parseFloat(report.wind_direction);
+    const windDeg = parseFloat(report.manual_wind_direction ?? report.wind_direction);
+
 
     const totalDistKm = 10;
     const totalSegments = 5;
@@ -1684,7 +1705,9 @@ async function generateAllBackgroundTrails(reports, tracerCoords = null) {
     const baseColor = ageColor(report.created_at);
     const upwindBearingRad = ((windDeg + 180) % 360) * Math.PI / 180;
 
-const coneClipDistKm = tracerCoords ? (() => {
+    coneEdges.set(report.id, { left: [], right: [] });
+
+    const coneClipDistKm = tracerCoords ? (() => {
       const distToSource = getHaversineDistance(startLat, startLon, tracerCoords.lat, tracerCoords.lon);
       return distToSource + 5.0;
     })() : Infinity;
@@ -1714,6 +1737,38 @@ const coneClipDistKm = tracerCoords ? (() => {
       const pEndLeftLon = pEnd.lon + (Math.sin(leftAngle) * widthEnd) / (111.32 * cosEndLat);
       const pEndRightLat = pEnd.lat + (Math.cos(rightAngle) * widthEnd) / 111.32;
       const pEndRightLon = pEnd.lon + (Math.sin(rightAngle) * widthEnd) / (111.32 * cosEndLat);
+
+      const edges = coneEdges.get(report.id);
+
+      const leftLine = L.polyline(edges.left, {
+        color: baseColor,
+        weight: 1,
+        opacity: 0.5,
+        className: 'bg-trail-teal',
+        interactive: false,
+        pane: 'conePane'
+      }).addTo(map);
+
+      const rightLine = L.polyline(edges.right, {
+        color: baseColor,
+        weight: 1,
+        opacity: 0.5,
+        className: 'bg-trail-teal',
+        interactive: false,
+        pane: 'conePane'
+      }).addTo(map);
+
+      bgTrailLayers.push(leftLine, rightLine);
+
+      // build continuous left/right boundary lines
+      if (i === 0) {
+        edges.left.push([pStartLeftLat, pStartLeftLon]);
+        edges.right.push([pStartRightLat, pStartRightLon]);
+      }
+
+      edges.left.push([pEndLeftLat, pEndLeftLon]);
+      edges.right.push([pEndRightLat, pEndRightLon]);
+
 
       const segmentEnvelope = [
         [pStartLeftLat, pStartLeftLon],
@@ -1784,7 +1839,7 @@ const coneClipDistKm = tracerCoords ? (() => {
   };
 
   await new Promise(r => setTimeout(r, 150));
-  }
+}
 
   
 function ageColorDark(createdAt) {
@@ -1925,7 +1980,8 @@ const popupHtml = `<div class="popup-inner" style="padding:0;min-width:220px;">
 
   const zIndexPriority = 10000 - index;
   const marker=L.marker([report.latitude,report.longitude],{
-    icon:makeIcon(color,report.wind_direction),
+    icon: makeIcon(color, report.manual_wind_direction ?? report.wind_direction),
+
     zIndexOffset: zIndexPriority 
   }).addTo(map);
 
