@@ -672,7 +672,7 @@ const T = {
   popupInt:     { en:'Intensity',                        sr:'Intenzitet' },
   popupDate:    { en:'Date',                             sr:'Datum' },
   popupWind:    { en:'Wind',                             sr:'Vetar' },
-  popupDir:     { en:'Direction',                        sr:'Smer' },
+  popupDir:     { en:'Reported Wind Direction',                        sr:'Prijavljen Smer Vetra' },
   popupSpeed:     { en:'Speed',                        sr:'Brzina' },
 
   popupPres:    { en:'Pressure',                         sr:'Pritisak' },
@@ -680,6 +680,9 @@ const T = {
   popupNone:    { en:'None',                             sr:'Nema' },
   popupDuration: { en: 'Duration',                      sr: 'Trajanje' },
 
+  historical: { en: 'Historical', sr: 'Istorijski' },
+
+  
   hours:         { en: 'h',                         sr: 'h' },
   possSource:   { en:'⚠ Possible sources',               sr:'⚠ Mogući izvori' },
   backtrack:    { en:'backtrack',                        sr:'unazad' },
@@ -1469,24 +1472,47 @@ async function renderBackgroundTrailForReport(report) {
   return [start, end];
 }
 
+async function backfillWindSpeed(reportId, avgSpeed) {
+  const result = await sb
+    .from("air_reports")
+    .update({ wind_speed: avgSpeed })
+    .eq("id", Number(reportId))
+    .select();
+  console.log("BACKFILL wind_speed:", result);
+  return result;
+}
+
+// Overwrites wind_direction with the Open-Meteo historical circular-mean average.
+// manual_wind_direction (user-reported from Windfinder) is never touched.
+async function backfillWindDirection(reportId, avgDirection) {
+  const result = await sb
+    .from("air_reports")
+    .update({ wind_direction: parseFloat(avgDirection.toFixed(1)) })
+    .eq("id", Number(reportId))
+    .select();
+  console.log("BACKFILL wind_direction:", result);
+  return result;
+}
+
 // Fetches 6 hours of historical wind data and builds a smoothed Chaikin spline trail
 async function renderHistoricSplineTrailForReport(report) {
 
-  // Skip reports newer than 6 hours
+  const reportTime = new Date(report.created_at);
   const reportAgeHours =
-    (Date.now() - new Date(report.created_at).getTime()) / 3600000;
+    (Date.now() - reportTime.getTime()) / 3600000;
 
-  if (reportAgeHours < 6) return null;
+  // Don't process recent reports
+  if (reportAgeHours < 7) {
+    return null;
+  }
 
-  // -------- NEW --------
+  // Return cached spline if available
   if (splineCache[report.id]) {
     return splineCache[report.id];
   }
-  // ---------------------
 
   try {
 
-    const reportTime = new Date(report.created_at);
     const startTime = new Date(reportTime.getTime() - 6 * 3600000);
 
     const hourly = await fetchHistoricWind(
@@ -1496,68 +1522,74 @@ async function renderHistoricSplineTrailForReport(report) {
       reportTime.toISOString()
     );
 
-    if (!hourly?.time?.length) return null;
+    if (!hourly?.time?.length) {
+      return null;
+    }
 
     const steps = [];
 
-    for (let i = hourly.time.length - 1; i >= 0; i--) {
+    for (let i = 0; i < hourly.time.length; i++) {
 
-      const ts = new Date(hourly.time[i] + 'Z');
+      const ts = Date.parse(hourly.time[i] + "Z");
 
-      if (ts >= startTime && ts <= reportTime) {
-
-        steps.push({
-          spd: hourly.wind_speed_10m[i],
-          dir: hourly.wind_direction_10m[i]
-        });
-
+      if (
+        ts < startTime.getTime() ||
+        ts > reportTime.getTime()
+      ) {
+        continue;
       }
+
+      const spd = hourly.wind_speed_10m[i];
+      const dir = hourly.wind_direction_10m[i];
+
+      if (spd == null || dir == null) {
+        continue;
+      }
+
+      steps.push({ spd, dir });
 
     }
 
-    if (!steps.length) return null;
-
-    if (!report.wind_speed || report.wind_speed === 0) {
-
-      const speeds = steps
-        .map(s => s.spd)
-        .filter(s => s != null);
-
-      if (speeds.length) {
-
-        const avgSpeed = parseFloat(
-          (
-            speeds.reduce((a,b)=>a+b,0)
-            / speeds.length
-          ).toFixed(1)
-        );
-
-        report.wind_speed = avgSpeed;
-
-        sb.from('air_reports')
-          .update({ wind_speed: avgSpeed })
-          .eq('id', report.id);
-
-      }
-
+    if (!steps.length) {
+      return null;
     }
 
-    const rawTrail =
-      buildRawVectorTrail(
-        report.latitude,
-        report.longitude,
-        steps
+    // Backfill wind_speed if missing (null at insert time means live fetch failed)
+    if (report.wind_speed == null) {
+      const avgSpeed = Number(
+        (steps.reduce((sum, s) => sum + s.spd, 0) / steps.length).toFixed(1)
       );
+      report.wind_speed = avgSpeed;
+      await backfillWindSpeed(report.id, avgSpeed);
+    }
 
-    const spline = smoothPathChaikin(rawTrail,2);
+    // Always backfill wind_direction from the Open-Meteo historical circular mean.
+    // This replaces the user-typed manual value with a more accurate historical average.
+    // manual_wind_direction in Supabase retains the original user-reported value untouched.
+    const sinSum = steps.reduce((s, step) => s + Math.sin(step.dir * Math.PI / 180), 0);
+    const cosSum = steps.reduce((s, step) => s + Math.cos(step.dir * Math.PI / 180), 0);
+    const historicalAvgDir = (Math.atan2(sinSum / steps.length, cosSum / steps.length) * 180 / Math.PI + 360) % 360;
+    report.wind_direction = historicalAvgDir;
+    await backfillWindDirection(report.id, historicalAvgDir);
 
-    // -------- NEW --------
+    const rawTrail = buildRawVectorTrail(
+      report.latitude,
+      report.longitude,
+      steps
+    );
+
+    const spline = smoothPathChaikin(rawTrail, 2);
+
     splineCache[report.id] = spline;
-    // ---------------------
 
     return spline;
 
-  } catch(err) {
+  } catch (err) {
+
+    console.error(
+      `Historic spline generation failed for report ${report.id}`,
+      err
+    );
 
     return null;
 
@@ -1838,16 +1870,33 @@ function renderPin(report, index = 0){
   
   const intensity = report.intensity ? ` &nbsp;|&nbsp; <b>${t('popupInt')}:</b> ${report.intensity}/10` : '';
 
-  const popupHtml=`<div class="popup-inner">
-    <div class="popup-title">${t('popupTitle')}</div>
-    <div><b>${t('popupCat')}:</b> ${translateCategory(report.category)}</div>
-    <div><b>${t('popupInt')}:</b> ${report.intensity}</div>
-    <div><b>${t('popupDuration')}:</b> ${report.duration || 1} ${t('hours')}</div>
-    <div><b>${t('popupDate')}:</b> ${formattedDate}<br></div>
-    <div><b>${t('popupDir')}:</b> ${report.wind_direction}° ${card}<br></div>
-    <div><b>${t('popupSpeed')}:</b> ${report.wind_speed != null ? report.wind_speed + ' km/h' : '–'}<br></div>
-    <div><b>${t('popupNotes')}:</b> ${report.comment||t('popupNone')}</div>
-  </div>`;
+const popupHtml = `<div class="popup-inner" style="padding:0;min-width:220px;">
+  <div style="background:${color};padding:10px 14px 8px;border-radius:10px 10px 0 0;">
+    <div style="font-size:13px;font-weight:700;color:white;letter-spacing:.3px;">${translateCategory(report.category)}</div>
+    <div style="font-size:11px;color:rgba(255,255,255,.75);margin-top:2px;">${formattedDate}</div>
+  </div>
+  <div style="padding:10px 14px;display:flex;flex-direction:column;gap:5px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <span style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.4px;">${t('popupInt')}</span>
+      <span style="font-size:13px;font-weight:600;color:#111;">${report.intensity} / 10</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <span style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.4px;">${t('popupDuration')}</span>
+      <span style="font-size:13px;font-weight:600;color:#111;">${report.duration || 1}${t('hours')}</span>
+    </div>
+    <div style="height:1px;background:#f0f0f0;margin:2px 0;"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <span style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.4px;">${t('popupDir')}</span>
+      <span style="font-size:13px;font-weight:600;color:#111;">${report.manual_wind_direction != null ? report.manual_wind_direction + '°' : '–'}</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:-3px;">
+      <span style="font-size:10px;color:#bbb;text-transform:uppercase;letter-spacing:.4px;">${t('historical')}</span>
+      <span style="font-size:11px;color:#aaa;">${report.wind_direction != null ? Math.round(report.wind_direction) + '° ' + card : '–'} &nbsp;·&nbsp; ${report.wind_speed != null ? report.wind_speed + ' km/h' : '–'}</span>
+    </div>
+    ${report.comment ? `<div style="height:1px;background:#f0f0f0;margin:2px 0;"></div>
+    <div style="font-size:12px;color:#555;font-style:italic;">${report.comment}</div>` : ''}
+  </div>
+</div>`;
   
 
   const zIndexPriority = 10000 - index;
@@ -2091,52 +2140,54 @@ async function reportBadAir(){
   const [hours, minutes] = timeVal.split(':');
   reportDate.setHours(hours, minutes, 0, 0);
 
+  // Parse manual wind direction — this is the user-reported value from Windfinder,
+  // stored permanently in manual_wind_direction and used as the initial wind_direction
+  // until the spline engine backfills it with Open-Meteo historical data.
+  const manualWindNum = manualWind !== "" ? parseFloat(manualWind) : null;
+
+  // Fetch weather separately so a failure doesn't block the report insert
+  let finalSpeed = null;
+  let finalPressure = 0;
   try {
-    // Keep existing weather fetch for fallback/defaults
-    const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lon}&current=wind_speed_10m,wind_direction_10m,pressure_msl&models=icon_d2`);
+    const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lon}&current=wind_speed_10m,wind_direction_10m,pressure_msl&timezone=UTC&models=icon_d2`);
     const w = await r.json();
     const c = w.current;
+    if (c) {
+      finalSpeed    = c.wind_speed_10m    != null ? parseFloat(parseFloat(c.wind_speed_10m).toFixed(1))  : null;
+      finalPressure = c.pressure_msl      != null ? parseFloat(c.pressure_msl) : 0;
+    }
+  } catch (weatherErr) {
+    console.warn('Weather fetch failed at report time, wind_speed will be backfilled later:', weatherErr);
+  }
 
-    // Logic: Use manual input if provided, otherwise use API
-    const finalDirection = (manualWind !== "" && manualWind >= 0 && manualWind <= 360) 
-                           ? parseFloat(manualWind) 
-                           : parseFloat(c.wind_direction_10m);
-    
-    const finalSpeed = c.wind_speed_10m != null ? parseFloat(parseFloat(c.wind_speed_10m).toFixed(1)) : null;
-    const finalPressure = parseFloat(c.pressure_msl) || 0;
-
-    const reportData = {
-      latitude: parseFloat(coords.lat),
-      longitude: parseFloat(coords.lon),
-      wind_speed: finalSpeed ?? null,
-      wind_direction: finalDirection,
-      manual_wind_direction: (manualWind !== "") ? parseFloat(manualWind) : null,
+  try {
+    const { error } = await sb.from('air_reports').insert([{
+      latitude:              parseFloat(coords.lat),
+      longitude:             parseFloat(coords.lon),
+      // manual_wind_direction: the user-reported value — never updated after this
+      manual_wind_direction: manualWindNum,
+      // wind_direction: starts as the manual value; overwritten by backfillWindDirection()
+      // once historical Open-Meteo data is available (>7h after report)
+      wind_direction:        manualWindNum,
+      // wind_speed: from live Open-Meteo at submit time; null if fetch failed,
+      // will be backfilled by renderHistoricSplineTrailForReport()
+      wind_speed:            finalSpeed,
+      sea_level_pressure:    finalPressure,
       comment,
       category,
-      intensity: parseInt(intensity),
-      duration: durationValue,
-      created_at: reportDate.toISOString()
-    };
-
-    // REMOVE .select() from the chain here
-    const { error } = await sb.from('air_reports').insert([{
-        ...reportData,
-        sea_level_pressure: finalPressure
+      intensity:             parseInt(intensity),
+      duration:              durationValue,
+      created_at:            reportDate.toISOString()
     }]);
-    
+
     if (error) throw error;
-    
-    // 1. Fire the success alert exactly ONCE
+
     alert(t('submitted'));
-    
-    // 2. Run your brand new form cleanup logic
     resetReportingForm();
-    
-    // 3. Force the map UI to re-render using the updated records
     await loadPinsByWindow();
 
-  } catch(err) { 
-    alert(err.message); 
+  } catch(err) {
+    alert(err.message);
   }
 }
 
