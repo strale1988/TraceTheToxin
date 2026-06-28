@@ -1393,6 +1393,61 @@ if (weatherCache[cacheKey]) return weatherCache[cacheKey];
   }
 }
 
+// Wraps fetchHistoricWind with Supabase-backed persistence for a specific report.
+// Archive-API wind data (>7 days old) never changes, so once it's fetched for a
+// report it's saved permanently in historic_wind_json and never re-fetched from
+// Open-Meteo again — across page reloads, not just within one session.
+// Reports younger than 7 days are NOT persisted this way since the data can still
+// settle/update upstream; those rely only on the in-memory weatherCache.
+async function fetchHistoricWindForReport(report, isoStart, isoEnd) {
+  const reportTime = new Date(report.created_at);
+  const daysDiff = (Date.now() - reportTime.getTime()) / 86400000;
+  const isArchival = daysDiff >= 7;
+
+  // 1. Try the persisted column first (instant, no network call at all)
+  if (isArchival && report.historic_wind_json) {
+    try {
+      const cached = typeof report.historic_wind_json === 'string'
+        ? JSON.parse(report.historic_wind_json)
+        : report.historic_wind_json;
+      if (cached?.time?.length) {
+        // Also warm the in-memory cache so other helpers (e.g. getHistoricAvgBearing)
+        // that call fetchHistoricWind directly for this same location/hour benefit too
+        const cacheKey = `${parseFloat(report.latitude).toFixed(3)}_${parseFloat(report.longitude).toFixed(3)}_${isoStart.slice(0,13)}`;
+        weatherCache[cacheKey] = cached;
+        return cached;
+      }
+    } catch (e) {
+      // fall through to network fetch if stored JSON is malformed
+    }
+  }
+
+  // 2. Not cached (or not archival yet) — fetch normally
+  const hourly = await fetchHistoricWind(report.latitude, report.longitude, isoStart, isoEnd);
+
+  // 3. Persist to Supabase only once data is stable (archival) and successfully fetched
+  if (isArchival && hourly?.time?.length) {
+    report.historic_wind_json = hourly; // update local copy so this session won't refetch
+    backfillHistoricWind(report.id, hourly); // fire-and-forget; drawing doesn't wait on this
+  }
+
+  return hourly;
+}
+
+async function backfillHistoricWind(reportId, hourlyData) {
+  try {
+    const result = await sb
+      .from("air_reports")
+      .update({ historic_wind_json: hourlyData })
+      .eq("id", Number(reportId))
+      .select();
+    console.log("BACKFILL historic_wind_json:", result);
+    return result;
+  } catch (e) {
+    console.warn('Failed to persist historic_wind_json for report', reportId, e);
+  }
+}
+
 // Builds a raw upwind vector trail from a series of hourly wind steps.
 // Each step moves the trail in the wind direction by wind_speed km.
 // Returns array of {lat, lon} points starting from the pin origin.
@@ -1535,9 +1590,8 @@ async function renderHistoricSplineTrailForReport(report) {
 
     const startTime = new Date(reportTime.getTime() - 6 * 3600000);
 
-    const hourly = await fetchHistoricWind(
-      report.latitude,
-      report.longitude,
+    const hourly = await fetchHistoricWindForReport(
+      report,
       startTime.toISOString(),
       reportTime.toISOString()
     );
@@ -1598,7 +1652,7 @@ async function renderHistoricSplineTrailForReport(report) {
       }
     }
     const historicalDir = closestStep != null ? hourly.wind_direction_10m[closestStep] : null;
-    if (historicalDir != null) {
+    if (historicalDir != null && report.wind_direction !== historicalDir) {
       report.wind_direction = historicalDir;
       await backfillWindDirection(report.id, historicalDir);
     }
@@ -1606,8 +1660,12 @@ async function renderHistoricSplineTrailForReport(report) {
     const validPres = steps.filter(s => s.pres != null);
     if (validPres.length) {
       const avgPressure = validPres.reduce((sum, s) => sum + s.pres, 0) / validPres.length;
-      report.sea_level_pressure = avgPressure;
-      await backfillPressure(report.id, avgPressure);
+      const alreadyStored = report.sea_level_pressure != null &&
+        Math.abs(report.sea_level_pressure - avgPressure) < 0.05;
+      if (!alreadyStored) {
+        report.sea_level_pressure = avgPressure;
+        await backfillPressure(report.id, avgPressure);
+      }
     }
 
 steps.reverse(); // walk backwards from report time toward the source
@@ -1796,12 +1854,19 @@ async function generateAllBackgroundTrails(reports, tracerCoords = null) {
     }
   });
 
-// PASS 2: Fetch historic splines sequentially to avoid rate limiting
-  for (const report of sortedReports) {
-    const baseColor = ageColorDark(report.created_at);
-    const smoothedTrail = await renderHistoricSplineTrailForReport(report);
-    if (!smoothedTrail || smoothedTrail.length < 2) continue;
+// PASS 2: Fetch historic splines concurrently — safe to parallelize now that
+// archival reports (>7 days) are served from the persisted historic_wind_json
+// column instead of hitting Open-Meteo every time. Only genuinely new/uncached
+// fetches go to the network, so rate-limit pressure stays low even running in parallel.
+  const splineResults = await Promise.all(
+    sortedReports.map(report => renderHistoricSplineTrailForReport(report))
+  );
 
+  sortedReports.forEach((report, idx) => {
+    const smoothedTrail = splineResults[idx];
+    if (!smoothedTrail || smoothedTrail.length < 2) return;
+
+    const baseColor = ageColorDark(report.created_at);
     let splineLatLngs = smoothedTrail.map(p => [p.lat, p.lon]);
 
     // If called from tracer, clip spline 1km past the tracer point
@@ -1833,12 +1898,10 @@ async function generateAllBackgroundTrails(reports, tracerCoords = null) {
       lineJoin: 'round',
       className: 'bg-trail-teal',
       interactive: false,
-      pane: 'splinePane'   // ← add this
+      pane: 'splinePane'
     }).addTo(map);
     bgTrailLayers.push(dottedSpline);
-  };
-
-  await new Promise(r => setTimeout(r, 25));
+  });
 }
 
   
