@@ -1697,10 +1697,10 @@ async function generateAllBackgroundTrails(reports, tracerCoords = null) {
     const windDeg = parseFloat(report.manual_wind_direction ?? report.wind_direction);
 
 
-    const totalDistKm = 10;
+    const totalDistKm = 5;
     const totalSegments = 5;
     const stepDistKm = totalDistKm / totalSegments;
-    const expansionAngleDeg = 30;
+    const expansionAngleDeg = 15;
 
     const baseColor = ageColor(report.created_at);
     const upwindBearingRad = ((windDeg + 180) % 360) * Math.PI / 180;
@@ -1838,7 +1838,7 @@ async function generateAllBackgroundTrails(reports, tracerCoords = null) {
     bgTrailLayers.push(dottedSpline);
   };
 
-  await new Promise(r => setTimeout(r, 150));
+  await new Promise(r => setTimeout(r, 25));
 }
 
   
