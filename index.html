@@ -1394,18 +1394,22 @@ if (weatherCache[cacheKey]) return weatherCache[cacheKey];
 }
 
 // Wraps fetchHistoricWind with Supabase-backed persistence for a specific report.
-// Archive-API wind data (>7 days old) never changes, so once it's fetched for a
-// report it's saved permanently in historic_wind_json and never re-fetched from
-// Open-Meteo again — across page reloads, not just within one session.
-// Reports younger than 7 days are NOT persisted this way since the data can still
-// settle/update upstream; those rely only on the in-memory weatherCache.
+// This function only ever runs for reports >=7h old (renderHistoricSplineTrailForReport
+// already gates on that), and that 7h gate is what matters here: the report's relevant
+// 6h wind window (created_at - 6h to created_at) is fully in the past by then, so
+// Open-Meteo's returned values for that window are settled and won't change again —
+// regardless of whether fetchHistoricWind happens to route to the forecast API
+// (< 7 days old) or the archive API (>= 7 days old). Those are two unrelated 7's:
+// the forecast/archive split is about which Open-Meteo endpoint has finalized data;
+// this persistence cache is about whether THIS report's own wind window has settled.
+// So we persist as soon as the report itself is old enough, not after a 7-day wait.
 async function fetchHistoricWindForReport(report, isoStart, isoEnd) {
   const reportTime = new Date(report.created_at);
-  const daysDiff = (Date.now() - reportTime.getTime()) / 86400000;
-  const isArchival = daysDiff >= 7;
+  const reportAgeHours = (Date.now() - reportTime.getTime()) / 3600000;
+  const isSettled = reportAgeHours >= 7;
 
   // 1. Try the persisted column first (instant, no network call at all)
-  if (isArchival && report.historic_wind_json) {
+  if (isSettled && report.historic_wind_json) {
     try {
       const cached = typeof report.historic_wind_json === 'string'
         ? JSON.parse(report.historic_wind_json)
@@ -1422,11 +1426,11 @@ async function fetchHistoricWindForReport(report, isoStart, isoEnd) {
     }
   }
 
-  // 2. Not cached (or not archival yet) — fetch normally
+  // 2. Not cached (or not settled yet) — fetch normally
   const hourly = await fetchHistoricWind(report.latitude, report.longitude, isoStart, isoEnd);
 
-  // 3. Persist to Supabase only once data is stable (archival) and successfully fetched
-  if (isArchival && hourly?.time?.length) {
+  // 3. Persist to Supabase only once this report's own wind window is settled
+  if (isSettled && hourly?.time?.length) {
     report.historic_wind_json = hourly; // update local copy so this session won't refetch
     backfillHistoricWind(report.id, hourly); // fire-and-forget; drawing doesn't wait on this
   }
