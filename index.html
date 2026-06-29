@@ -2138,7 +2138,7 @@ const popupHtml = `<div class="popup-inner" style="padding:0;min-width:220px;">
     if (spline) {
       const el = spline.getElement();
       if (el) {
-        el._animTimer = setTimeout(() => el.classList.remove('bg-trail-animated'), 20000);
+        el._animTimer = setTimeout(() => el.classList.remove('bg-trail-animated'), 5000);
       }
     }
   });
