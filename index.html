@@ -209,6 +209,9 @@ button{
   padding:0 !important;
   overflow:hidden;
   min-width:200px;
+  background: rgba(255,255,255,0.82) !important;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
 }
 .leaflet-popup-content{ margin:0 !important; width:auto !important; }
 
@@ -240,6 +243,15 @@ button{
 
 .bg-trail-teal {
   pointer-events: none;
+}
+
+@keyframes marchDots {
+  from { stroke-dashoffset: 0; }
+  to   { stroke-dashoffset: 22; }
+}
+.bg-trail-animated path,
+.bg-trail-animated {
+  animation: marchDots 1.0s linear infinite;
 }
   
 .source-label{
@@ -1382,7 +1394,8 @@ function makeIcon(color, windDeg, catColor) {
    BACKTRACK ENGINE
 ═══════════════════════════════════════════════════ */
 let btLayers    = []; 
-let bgTrailLayers = []; 
+let bgTrailLayers = [];
+const splineByReport = {}; 
 let btAnimFrame = null;
 
 function clearBacktrack(){
@@ -1954,11 +1967,12 @@ async function generateAllBackgroundTrails(reports, tracerCoords = null) {
       dashArray: '4, 7',
       lineCap: 'round',
       lineJoin: 'round',
-      className: 'bg-trail-teal',
+      className: `bg-trail-teal spline-report-${report.id}`,
       interactive: false,
       pane: 'splinePane'
     }).addTo(map);
     bgTrailLayers.push(dottedSpline);
+    splineByReport[report.id] = dottedSpline;
   });
 }
 
@@ -2108,7 +2122,26 @@ const popupHtml = `<div class="popup-inner" style="padding:0;min-width:220px;">
   }).addTo(map);
 
   marker.bindPopup(popupHtml);
-marker.on('popupopen', () => startBacktrack(report.latitude, report.longitude, new Date().toISOString()));
+  marker.on('popupopen', () => {
+    startBacktrack(report.latitude, report.longitude, new Date().toISOString());
+    const spline = splineByReport[report.id];
+    if (spline) {
+      const el = spline.getElement();
+      if (el) {
+        clearTimeout(el._animTimer);
+        el.classList.add('bg-trail-animated');
+      }
+    }
+  });
+  marker.on('popupclose', () => {
+    const spline = splineByReport[report.id];
+    if (spline) {
+      const el = spline.getElement();
+      if (el) {
+        el._animTimer = setTimeout(() => el.classList.remove('bg-trail-animated'), 20000);
+      }
+    }
+  });
   reportMarkers.push(marker);
 }
 
