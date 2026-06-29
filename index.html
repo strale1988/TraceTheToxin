@@ -15,6 +15,8 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/themes/dark.css">
   <style>
+.map-tiles-grayscale { filter: grayscale(1) brightness(0.85); }
+
 *{ margin:0; padding:0; box-sizing:border-box; }
 
 body{
@@ -438,6 +440,32 @@ span.flatpickr-weekday {
 
 </div>
 
+<div id="catLegend" style="display:none;
+  background:rgba(18,18,18,.88);
+  backdrop-filter:blur(4px);
+  -webkit-backdrop-filter:blur(4px);
+  border-radius:10px;
+  padding:5px 10px;
+  display:flex;
+  align-items:center;
+  gap:6px;
+  flex-wrap:wrap;
+  pointer-events:none;
+  border:1px solid rgba(255,255,255,.09);
+  box-shadow:0 2px 10px rgba(0,0,0,.45);
+  margin-bottom:4px;
+">
+  <!--<span id="catLegendLabel" style="color:#888;font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:.3px;flex-shrink:0;">Kategorija:</span>-->
+  <span class="legend-item"><span class="legend-dot" style="background:#e87b2c"></span><span class="leg" data-en="Smoke" data-sr="Dim" style="color:#ddd;font-size:10px;">Dim</span></span>
+  <span class="legend-item"><span class="legend-dot" style="background:#8b4513"></span><span class="leg" data-en="Sewage" data-sr="Kanalizacija" style="color:#ddd;font-size:10px;">Kanalizacija</span></span>
+  <span class="legend-item"><span class="legend-dot" style="background:#d4c600"></span><span class="leg" data-en="Sulfur" data-sr="Sumpor" style="color:#ddd;font-size:10px;">Sumpor</span></span>
+  <span class="legend-item"><span class="legend-dot" style="background:#cc3399"></span><span class="leg" data-en="Burnt plastic" data-sr="Spaljena plastika" style="color:#ddd;font-size:10px;">Spaljena plastika</span></span>
+  <span class="legend-item"><span class="legend-dot" style="background:#006a8d"></span><span class="leg" data-en="Chemicals" data-sr="Hemikalije" style="color:#ddd;font-size:10px;">Hemikalije</span></span>
+  <span class="legend-item"><span class="legend-dot" style="background:#4db84d"></span><span class="leg" data-en="Waste" data-sr="Otpad" style="color:#ddd;font-size:10px;">Otpad</span></span>
+  <span class="legend-item"><span class="legend-dot" style="background:#9999cc"></span><span class="leg" data-en="Unknown" data-sr="Nepoznato" style="color:#ddd;font-size:10px;">Nepoznato</span></span>
+  <span class="legend-item"><span class="legend-dot" style="background:#aaaaaa"></span><span class="leg" data-en="Other" data-sr="Ostalo" style="color:#ddd;font-size:10px;">Ostalo</span></span>
+</div>
+
 <div class="filter-label-row">
   <span class="filter-title" id="filterTitleLabel">Time Window Filter</span>
   <span id="reportCount">0 Reports</span>
@@ -663,6 +691,7 @@ const T = {
   reportBtn:    { en:'REPORT BAD AIR',                   sr:'PRIJAVI LOŠ VAZDUH' },
   csvLabel:     { en:'CSV',                              sr:'CSV' },
   legendLabel:  { en:'Age:',                             sr:'Starost:' },
+  catLegendLabel: { en:'Category:',                       sr:'Kategorija:' },
   commentPH:    { en:'Optional notes...',                sr:'Opciona napomena...' },
   waitGps:      { en:'Waiting for GPS...',               sr:'Čekanje GPS-a...' },
   
@@ -766,6 +795,9 @@ function applyLang(){
     el.textContent = el.dataset[lang] || el.dataset.en;
   });
 
+  const catLegLabel = document.getElementById('catLegendLabel');
+  if (catLegLabel) catLegLabel.textContent = t('catLegendLabel');
+
   const gm = document.getElementById('gpsModal');
   if(gm && gm.style.display!=='none') updateGpsModalText();
 
@@ -848,7 +880,8 @@ map.getPane('splinePane').style.zIndex = 450;
 map.getPane('splinePane').style.pointerEvents = 'none';
 
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
-  attribution:'© OpenStreetMap'
+  attribution:'© OpenStreetMap',
+  className: 'map-tiles-grayscale'
 }).addTo(map);
 
 let userCoords    = null;
@@ -1209,6 +1242,26 @@ function ageColor(createdAt){
   return     '#333333';        
 }
 
+const CATEGORY_COLORS = {
+  'Smoke':                                                          '#e87b2c', // vivid amber-orange
+  'Sewage':                                                         '#8b4513', // deep brown
+  'Sulfur':                                                         '#d4c600', // sharp yellow
+  'Burnt plastic or rubber':                                        '#cc3399', // hot magenta
+  'Chemical solvents (paint, fuel, glue, industrial chemicals)':   '#006a8d', // electric blue
+  'Waste / Trash / Garbage':                                        '#4db84d', // mid green
+  'Unknown':                                                        '#9999cc', // muted lavender
+  'Other':                                                          '#aaaaaa', // neutral grey
+};
+
+function categoryColor(cat) {
+  if (!cat) return '#aaaaaa';
+  // Normalize: strip trailing punctuation variants, try direct match first
+  if (CATEGORY_COLORS[cat]) return CATEGORY_COLORS[cat];
+  // Fallback: partial key match (handles Serbian DB values stored in English)
+  const key = Object.keys(CATEGORY_COLORS).find(k => cat.includes(k) || k.includes(cat));
+  return key ? CATEGORY_COLORS[key] : '#aaaaaa';
+}
+
 function degToCardinal(deg){
   return ['N','NE','E','SE','S','SW','W','NW'][Math.round(deg/45)%8];
 }
@@ -1303,15 +1356,16 @@ function smoothPathChaikin(points, iterations = 3) {
   return current;
 }
 
-function makeIcon(color, windDeg) {
+function makeIcon(color, windDeg, catColor) {
   const rotation = (windDeg !== undefined) ? parseFloat(windDeg) : 0;
+  const accent = catColor || 'white';
 
   const svg = `
     <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 26 26" style="overflow: visible;">
-      <circle cx="13" cy="13" r="11" fill="${color}" stroke="white" stroke-width="2"/>
+      <circle cx="13" cy="13" r="11" fill="${color}" stroke="${accent}" stroke-width="2"/>
       <g transform="rotate(${rotation + 180} 13 13)">
-        <line x1="13" y1="5" x2="13" y2="13" stroke="white" stroke-width="3" stroke-linecap="round"/>
-        <polygon points="13,2 10,7 16,7" fill="white"/>
+        <line x1="13" y1="5" x2="13" y2="13" stroke="${accent}" stroke-width="3" stroke-linecap="round"/>
+        <polygon points="13,2 10,7 16,7" fill="${accent}"/>
       </g>
     </svg>`;
 
@@ -1759,12 +1813,12 @@ async function generateAllBackgroundTrails(reports, tracerCoords = null) {
     const windDeg = parseFloat(report.manual_wind_direction ?? report.wind_direction);
 
 
-    const totalDistKm = 5;
-    const totalSegments = 5;
+    const totalDistKm = 3;
+    const totalSegments = 3;
     const stepDistKm = totalDistKm / totalSegments;
-    const expansionAngleDeg = 15;
+    const expansionAngleDeg = 10;
 
-    const baseColor = ageColor(report.created_at);
+    const baseColor = categoryColor(report.category);
     const upwindBearingRad = ((windDeg + 180) % 360) * Math.PI / 180;
 
     coneEdges.set(report.id, { left: [], right: [] });
@@ -1870,7 +1924,7 @@ async function generateAllBackgroundTrails(reports, tracerCoords = null) {
     const smoothedTrail = splineResults[idx];
     if (!smoothedTrail || smoothedTrail.length < 2) return;
 
-    const baseColor = ageColorDark(report.created_at);
+    const baseColor = categoryColor(report.category);
     let splineLatLngs = smoothedTrail.map(p => [p.lat, p.lon]);
 
     // If called from tracer, clip spline 1km past the tracer point
@@ -2008,6 +2062,7 @@ function renderPin(report, index = 0){
   const formattedDate = formatDate(report.created_at);
   
   const color = ageColor(report.created_at);
+  const catCol = categoryColor(report.category);
   const card  = degToCardinal(report.wind_direction);
   
   const intensity = report.intensity ? ` &nbsp;|&nbsp; <b>${t('popupInt')}:</b> ${report.intensity}/10` : '';
@@ -2047,7 +2102,7 @@ const popupHtml = `<div class="popup-inner" style="padding:0;min-width:220px;">
 
   const zIndexPriority = 10000 - index;
   const marker=L.marker([report.latitude,report.longitude],{
-    icon: makeIcon(color, report.manual_wind_direction ?? report.wind_direction),
+    icon: makeIcon(color, report.manual_wind_direction ?? report.wind_direction, catCol),
 
     zIndexOffset: zIndexPriority 
   }).addTo(map);
@@ -2315,11 +2370,11 @@ async function reportBadAir(){
       manual_wind_direction: manualWindNum,
       // wind_direction: starts as the manual value; overwritten by backfillWindDirection()
       // once historical Open-Meteo data is available (>7h after report)
-      wind_direction:        manualWindNum,
+      wind_direction:        null,
       // wind_speed: from live Open-Meteo at submit time; null if fetch failed,
       // will be backfilled by renderHistoricSplineTrailForReport()
-      wind_speed:            finalSpeed,
-      sea_level_pressure:    finalPressure,
+      wind_speed:            null,
+      sea_level_pressure:    null,
       comment,
       category,
       intensity:             parseInt(intensity),
