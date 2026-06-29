@@ -251,7 +251,7 @@ button{
 }
 .bg-trail-animated path,
 .bg-trail-animated {
-  animation: marchDots 1.0s linear infinite;
+  animation: marchDots 0.6s linear infinite;
 }
   
 .source-label{
@@ -2081,35 +2081,41 @@ function renderPin(report, index = 0){
   
   const intensity = report.intensity ? ` &nbsp;|&nbsp; <b>${t('popupInt')}:</b> ${report.intensity}/10` : '';
 
-const popupHtml = `<div class="popup-inner" style="padding:0;min-width:220px;">
-  <div style="background:${catCol};padding:10px 14px 8px;border-radius:10px 10px 0 0;">
-    <div style="font-size:13px;font-weight:700;color:white;letter-spacing:.3px;">${translateCategory(report.category)}</div>
-    <div style="font-size:11px;color:rgba(255,255,255,.75);margin-top:2px;">${formattedDate}</div>
+const popupHtml = `<div class="popup-inner" style="padding:0;min-width:160px;max-width:200px;font-family:sans-serif;">
+  <div style="background:${catCol};padding:4px 8px;border-radius:6px 6px 0 0;display:flex;justify-content:space-between;align-items:center;">
+    <span style="font-size:11px;font-weight:700;color:white;">${translateCategory(report.category)}</span>
+    <span style="font-size:9px;color:rgba(255,255,255,.8);">${formattedDate}</span>
   </div>
-  <div style="padding:10px 14px;display:flex;flex-direction:column;gap:5px;">
+  <div style="padding:5px 8px;display:flex;flex-direction:column;gap:2px;">
     <div style="display:flex;justify-content:space-between;align-items:center;">
-      <span style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.4px;">${t('popupInt')}</span>
-      <span style="font-size:13px;font-weight:600;color:#111;">${report.intensity} / 10</span>
+      <span style="font-size:9px;color:#888;text-transform:uppercase;">${t('popupInt')}</span>
+      <span style="font-size:11px;font-weight:600;color:#111;">${report.intensity}/10</span>
     </div>
     <div style="display:flex;justify-content:space-between;align-items:center;">
-      <span style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.4px;">${t('popupDuration')}</span>
-      <span style="font-size:13px;font-weight:600;color:#111;">${report.duration || 1}${t('hours')}</span>
+      <span style="font-size:9px;color:#888;text-transform:uppercase;">${t('popupDuration')}</span>
+      <span style="font-size:11px;font-weight:600;color:#111;">${report.duration || 1}${t('hours')}</span>
     </div>
-    <div style="height:1px;background:#f0f0f0;margin:2px 0;"></div>
+    
+    <div style="height:1px;background:#eee;margin:2px 0;"></div>
+    
     <div style="display:flex;justify-content:space-between;align-items:center;">
-      <span style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.4px;">${t('popupDir')}</span>
-      <span style="font-size:13px;font-weight:600;color:#111;">${report.manual_wind_direction != null ? report.manual_wind_direction + '°' : '–'}</span>
+      <span style="font-size:9px;color:#888;text-transform:uppercase;">${t('popupDir')}</span>
+      <span style="font-size:11px;font-weight:600;color:#111;">${report.manual_wind_direction != null ? report.manual_wind_direction + '°' : '–'}</span>
     </div>
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:-3px;">
-      <span style="font-size:10px;color:#bbb;text-transform:uppercase;letter-spacing:.4px;">${t('historical')}</span>
-      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">
-        <span style="font-size:11px;color:#aaa;">${report.wind_direction != null ? Math.round(report.wind_direction) + '° ' + card : '–'}</span>
-        <span style="font-size:11px;color:#aaa;">${report.wind_speed != null ? report.wind_speed + ' km/h' : '–'}</span>
-        <span style="font-size:11px;color:#aaa;">${report.sea_level_pressure != null ? Math.round(report.sea_level_pressure) + ' hPa' : '–'}</span>
-      </div>
+
+    <!-- Historical Data: Label Above Data -->
+    <div style="display:flex;flex-direction:column;gap:1px;margin-top:1px;">
+      <span style="font-size:9px;color:#bbb;text-transform:uppercase;">${t('historical')}</span>
+      <span style="font-size:10px;color:#999;white-space:nowrap;padding-left:2px;">
+        ${report.wind_direction != null ? Math.round(report.wind_direction) + '°' + (card ? ` ${card}` : '') : '–'} • 
+        ${report.wind_speed != null ? report.wind_speed + ' km/h' : '–'} • 
+        ${report.sea_level_pressure != null ? Math.round(report.sea_level_pressure) + ' hPa' : '–'}
+      </span>
     </div>
-    ${report.comment ? `<div style="height:1px;background:#f0f0f0;margin:2px 0;"></div>
-    <div style="font-size:12px;color:#555;font-style:italic;">${report.comment}</div>` : ''}
+    
+    ${report.comment ? `
+    <div style="height:1px;background:#eee;margin:2px 0;"></div>
+    <div style="font-size:10px;color:#555;font-style:italic;line-height:1.2;">${report.comment}</div>` : ''}
   </div>
 </div>`;
   
