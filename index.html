@@ -2068,7 +2068,7 @@ function renderPin(report, index = 0){
   const intensity = report.intensity ? ` &nbsp;|&nbsp; <b>${t('popupInt')}:</b> ${report.intensity}/10` : '';
 
 const popupHtml = `<div class="popup-inner" style="padding:0;min-width:220px;">
-  <div style="background:${color};padding:10px 14px 8px;border-radius:10px 10px 0 0;">
+  <div style="background:${catCol};padding:10px 14px 8px;border-radius:10px 10px 0 0;">
     <div style="font-size:13px;font-weight:700;color:white;letter-spacing:.3px;">${translateCategory(report.category)}</div>
     <div style="font-size:11px;color:rgba(255,255,255,.75);margin-top:2px;">${formattedDate}</div>
   </div>
