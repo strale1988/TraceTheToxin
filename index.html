@@ -978,10 +978,29 @@ function enableManualPinMode() {
   checkFormReady();
 }
 
+// Obfuscate a GPS fix by offsetting it a random distance (up to radiusMeters)
+// in a random direction, so the device's true location is never stored or shown.
+function fuzzCoords(lat, lon, radiusMeters = 250) {
+  const earthRadius = 6371000; // meters
+  const randomAngle = Math.random() * 2 * Math.PI;
+  // sqrt() gives a uniform distribution of points across the disk area
+  // (otherwise points would cluster near the center)
+  const randomDist = radiusMeters * Math.sqrt(Math.random());
+
+  const latRad = lat * Math.PI / 180;
+  const deltaLat = (randomDist * Math.cos(randomAngle)) / earthRadius;
+  const deltaLon = (randomDist * Math.sin(randomAngle)) / (earthRadius * Math.cos(latRad));
+
+  return {
+    lat: lat + (deltaLat * 180 / Math.PI),
+    lon: lon + (deltaLon * 180 / Math.PI)
+  };
+}
+
 function startWatching() {
   navigator.geolocation.getCurrentPosition(
     pos => {
-      userCoords = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+      userCoords = fuzzCoords(pos.coords.latitude, pos.coords.longitude, 250);
       hideGpsModal();
       
       // Only show the user's blue dot if we have a position
