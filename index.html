@@ -702,7 +702,7 @@ const splineCache = {};
 // or shorter trail — everything below derives from it, including the
 // "settled data" gate (window + 1h buffer) that decides when a report is
 // old enough for Open-Meteo's data to be considered final.
-const TRAIL_WINDOW_HOURS = 12;
+const TRAIL_WINDOW_HOURS = 6;
 const TRAIL_SETTLED_GATE_HOURS = TRAIL_WINDOW_HOURS + 1;
 
 /* ═══════════════════════════════════════════════════
