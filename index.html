@@ -89,6 +89,53 @@ header p{ font-size:11px; opacity:.7; margin-top:2px; }
   overflow: hidden;
 }
 
+.resize-handle {
+  flex-shrink: 0;
+  flex-grow: 0;
+  height: 40px;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #181818;
+  border-top: 1px solid #292929;
+  border-bottom: 1px solid #292929;
+  position: relative;
+  z-index: 5;
+  overflow: visible;
+}
+
+.panel-toggle-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #262626;
+  border: 1px solid #3a3a3a;
+  color: #aaa;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  box-shadow: 0 2px 6px rgba(0,0,0,.45);
+  transition: background .15s, color .15s, transform .15s;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+.panel-toggle-btn:hover { background:#303030; color:#ddd; }
+.panel-toggle-btn:active { transform: scale(.9); }
+.panel-toggle-btn svg { transition: transform .25s ease; }
+.panel-toggle-btn.collapsed svg { transform: rotate(180deg); }
+
+.app-panel {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  overflow: hidden;
+  opacity: 1;
+  transition: height .28s ease, opacity .22s ease;
+}
+
 .filter-label-row {
   display: flex;
   justify-content: space-between;
@@ -254,16 +301,6 @@ button{
   animation: marchDots 0.6s linear infinite;
 }
   
-.source-label{
-  background:#ff8800; color:white;
-  border-radius:8px; padding:6px 10px;
-  font-size:12px; font-weight:700;
-  white-space:nowrap;
-  box-shadow:0 2px 8px rgba(0,0,0,.55);
-  line-height:1.5; text-align:center;
-  display:inline-block;
-}
-
 .generic-modal-overlay{
   position:fixed; inset:0;
   background:rgba(0,0,0,.75);
@@ -284,12 +321,6 @@ button{
 }
 .generic-modal h2{ font-size:18px; font-weight:700; margin-bottom:12px; }
 .generic-modal p{ font-size:13px; line-height:1.6; color:#bbb; margin-bottom:12px; text-align:left; }
-.generic-modal-steps{
-  background:#2a2a2a; border-radius:10px;
-  padding:12px 14px; margin:10px 0 16px;
-  text-align:left; font-size:12px; color:#ccc; line-height:1.7;
-}
-.generic-modal-steps b{ color:#fff; }
 .generic-modal-close{
   background:#333; color:#eee;
   border:1px solid #555; border-radius:10px;
@@ -325,8 +356,6 @@ button{
   background-position: right 12px center;
   padding-right: 32px !important;
 }
-
-.pin-active { border: 2px solid #f5a623 !important; }
 
 /* ==========================================================================
    FLATPICKR CUSTOM THEME OVERRIDES
@@ -427,7 +456,7 @@ span.flatpickr-weekday {
 
 <div id="map"></div>
 
-<div id="mapLegend" style="display:none;
+<div id="mapLegend" style="
   background:rgba(18,18,18,.88);
   backdrop-filter:blur(4px);
   -webkit-backdrop-filter:blur(4px);
@@ -452,7 +481,7 @@ span.flatpickr-weekday {
 
 </div>
 
-<div id="catLegend" style="display:none;
+<div id="catLegend" style="
   background:rgba(18,18,18,.88);
   backdrop-filter:blur(4px);
   -webkit-backdrop-filter:blur(4px);
@@ -467,16 +496,27 @@ span.flatpickr-weekday {
   box-shadow:0 2px 10px rgba(0,0,0,.45);
   margin-bottom:4px;
 ">
-  <!--<span id="catLegendLabel" style="color:#888;font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:.3px;flex-shrink:0;">Kategorija:</span>-->
   <span class="legend-item"><span class="legend-dot" style="background:#c41e27"></span><span class="leg" data-en="Smoke" data-sr="Dim" style="color:#ddd;font-size:10px;">Dim</span></span>
   <span class="legend-item"><span class="legend-dot" style="background:#8b4513"></span><span class="leg" data-en="Sewage" data-sr="Kanalizacija" style="color:#ddd;font-size:10px;">Kanalizacija</span></span>
   <span class="legend-item"><span class="legend-dot" style="background:#d4c600"></span><span class="leg" data-en="Sulfur" data-sr="Sumpor" style="color:#ddd;font-size:10px;">Sumpor</span></span>
   <span class="legend-item"><span class="legend-dot" style="background:#cc3399"></span><span class="leg" data-en="Burnt plastic" data-sr="Spaljena plastika" style="color:#ddd;font-size:10px;">Spaljena plastika</span></span>
   <span class="legend-item"><span class="legend-dot" style="background:#008ab8"></span><span class="leg" data-en="Chemicals" data-sr="Hemikalije" style="color:#ddd;font-size:10px;">Hemikalije</span></span>
   <span class="legend-item"><span class="legend-dot" style="background:#2a682a"></span><span class="leg" data-en="Waste" data-sr="Otpad" style="color:#ddd;font-size:10px;">Otpad</span></span>
-  <span class="legend-item"><span class="legend-dot" style="background:#9999cc"></span><span class="leg" data-en="Unknown" data-sr="Nepoznato" style="color:#ddd;font-size:10px;">Nepoznato</span></span>
-  <span class="legend-item"><span class="legend-dot" style="background:#aaaaaa"></span><span class="leg" data-en="Other" data-sr="Ostalo" style="color:#ddd;font-size:10px;">Ostalo</span></span>
+  <span class="legend-item"><span class="legend-dot" style="background:#8342a1"></span><span class="leg" data-en="Unknown" data-sr="Nepoznato" style="color:#ddd;font-size:10px;">Nepoznato</span></span>
+  <span class="legend-item"><span class="legend-dot" style="background:#474747"></span><span class="leg" data-en="Other" data-sr="Ostalo" style="color:#ddd;font-size:10px;">Ostalo</span></span>
 </div>
+
+<div class="resize-handle">
+  <button id="panelToggleBtn" class="panel-toggle-btn" type="button"
+          aria-expanded="true" aria-controls="appPanel" title="Hide panel">
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+         stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="6 9 12 15 18 9"></polyline>
+    </svg>
+  </button>
+</div>
+
+<div id="appPanel" class="app-panel">
 
 <div class="filter-label-row">
   <span class="filter-title" id="filterTitleLabel">Time Window Filter</span>
@@ -487,8 +527,6 @@ span.flatpickr-weekday {
   <div class="select-wrap">
     <input type="text" id="dateRangePicker" placeholder="Select date range..." readonly>
   </div>
-</div>
-
 </div>
 
 <div id="pinMapBtn" class="pin-map-btn" style="display:none" title="Set location manually" onclick="togglePinMode()">📍</div>
@@ -550,6 +588,8 @@ span.flatpickr-weekday {
       <span id="csvLabel">CSV</span>
     </button>
   </div>
+</div>
+
 </div>
 
 <!-- GPS/Error Alert Modal -->
@@ -646,31 +686,6 @@ initTimeInput();
 ═══════════════════════════════════════════════════ */
 let lastSyncTimestamp = new Date().toISOString();
 
-async function checkForNewReports() {
-  // Query only records newer than our last sync
-  const { data, error } = await sb
-    .from('air_reports')
-    .select('*')
-    .gt('created_at', lastSyncTimestamp)
-    .order('created_at', { ascending: false });
-
-  if (error) {
-    console.error("Error checking for updates:", error);
-    return;
-  }
-
-  if (data && data.length > 0) {
-    console.log(`Found ${data.length} new reports. Updating...`);
-    
-    // Update our sync timestamp to the newest record found
-    lastSyncTimestamp = data[0].created_at;
-    
-    // Merge new data and reload
-    globalActiveData = [...data, ...globalActiveData];
-    loadPinsByWindow();
-  }
-}
-
 let lang = 'sr';
 let traceMode = false;
 let tracerMarker = null;
@@ -679,11 +694,16 @@ let globalActiveData = [];
 
 let fp = null; 
 
-let liveTrackedWindSpeed = 12.0; 
-let liveTrackedWindDir = 0.0;
-
 const weatherCache = {};
 const splineCache = {};
+
+// How many hours of historical wind data to pull when building the spline
+// trail (and the live backtrack). Change this one number to load a longer
+// or shorter trail — everything below derives from it, including the
+// "settled data" gate (window + 1h buffer) that decides when a report is
+// old enough for Open-Meteo's data to be considered final.
+const TRAIL_WINDOW_HOURS = 12;
+const TRAIL_SETTLED_GATE_HOURS = TRAIL_WINDOW_HOURS + 1;
 
 /* ═══════════════════════════════════════════════════
    SUPABASE
@@ -699,46 +719,29 @@ const T = {
   subtitle:     { en:'Community Air Reporting Network',  sr:'Mreža za prijavu kvaliteta vazduha' },
   reportCount:  { en:'Reports',                          sr:'Prijava' },
   reportCount1: { en:'Report',                           sr:'Prijava' },
-  loading:      { en:'Loading...',                       sr:'Učitavanje...' },
   reportBtn:    { en:'REPORT BAD AIR',                   sr:'PRIJAVI LOŠ VAZDUH' },
   csvLabel:     { en:'CSV',                              sr:'CSV' },
-  legendLabel:  { en:'Age:',                             sr:'Starost:' },
-  catLegendLabel: { en:'Category:',                       sr:'Kategorija:' },
   commentPH:    { en:'Optional notes...',                sr:'Opciona napomena...' },
   waitGps:      { en:'Waiting for GPS...',               sr:'Čekanje GPS-a...' },
   
   submitted:    { en:'Report submitted.',                sr:'Prijava uspešna.' },
-  popupTitle:   { en:'Air Report',                       sr:'Prijava vazduha' },
-  popupCat:     { en:'Category',                         sr:'Kategorija' },
   popupInt:     { en:'Intensity',                        sr:'Intenzitet' },
-  popupDate:    { en:'Date',                             sr:'Datum' },
-  popupWind:    { en:'Wind',                             sr:'Vetar' },
   popupDir:     { en:'Reported Wind Direction',                        sr:'Prijavljen Smer Vetra' },
-  popupSpeed:     { en:'Speed',                        sr:'Brzina' },
 
-  popupPres:    { en:'Pressure',                         sr:'Pritisak' },
-  popupNotes:   { en:'Notes',                            sr:'Napomena' },
-  popupNone:    { en:'None',                             sr:'Nema' },
   popupDuration: { en: 'Duration',                      sr: 'Trajanje' },
 
   historical: { en: 'Historical Data', sr: 'Istorijski Podaci' },
 
   
   hours:         { en: 'h',                         sr: 'h' },
-  possSource:   { en:'⚠ Possible sources',               sr:'⚠ Mogući izvori' },
-  backtrack:    { en:'backtrack',                        sr:'unazad' },
   timeFilter:   { en:'Time Window Filter',               sr:'Filter vremenskog prozora' },
   catPH:        { en:'Select smell…',                    sr:'Izaberi miris…' },
   intPH:        { en:'Intensity…',                       sr:'Intenzitet…' },
-  pinModeOn:    { en:'Tap map to place pin',             sr:'Tapni kartu za pin' },
-  pinModeOff:   { en:'Set location manually',            sr:'Ručna lokacija' },
   gpsTitle:     { en:'GPS Not Enabled',                  sr:'GPS nije uključen' },
   gpsBody:      { en:'Location access is turned off. To report bad air at your location, enable it in your settings.', sr:'Pristup lokaciji je isključen. Da biste prijavili loš vazduh, omogućite ga u podešavanjima.' },
   gpsAlt:       { en:'Or use the 📍 button on the map to drop a pin manually.', sr:'Ili koristite dugme 📍 na karti da ručno postavite pin.' },
   gpsBtn:       { en:'Got it',                           sr:'Razumem' },
   noReports:    { en:'No reports in current map view.',  sr:'Nema prijava u vidljivoj oblasti.' },
-  traceModeOn:  { en:'Tap map to trace source',          sr:'Tapni kartu za praćenje izvora' },
-  traceModeOff: { en:'Trace Possible Source',            sr:'Prati potencijalni izvor' },
   calendarPH:   { en:'Select date range...',            sr:'Izaberi vremenski opseg...' },
   helpTitle:    { en:'How to use TraceTheToxin',         sr:'Kako se koristi TraceTheToxin' },
   helpClose:    { en:'Close',                            sr:'Zatvori' },
@@ -750,7 +753,7 @@ const T = {
   helpStep3Body:{ en:'Click the Windfinder icon in the bottom right corner. On their website map, click directly on your current location, read the wind direction degree value (0-360°), and type it back into this application.', sr:'Kliknite na ikonicu Windfinder u donjem desnom uglu. Na mapi na njihovom sajtu kliknite na vašu lokaciju, pročitajte vrednost smera vetra u stepenima (0-360°) i upišite je u polje u ovoj aplikaciji.' },
   helpStep4:    { en:'4. Submit:',                       sr:'4. Pošalji:' },
   helpStep4Body:{ en:'Verify the recorded time reflects when you noticed the odor, and tap the "REPORT BAD AIR" button.', sr:'Proverite da li izabrano vreme odgovara trenutku kada ste primetili miris, a zatim pritisnite dugme "PRIJAVI LOŠ VAZDUH".' },
-  windDirPH:    { en:'Wind Dir (0-360)', sr:'Smer vetra (0-360)' },
+  windDirPH:    { en:'Wind Dir (0-360)', sr:'Smer Vetra (0-360)' },
   durationPH:   { en:'Duration (1-24h)', sr:'Trajanje (1-24h)' }
 };
 
@@ -806,9 +809,6 @@ function applyLang(){
   document.querySelectorAll('.leg').forEach(el=>{
     el.textContent = el.dataset[lang] || el.dataset.en;
   });
-
-  const catLegLabel = document.getElementById('catLegendLabel');
-  if (catLegLabel) catLegLabel.textContent = t('catLegendLabel');
 
   const gm = document.getElementById('gpsModal');
   if(gm && gm.style.display!=='none') updateGpsModalText();
@@ -1081,7 +1081,11 @@ function togglePinMode() {
   const btn = document.getElementById('pinMapBtn');
   btn.classList.toggle('active', pinMode);
   
-  if(!pinMode) {
+  if (pinMode) {
+    // Sweep the pins off the map for a clean workspace while placing one
+    clearMarkers();
+    clearBackgroundTrails();
+  } else {
     if(manualMarker){ map.removeLayer(manualMarker); manualMarker = null; }
     manualCoords = null; 
     loadPinsByWindow();
@@ -1280,8 +1284,8 @@ const CATEGORY_COLORS = {
   'Burnt plastic or rubber':                                        '#cc3399', // hot magenta
   'Chemical solvents (paint, fuel, glue, industrial chemicals)':   '#008ab8', // electric blue
   'Waste / Trash / Garbage':                                        '#2a682a', // mid green
-  'Unknown':                                                        '#9999cc', // muted lavender
-  'Other':                                                          '#aaaaaa', // neutral grey
+  'Unknown':                                                        '#8342a1', // muted lavender
+  'Other':                                                          '#474747', // neutral grey
 };
 
 function categoryColor(cat) {
@@ -1313,19 +1317,11 @@ function getHaversineDistance(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
-function getBearing(lat1, lon1, lat2, lon2) {
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-  const y = Math.sin(dLon) * Math.cos(lat2 * Math.PI / 180);
-  const x = Math.cos(lat1 * Math.PI / 180) * Math.sin(lat2 * Math.PI / 180) -
-             Math.sin(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.cos(dLon);
-  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
-}
-
 // Checks if wind data for this report is already in the session cache.
 // Must match the cache key format used in fetchHistoricWind exactly.
 function isWindCached(report) {
   const reportTime = new Date(report.created_at);
-  const startTime = new Date(reportTime.getTime() - 6 * 3600000);
+  const startTime = new Date(reportTime.getTime() - TRAIL_WINDOW_HOURS * 3600000);
   const lat = parseFloat(report.latitude);
   const lon = parseFloat(report.longitude);
   const cacheKey = `${lat.toFixed(3)}_${lon.toFixed(3)}_${startTime.toISOString().slice(0,13)}`;
@@ -1334,7 +1330,7 @@ function isWindCached(report) {
 
 async function getHistoricAvgBearing(report) {
   const reportTime = new Date(report.created_at);
-  const startTime = new Date(reportTime.getTime() - 6 * 3600000);
+  const startTime = new Date(reportTime.getTime() - TRAIL_WINDOW_HOURS * 3600000);
   const hourly = await fetchHistoricWind(
     report.latitude, report.longitude,
     startTime.toISOString(), reportTime.toISOString()
@@ -1442,6 +1438,10 @@ function moveUpwind(lat,lon,windFromDeg,distKm){
 // Uses forecast API for data < 7 days old, archive API for older data.
 // Results are cached by location+hour to avoid redundant API calls.
 async function fetchHistoricWind(lat,lon,isoStart,isoEnd){
+// Supabase can return numeric columns as strings; coerce defensively so
+// .toFixed() below never throws regardless of what the caller passed in.
+lat = parseFloat(lat);
+lon = parseFloat(lon);
 const cacheKey = `${lat.toFixed(3)}_${lon.toFixed(3)}_${isoStart.slice(0,13)}`;
 const reportAgeHours = (Date.now() - new Date(isoStart).getTime()) / 3600000;
 
@@ -1480,19 +1480,20 @@ if (weatherCache[cacheKey]) return weatherCache[cacheKey];
 }
 
 // Wraps fetchHistoricWind with Supabase-backed persistence for a specific report.
-// This function only ever runs for reports >=7h old (renderHistoricSplineTrailForReport
-// already gates on that), and that 7h gate is what matters here: the report's relevant
-// 6h wind window (created_at - 6h to created_at) is fully in the past by then, so
+// This function only ever runs for reports old enough to pass TRAIL_SETTLED_GATE_HOURS
+// (renderHistoricSplineTrailForReport already gates on that), and that gate is what
+// matters here: the report's relevant TRAIL_WINDOW_HOURS wind window
+// (created_at - TRAIL_WINDOW_HOURS to created_at) is fully in the past by then, so
 // Open-Meteo's returned values for that window are settled and won't change again —
 // regardless of whether fetchHistoricWind happens to route to the forecast API
-// (< 7 days old) or the archive API (>= 7 days old). Those are two unrelated 7's:
+// (< 7 days old) or the archive API (>= 7 days old). Those are two unrelated things:
 // the forecast/archive split is about which Open-Meteo endpoint has finalized data;
 // this persistence cache is about whether THIS report's own wind window has settled.
 // So we persist as soon as the report itself is old enough, not after a 7-day wait.
 async function fetchHistoricWindForReport(report, isoStart, isoEnd) {
   const reportTime = new Date(report.created_at);
   const reportAgeHours = (Date.now() - reportTime.getTime()) / 3600000;
-  const isSettled = reportAgeHours >= 7;
+  const isSettled = reportAgeHours >= TRAIL_SETTLED_GATE_HOURS;
 
   // 1. Try the persisted column first (instant, no network call at all)
   if (isSettled && report.historic_wind_json) {
@@ -1565,78 +1566,6 @@ async function backfillPressure(reportId, avgPressure) {
   return result;
 }
 
-function computePlumeEnvelopeRing(smoothedSpine, expansionAngleDeg = 6) {
-  const leftBoundCoords = [];
-  const rightBoundCoords = [];
-  const lastPoint = smoothedSpine[smoothedSpine.length - 1];
-  
-
-  smoothedSpine.forEach((point, index) => {
-    // Calculate the bearing at this specific point to determine width
-    const prev = (index === 0) ? point : smoothedSpine[index - 1];
-    const dy = point.lat - prev.lat;
-    const dx = (point.lon - prev.lon) * Math.cos(point.lat * Math.PI / 180);
-    const baseBearingRad = Math.atan2(dx, dy);
-    
-    // Progress from report (0) to oldest point (1)
-    const progressFactor = index / (smoothedSpine.length - 1);
-
-    // Width increases gradually farther upwind
-    const minWidth = 0.00015;   // ~17 m
-    const maxWidth = 0.012;     // ~1.3 km
-
-    const spreadDistance =
-    minWidth +
-    (maxWidth - minWidth) *
-    Math.pow(progressFactor, 1.8);
-    // Create boundaries
-    const leftLat = point.lat + Math.cos(baseBearingRad - Math.PI/2) * spreadDistance;
-    const leftLon = point.lon + (Math.sin(baseBearingRad - Math.PI/2) * spreadDistance) / Math.cos(point.lat * Math.PI / 180);
-    
-    const rightLat = point.lat + Math.cos(baseBearingRad + Math.PI/2) * spreadDistance;
-    const rightLon = point.lon + (Math.sin(baseBearingRad + Math.PI/2) * spreadDistance) / Math.cos(point.lat * Math.PI / 180);
-
-    leftBoundCoords.push([leftLat, leftLon]);
-    rightBoundCoords.push([rightLat, rightLon]);
-  });
-
-    // --- ADDING THE SEMI-CIRCLE CAP ---
-    const lastWidth = 0.02; // Matches the max spreadDistance at the end
-    const arcPoints = [];
-    const numArcPoints = 6; // Adjust for smoothness
-    
-    // Calculate angle of the last segment to center the arc
-    const p1 = smoothedSpine[smoothedSpine.length - 2];
-    const p2 = smoothedSpine[smoothedSpine.length - 1];
-    const angle = Math.atan2(p2.lon - p1.lon, p2.lat - p1.lat);
-
-  for (let i = 0; i <= numArcPoints; i++) {
-    // Sweep from -PI/2 to PI/2 relative to the trajectory direction
-    const sweep = (i / numArcPoints) * Math.PI - Math.PI/2;
-    const arcLat = lastPoint.lat + Math.cos(angle + sweep) * lastWidth;
-    const arcLon = lastPoint.lon + Math.sin(angle + sweep) * lastWidth / Math.cos(lastPoint.lat * Math.PI / 180);
-    arcPoints.push([arcLat, arcLon]);
-  }
-
-  // Combine: Left side -> Arc Cap -> Right side (reversed for correct polygon winding)
-  return leftBoundCoords.concat(arcPoints, rightBoundCoords.reverse());
-}
-
-async function renderBackgroundTrailForReport(report) {
-  // Use the report's wind direction and a fixed speed/distance
-  const windDeg = parseFloat(report.wind_direction);
-  const distKm = 15;
-
-  // Create a simple two-point trail: origin -> target
-  const start = { lat: report.latitude, lon: report.longitude };
-  
-  // Project the point upwind
-  const end = moveUpwind(report.latitude, report.longitude, windDeg, distKm);
-
-  // Return as a path array
-  return [start, end];
-}
-
 async function backfillWindSpeed(reportId, avgSpeed) {
   const result = await sb
     .from("air_reports")
@@ -1659,7 +1588,7 @@ async function backfillWindDirection(reportId, avgDirection) {
   return result;
 }
 
-// Fetches 6 hours of historical wind data and builds a smoothed Chaikin spline trail
+// Fetches TRAIL_WINDOW_HOURS of historical wind data and builds a smoothed Chaikin spline trail
 async function renderHistoricSplineTrailForReport(report) {
 
   const reportTime = new Date(report.created_at);
@@ -1667,7 +1596,7 @@ async function renderHistoricSplineTrailForReport(report) {
     (Date.now() - reportTime.getTime()) / 3600000;
 
   // Don't process recent reports
-  if (reportAgeHours < 7) {
+  if (reportAgeHours < TRAIL_SETTLED_GATE_HOURS) {
     return null;
   }
 
@@ -1678,7 +1607,7 @@ async function renderHistoricSplineTrailForReport(report) {
 
   try {
 
-    const startTime = new Date(reportTime.getTime() - 6 * 3600000);
+    const startTime = new Date(reportTime.getTime() - TRAIL_WINDOW_HOURS * 3600000);
 
     const hourly = await fetchHistoricWindForReport(
       report,
@@ -1786,18 +1715,13 @@ const rawTrail = buildRawVectorTrail(
 
 async function startBacktrack(lat, lon, createdAt) {
   clearBacktrack();
-  const HOURS = 6;
+  const HOURS = TRAIL_WINDOW_HOURS;
   
   // Define variables here, at the top level of the function
   const reportTime = new Date(createdAt);
   const startTime = new Date(reportTime.getTime() - HOURS * 3600000);
 
   try {
-    const matchedReport = globalActiveData.find(r => 
-      Math.abs(parseFloat(r.latitude) - parseFloat(lat)) < 0.00001 && 
-      Math.abs(parseFloat(r.longitude) - parseFloat(lon)) < 0.00001
-    );
-    
     // Now startTime is guaranteed to be defined
     const hourly = await fetchHistoricWind(lat, lon, startTime.toISOString(), reportTime.toISOString());
     if (!hourly?.time?.length) return;
@@ -2017,14 +1941,6 @@ async function generateAllBackgroundTrails(reports, tracerCoords = null) {
   });
 }
 
-  
-function ageColorDark(createdAt) {
-  const h = (Date.now() - new Date(createdAt)) / 3600000;
-  if(h < 12)  return '#7a3300';
-  if(h < 24)  return '#612900';
-  if(h < 48)  return '#471f00';
-  return               '#2e1400';
-}
 /* ═══════════════════════════════════════════════════
    CROWD VALIDATION & CLUSTERING ENGINE
 ═══════════════════════════════════════════════════ */
@@ -2068,12 +1984,6 @@ function evaluateActiveNearbyClusters() {
     console.log(`Active community cluster detected for category: ${topCategory} (${maxCount} reports)`);
   }
 }
-const markerLayer = L.layerGroup().addTo(map);
-const trailLayer = L.layerGroup().addTo(map);
-const plumeLayer = L.layerGroup().addTo(map);
-const traceLayer = L.layerGroup().addTo(map);
-const uiLayer = L.layerGroup().addTo(map);
-
 /* ═══════════════════════════════════════════════════
    PINS RENDER ENGINE
 ═══════════════════════════════════════════════════ */
@@ -2119,8 +2029,6 @@ function renderPin(report, index = 0){
   const color = ageColor(report.created_at);
   const catCol = categoryColor(report.category);
   const card  = degToCardinal(report.wind_direction);
-  
-  const intensity = report.intensity ? ` &nbsp;|&nbsp; <b>${t('popupInt')}:</b> ${report.intensity}/10` : '';
 
 const popupHtml = `<div class="popup-inner" style="padding:0;min-width:160px;max-width:200px;font-family:sans-serif;">
   <div style="background:${catCol};padding:4px 8px;border-radius:6px 6px 0 0;display:flex;flex-direction:column;align-items:flex-start;gap:1px;">
@@ -2499,10 +2407,7 @@ function downloadCSV() {
 
   if(!visible.length){ alert(t('noReports')); return; }
 
-  const downloadTimestamp = new Date().toLocaleString(lang === 'sr' ? 'sr-RS' : 'en-US');
-
-  // UPDATED HEADER: Added ConfidenceScore, DataHash, and IsValidated
- let csv = `Report Generated/Downloaded On: ${new Date().toLocaleString()}\n\n`;
+  let csv = `Report Generated/Downloaded On: ${new Date().toLocaleString()}\n\n`;
   csv += 'ID,Date,Latitude,Longitude,Category,Intensity,WindSpeed,WindDirection,SeaLevelPressure,Comment\n';
   // 2. Explicitly map each field from the report object 'r'
   visible.forEach(r => {
@@ -2537,6 +2442,64 @@ function downloadCSV() {
 }
 
 /* ═══════════════════════════════════════════════════
+   MAP PANEL TOGGLE (tap the round button to smoothly
+   hide the panel below the map and expand it, or bring
+   it back. Two states only.)
+═══════════════════════════════════════════════════ */
+(function initMapPanelToggle(){
+  const btn   = document.getElementById('panelToggleBtn');
+  const panel = document.getElementById('appPanel');
+  if (!btn || !panel) return;
+
+  const TRANSITION_MS = 320; // matches the CSS transition duration + a small buffer
+  let collapsed = false;
+
+  // Keep Leaflet's tile layer in sync while the CSS height transition
+  // is animating, not just at the start/end.
+  function animateMapDuringTransition(){
+    if (typeof map === 'undefined' || !map.invalidateSize) return;
+    const start = performance.now();
+    function step(now){
+      map.invalidateSize({ animate: false, pan: false });
+      if (now - start < TRANSITION_MS) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+
+  function setCollapsed(next){
+    if (collapsed === next) return;
+    collapsed = next;
+
+    if (collapsed) {
+      // Lock to the current rendered height, force a reflow, then
+      // animate down to 0 so the transition has a real start point.
+      panel.style.height = panel.scrollHeight + 'px';
+      panel.getBoundingClientRect();
+      requestAnimationFrame(() => {
+        panel.style.height = '0px';
+        panel.style.opacity = '0';
+      });
+    } else {
+      const target = panel.scrollHeight;
+      panel.style.height = target + 'px';
+      panel.style.opacity = '1';
+      panel.addEventListener('transitionend', function onEnd(e){
+        if (e.propertyName !== 'height') return;
+        panel.removeEventListener('transitionend', onEnd);
+        if (!collapsed) panel.style.height = 'auto'; // let dynamic content (calendar etc.) breathe afterward
+      });
+    }
+
+    btn.classList.toggle('collapsed', collapsed);
+    btn.setAttribute('aria-expanded', String(!collapsed));
+    btn.title = collapsed ? 'Show panel' : 'Hide panel';
+    animateMapDuringTransition();
+  }
+
+  btn.addEventListener('click', () => setCollapsed(!collapsed));
+})();
+
+/* ═══════════════════════════════════════════════════
    ORCHESTRATION ARCHITECTURE
 ═══════════════════════════════════════════════════ */
 initCalendarFilter();
@@ -2545,11 +2508,6 @@ showHelpModal();
 loadPinsByWindow();
 
 </script>
-<a id="windfinderBtn" 
-   href="https://www.windfinder.com/#13/45.2235/19.8118/spot" 
-   target="_blank" 
-   style="display:none; width:44px; height:44px; background:rgba(20,20,20,.88); border:1px solid #3a3a3a; border-radius:8px; align-items:center; justify-content:center; text-decoration:none; color:white; font-size:20px; box-shadow:0 2px 8px rgba(0,0,0,.55); cursor:pointer; z-index: 1000;">
-</a>
 
 </body>
 </html>
