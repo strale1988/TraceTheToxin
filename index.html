@@ -871,7 +871,9 @@ function initCalendarFilter(optionalDefaultDates) {
         
         // Step 2: If currently tracing, re-run the trace calculations using the fresh data window
         if (traceMode && tracerMarker) {
-          filterPinsBySourceTrajectory(tracerMarker.getLatLng());
+          if (traceMode && tracerMarker) {
+            filterPinsBySourceTrajectory(tracerMarker.getLatLng());
+          }
         }
       }
     }
