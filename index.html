@@ -10,7 +10,7 @@
   <meta http-equiv="Expires" content="0">
   
   <link rel="icon" type="image/png" href="favicon.png?v=2">
-  <meta property="og:image" content="https://strale1988.github.io/TraceTheToxin/favicon.png"/>
+  <meta property="og:image" content="https://github.io"/>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
@@ -2415,20 +2415,32 @@ function downloadCSV() {
 
   if(!visible.length){ alert(t('noReports')); return; }
 
+  // Escapes a value for safe CSV output: wraps in quotes (and doubles
+  // internal quotes) whenever the value contains a comma, quote, or newline.
+  const csvField = (val) => {
+    const s = (val === null || val === undefined) ? '' : String(val);
+    if (/[",\n\r]/.test(s)) {
+      return `"${s.replace(/"/g, '""')}"`;
+    }
+    return s;
+  };
+
   let csv = `Report Generated/Downloaded On: ${new Date().toLocaleString()}\n\n`;
   csv += 'ID,Date,Latitude,Longitude,Category,Intensity,WindSpeed,WindDirection,SeaLevelPressure,Comment\n';
   // 2. Explicitly map each field from the report object 'r'
   visible.forEach(r => {
-    csv += `${r.id},` +
-           `${r.created_at},` +
-           `${r.latitude},` +
-           `${r.longitude},` +
-           `${r.category},` +
-           `${r.intensity || ''},` +
-           `${r.wind_speed || 0},` +
-           `${r.wind_direction || 0},` +
-           `${r.sea_level_pressure || 0},` + // ADD THIS FIELD
-           `"${(r.comment || '').replace(/"/g, '""')}"\n`;
+    csv += [
+      csvField(r.id),
+      csvField(r.created_at),
+      csvField(r.latitude),
+      csvField(r.longitude),
+      csvField(r.category),
+      csvField(r.intensity || ''),
+      csvField(r.wind_speed || 0),
+      csvField(r.wind_direction || 0),
+      csvField(r.sea_level_pressure || 0),
+      csvField(r.comment || '')
+    ].join(',') + '\n';
   });
 
   let filename = 'TraceTheToxin.csv';
