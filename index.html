@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1.0">
-  <title>TraceTheBreak</title>
-
+  <title>TraceTheToxin</title>
+  
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-
+  
   <link rel="icon" type="image/png" href="favicon.png">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 
@@ -38,7 +38,6 @@ header{
   display:flex;
   justify-content:space-between;
   align-items:flex-start;
-  gap:8px;
 }
 
 header h1{ font-size:19px; }
@@ -70,11 +69,11 @@ header p{ font-size:11px; opacity:.7; margin-top:2px; }
   -webkit-tap-highlight-color:transparent;
   touch-action:manipulation;
 }
-.lang-btn.active{ background:#a67817; color:white; }
-.help-icon-btn{
-  background:#262626;
-  border:1px solid #444;
-  font-size:14px;
+.lang-btn.active{ background:#00a7b5; color:white; }
+.help-icon-btn{ 
+  background:#262626; 
+  border:1px solid #444; 
+  font-size:14px; 
   padding:4px 8px;
   display:flex;
   align-items:center;
@@ -84,8 +83,8 @@ header p{ font-size:11px; opacity:.7; margin-top:2px; }
 
 #map {
   flex: 1;
-  height: 0;
-  min-height: 0;
+  height: 0;      
+  min-height: 0;  
   position: relative;
   overflow: hidden;
 }
@@ -93,16 +92,17 @@ header p{ font-size:11px; opacity:.7; margin-top:2px; }
 .resize-handle {
   flex-shrink: 0;
   flex-grow: 0;
-  min-height: 40px;
+  height: 40px;
+  min-height: 0;
   display: flex;
   align-items: center;
+  justify-content: center;
   background: #181818;
   border-top: 1px solid #292929;
   border-bottom: 1px solid #292929;
   position: relative;
   z-index: 5;
   overflow: visible;
-  padding: 4px 0;
 }
 
 .panel-toggle-btn {
@@ -121,13 +121,9 @@ header p{ font-size:11px; opacity:.7; margin-top:2px; }
   transition: background .15s, color .15s, transform .15s;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
 }
 .panel-toggle-btn:hover { background:#303030; color:#ddd; }
-.panel-toggle-btn:active { transform: translate(-50%, -50%) scale(.9); }
+.panel-toggle-btn:active { transform: scale(.9); }
 .panel-toggle-btn svg { transition: transform .25s ease; }
 .panel-toggle-btn.collapsed svg { transform: rotate(180deg); }
 
@@ -161,7 +157,7 @@ header p{ font-size:11px; opacity:.7; margin-top:2px; }
   color: #aaa;
   font-size: 12px;
   text-align: right;
-  width: 90px;
+  width: 80px;
 }
 
 .filter-select-row {
@@ -171,6 +167,12 @@ header p{ font-size:11px; opacity:.7; margin-top:2px; }
   display: flex;
   gap: 8px;
   align-items: center;
+}
+
+input[type=number]::-webkit-inner-spin-button, 
+input[type=number]::-webkit-outer-spin-button { 
+  -webkit-appearance: none; 
+  margin: 0; 
 }
 
 .select-wrap {
@@ -183,15 +185,20 @@ header p{ font-size:11px; opacity:.7; margin-top:2px; }
 .panel{
   background:#181818;
   padding:12px 12px;
-  padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)); 
   display:flex;
   flex-direction:column;
   gap:8px;
-  flex-shrink: 0;
+  flex-shrink: 0; 
+  
 }
 
 .row{ display:flex; gap:8px; }
-
+/* Stack Category and Intensity vertically */
+.panel .row:first-child {
+  flex-direction: column;
+  gap: 8px; /* Maintains the spacing between them */
+}
 select{
   flex:1;
   padding:11px 10px;
@@ -208,7 +215,7 @@ select{
   padding-right:28px;
 }
 
-input[type="text"], input[type="password"]{
+input[type="text"]{
   width:100%;
   padding:11px 10px;
   border:none;
@@ -231,7 +238,7 @@ button{
 
 .report-btn{ background:#ff4b4b; color:white; width:100%; transition:opacity .2s; }
 .report-btn:disabled{ opacity:.35; cursor:not-allowed; }
-.export-btn{ background:#a67817; color:white; width:100%; }
+.export-btn{ background:#00a7b5; color:white; width:100%; }
 
 .legend{
   display:flex;
@@ -239,7 +246,7 @@ button{
   font-size:10px;
   align-items:center;
   flex-wrap:wrap;
-  opacity:.9;
+  opacity:.8;
 }
 .legend-item{ display:flex; align-items:center; gap:3px; }
 .legend-dot{ width:9px; height:9px; border-radius:50%; display:inline-block; flex-shrink:0; }
@@ -254,29 +261,17 @@ button{
   -webkit-backdrop-filter: blur(6px);
 }
 .leaflet-popup-content{ margin:0 !important; width:auto !important; }
-.leaflet-popup-tip{ background: rgba(255,255,255,0.82) !important; box-shadow:none !important; }
-.leaflet-popup-close-button{ color:#555 !important; }
-.leaflet-popup-close-button:hover{ color:#000 !important; }
 
 .popup-inner{
   font-family:-apple-system,BlinkMacSystemFont,sans-serif;
   font-size:13px;
-  line-height:1.5;
+  line-height:1.65;
   color:#111;
+  padding:12px 14px;
   min-width:200px;
 }
+.popup-inner b{ color:#222; }
 .popup-title{ font-size:14px; font-weight:700; margin-bottom:8px; color:#111; }
-
-.status-pill{
-  display:inline-block;
-  font-size:9px;
-  font-weight:700;
-  text-transform:uppercase;
-  letter-spacing:.3px;
-  padding:2px 7px;
-  border-radius:20px;
-  color:white;
-}
 
 .pin-map-btn{
   background:rgba(20,20,20,.88);
@@ -293,243 +288,19 @@ button{
 }
 .pin-map-btn.active{ background:#f5a623; border-color:#f5a623; }
 
-/* --- Auth UI --- */
-.user-badge{
-  display:flex;
-  align-items:center;
-  gap:6px;
-  background:#1e2b2c;
-  border:1px solid #a67817;
-  color:#9be8ee;
-  border-radius:6px;
-  padding:5px 8px;
-  font-size:11px;
-  font-weight:600;
-  cursor:pointer;
-  max-width:min(50vw, 180px);
-  -webkit-tap-highlight-color:transparent;
-  touch-action:manipulation;
-  position:absolute;
-  left:12px;
-  top:50%;
-  transform:translateY(-50%);
-}
-.user-badge .username-text{
-  overflow:hidden;
-  text-overflow:ellipsis;
-  white-space:nowrap;
-  min-width:0;
-}
-.user-badge .admin-pill{
-  flex-shrink:0;
-  background:#3a2a00;
-  color:#f5c518;
-  border-radius:4px;
-  padding:2px 5px;
-  font-size:9px;
-  font-weight:800;
-  letter-spacing:.3px;
-}
-.user-badge .signout-x{
-  flex-shrink:0;
-  opacity:.7;
-  font-size:13px;
-  line-height:1;
+.bg-trail-teal {
+  pointer-events: none;
 }
 
-.locked-panel{
-  display:flex;
-  flex-direction:column;
-  gap:8px;
-  padding:12px 10px;
+@keyframes marchDots {
+  from { stroke-dashoffset: 0; }
+  to   { stroke-dashoffset: 22; }
 }
-.locked-panel p{
-  font-size:12px;
-  color:#999;
-  line-height:1.4;
-  text-align:center;
-  margin-bottom:2px;
+.bg-trail-animated path,
+.bg-trail-animated {
+  animation: marchDots 0.6s linear infinite;
 }
-
-.auth-toggle-text {
-  font-size: 11px;
-  color: #a67817;
-  text-align: center;
-  cursor: pointer;
-  text-decoration: underline;
-  margin-top: 4px;
-}
-
-.pw-wrap input{ padding-right:34px !important; }
-.pw-toggle-btn{
-  position:absolute;
-  right:6px;
-  top:50%;
-  transform:translateY(-50%);
-  background:none;
-  border:none;
-  padding:4px;
-  font-size:15px;
-  cursor:pointer;
-  opacity:.6;
-  line-height:1;
-  -webkit-tap-highlight-color:transparent;
-  touch-action:manipulation;
-}
-.pw-toggle-btn:active{ opacity:1; }
-.pw-toggle-btn.revealed{ opacity:1; }
-
-.popup-card{
-  min-width:195px;
-  max-width:240px;
-}
-.popup-header{
-  padding:9px 10px;
-  display:flex;
-  flex-direction:column;
-  gap:2px;
-}
-.popup-header-title{
-  font-size:12.5px;
-  font-weight:700;
-  color:#fff;
-  line-height:1.35;
-}
-.popup-header-date{
-  font-size:9.5px;
-  color:rgba(255,255,255,.8);
-}
-.popup-body{
-  padding:5px 10px 4px 10px;
-}
-.popup-row{
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-  gap:10px;
-  padding:6px 0;
-  border-bottom:1px solid #eee;
-}
-.popup-row:last-child{ border-bottom:none; }
-.popup-row-label{
-  font-size:9.5px;
-  font-weight:700;
-  letter-spacing:.4px;
-  text-transform:uppercase;
-  color:#888;
-  flex-shrink:0;
-}
-.popup-row-value{
-  font-size:12.5px;
-  font-weight:600;
-  color:#111;
-  text-align:right;
-  overflow:hidden;
-  text-overflow:ellipsis;
-  white-space:nowrap;
-}
-.popup-note{
-  margin:6px 10px 9px 10px;
-  padding:8px 9px;
-  background:rgba(0,0,0,.04);
-  border-radius:6px;
-  font-size:11.5px;
-  color:#444;
-  line-height:1.45;
-  word-break:break-word;
-}
-.popup-timeline{
-  padding:8px 10px 4px 10px;
-  display:flex;
-  flex-direction:column;
-}
-.timeline-item{
-  display:flex;
-  gap:8px;
-  position:relative;
-  padding-bottom:12px;
-}
-.timeline-item:last-child{ padding-bottom:0; }
-.timeline-dot{
-  width:8px;
-  height:8px;
-  border-radius:50%;
-  flex-shrink:0;
-  margin-top:3px;
-  position:relative;
-  z-index:1;
-}
-.timeline-line{
-  position:absolute;
-  left:3px;
-  top:11px;
-  bottom:-2px;
-  width:2px;
-  background:#eee;
-}
-.timeline-item:last-child .timeline-line{ display:none; }
-.timeline-content{ display:flex; flex-direction:column; gap:1px; }
-.timeline-label{
-  font-size:9.5px;
-  font-weight:700;
-  letter-spacing:.3px;
-  text-transform:uppercase;
-  color:#bbb;
-}
-.timeline-date{
-  font-size:11.5px;
-  color:#111;
-  font-weight:600;
-}
-.timeline-item.pending .timeline-date{ color:#bbb; font-weight:500; }
-.popup-edit-form{
-  padding:10px;
-  min-width:200px;
-  max-width:240px;
-  display:flex;
-  flex-direction:column;
-  gap:6px;
-}
-.popup-edit-form select,
-.popup-edit-form input[type="text"]{
-  background:#f2f2f2 !important;
-  color:#111 !important;
-  border:1px solid #ddd;
-}
-
-.status-action-row{
-  display:flex;
-  gap:6px;
-  padding:8px 10px 10px 10px;
-  border-top:1px solid #eee;
-  margin-top:2px;
-  flex-wrap:wrap;
-}
-.status-action-btn{
-  flex:1 1 auto;
-  min-width:80px;
-  padding:7px 6px;
-  border:none;
-  border-radius:6px;
-  font-size:10px;
-  font-weight:700;
-  cursor:pointer;
-  color:white;
-  text-transform:uppercase;
-  letter-spacing:.2px;
-  -webkit-tap-highlight-color:transparent;
-  touch-action:manipulation;
-}
-.status-action-btn.progress-btn{ background:#f5a623; }
-.status-action-btn.fixed-btn{ background:#2ecc71; }
-.status-action-btn:disabled{ opacity:.4; cursor:not-allowed; }
-
-.owner-tag{
-  font-size:9px;
-  color:#00838f;
-  font-weight:700;
-}
-
+  
 .generic-modal-overlay{
   position:fixed; inset:0;
   background:rgba(0,0,0,.75);
@@ -562,6 +333,22 @@ button{
 }
 .generic-modal-close:active{ background:#444; }
 
+.trace-source-btn {
+  background: rgba(20,20,20,.88);
+  border: 1px solid #3a3a3a;
+  border-radius: 8px;
+  width: 44px; height: 44px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; font-size: 22px;
+  box-shadow: 0 2px 8px rgba(0,0,0,.55);
+  transition: background .15s;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+.trace-source-btn.active { background: #ff4d4d; border-color: #ff4d4d; }
+
+/* Flatpickr input theme modification override */
 #dateRangePicker {
   cursor: pointer;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='18' rx='2' ry='2'%3E%3C/rect%3E%3Cline x1='16' y1='2' x2='16' y2='6'%3E%3C/line%3E%3Cline x1='8' y1='2' x2='8' y2='6'%3E%3C/line%3E%3Cline x1='3' y1='10' x2='21' y2='10'%3E%3C/line%3E%3C/svg%3E");
@@ -570,6 +357,9 @@ button{
   padding-right: 32px !important;
 }
 
+/* ==========================================================================
+   FLATPICKR CUSTOM THEME OVERRIDES
+   ========================================================================== */
 .flatpickr-calendar {
   background: #181818 !important;
   border: 1px solid #333 !important;
@@ -577,60 +367,73 @@ button{
   border-radius: 12px !important;
   font-family: inherit !important;
 }
+
+/* Header styling (Month & Year selectors) */
 .flatpickr-months .flatpickr-month,
-.flatpickr-months .flatpickr-prev-month,
+.flatpickr-months .flatpickr-prev-month, 
 .flatpickr-months .flatpickr-next-month {
   color: #fff !important;
   fill: #fff !important;
 }
-.flatpickr-months .flatpickr-prev-month:hover,
+.flatpickr-months .flatpickr-prev-month:hover, 
 .flatpickr-months .flatpickr-next-month:hover {
   background: #262626 !important;
 }
 .flatpickr-current-month .numInputWrapper span.arrowUp:after { border-bottom-color: #fff !important; }
 .flatpickr-current-month .numInputWrapper span.arrowDown:after { border-top-color: #fff !important; }
+
+/* Weekday column headers */
 span.flatpickr-weekday {
   background: #181818 !important;
   color: #888 !important;
   font-weight: bold !important;
 }
-.flatpickr-day:hover,
-.flatpickr-day.prevMonthDay:hover,
+
+.flatpickr-day:hover, 
+.flatpickr-day.prevMonthDay:hover, 
 .flatpickr-day.nextMonthDay:hover {
   background: #262626 !important;
   border-color: #262626 !important;
   color: #fff !important;
 }
-.flatpickr-day.prevMonthDay,
+
+/* Days outside the current month scope */
+.flatpickr-day.prevMonthDay, 
 .flatpickr-day.nextMonthDay {
   color: #444 !important;
 }
-.flatpickr-day.selected,
-.flatpickr-day.startRange,
-.flatpickr-day.endRange,
-.flatpickr-day.selected.inRange,
-.flatpickr-day.startRange.inRange,
-.flatpickr-day.endRange.inRange,
-.flatpickr-day.selected:focus,
-.flatpickr-day.startRange:focus,
-.flatpickr-day.endRange:focus,
-.flatpickr-day.selected:hover,
-.flatpickr-day.startRange:hover,
+
+/* Selected active range styling (Matching your app's main Teal accent) */
+.flatpickr-day.selected, 
+.flatpickr-day.startRange, 
+.flatpickr-day.endRange, 
+.flatpickr-day.selected.inRange, 
+.flatpickr-day.startRange.inRange, 
+.flatpickr-day.endRange.inRange, 
+.flatpickr-day.selected:focus, 
+.flatpickr-day.startRange:focus, 
+.flatpickr-day.endRange:focus, 
+.flatpickr-day.selected:hover, 
+.flatpickr-day.startRange:hover, 
 .flatpickr-day.endRange:hover {
-  background: #a67817 !important;
-  border-color: #a67817 !important;
+  background: #00a7b5 !important;
+  border-color: #00a7b5 !important;
   color: white !important;
 }
+
+/* Between-dates range highlighting */
 .flatpickr-day.inRange,
-.flatpickr-day.prevMonthDay.inRange,
-.flatpickr-day.nextMonthDay.inRange,
-.flatpickr-day.today.inRange,
-.flatpickr-day.prevMonthDay.today.inRange,
+.flatpickr-day.prevMonthDay.inRange, 
+.flatpickr-day.nextMonthDay.inRange, 
+.flatpickr-day.today.inRange, 
+.flatpickr-day.prevMonthDay.today.inRange, 
 .flatpickr-day.nextMonthDay.today.inRange {
-  background: #a67817 !important;
+  background: #00a7b5 !important;
   border-color: transparent !important;
   border-radius: 0 !important;
 }
+
+
 </style>
 </head>
 <body>
@@ -638,14 +441,14 @@ span.flatpickr-weekday {
 <header>
   <div class="header-top">
     <div>
-      <h1>TraceTheBreak</h1>
-      <p id="subtitle">Community Infrastructure Reporting Network</p>
+      <h1>TraceTheToxin</h1>
+      <p id="subtitle">Community Air Reporting Network</p>
     </div>
     <div class="right-controls">
       <button class="help-icon-btn" id="helpTopBtn" title="Help / Pomoć" onclick="showHelpModal()">❓</button>
       <div class="lang-toggle">
         <button class="lang-btn"        onclick="setLang('en')">🇬🇧 EN</button>
-        <button class="lang-btn active" onclick="setLang('sr')">🇷🇸 SR</button>
+        <button class="lang-btn active" onclick="setLang('sr')">🇷🇸 SR</button> 
       </div>
     </div>
   </div>
@@ -668,13 +471,17 @@ span.flatpickr-weekday {
   box-shadow:0 2px 10px rgba(0,0,0,.45);
   margin-bottom:4px;
 ">
-  <span class="legend-item"><span class="legend-dot" style="background:#ff4b4b"></span>
-  <span class="leg" data-en="Reported" data-sr="Prijavljeno" style="color:#ddd;font-size:10px;">Prijavljeno</span></span>
-  <span class="legend-item"><span class="legend-dot" style="background:#f5a623"></span><span class="leg" data-en="In progress" data-sr="U toku" style="color:#ddd;font-size:10px;">U toku</span></span>
-  <span class="legend-item"><span class="legend-dot" style="background:#2ecc71"></span><span class="leg" data-en="Fixed" data-sr="Popravljeno" style="color:#ddd;font-size:10px;">Popravljeno</span></span>
+  <span class="legend-item"><span class="legend-dot" style="background:#a32222"></span><span class="leg" data-en="&lt;1h"  data-sr="&lt;1h"  style="color:#ddd;font-size:10px;">&lt;1h</span></span>
+  <span class="legend-item"><span class="legend-dot" style="background:#a33822"></span><span class="leg" data-en="1–2h"  data-sr="1–2h"   style="color:#ddd;font-size:10px;">1–2h</span></span>
+  <span class="legend-item"><span class="legend-dot" style="background:#a34d22"></span><span class="leg" data-en="2–6h"  data-sr="2–6h"   style="color:#ddd;font-size:10px;">2–6h</span></span>
+  <span class="legend-item"><span class="legend-dot" style="background:#a36322"></span><span class="leg" data-en="6–12h" data-sr="6–12h"  style="color:#ddd;font-size:10px;">6–12h</span></span>
+  <span class="legend-item"><span class="legend-dot" style="background:#a37822"></span><span class="leg" data-en="12–24h" data-sr="12–24h" style="color:#ddd;font-size:10px;">12–24h</span></span>
+  <span class="legend-item"><span class="legend-dot" style="background:#9f8a5f"></span><span class="leg" data-en="24-48h" data-sr="24-48h" style="color:#ddd;font-size:10px;">24-48h</span></span>
+  <span class="legend-item"><span class="legend-dot" style="background:#333333"></span><span class="leg" data-en="48h+" data-sr="48h+" style="color:#ddd;font-size:10px;">48h+</span></span>
+
 </div>
 
-<div class="legend" id="categoryLegend" style="
+<div id="catLegend" style="
   background:rgba(18,18,18,.88);
   backdrop-filter:blur(4px);
   -webkit-backdrop-filter:blur(4px);
@@ -689,23 +496,17 @@ span.flatpickr-weekday {
   box-shadow:0 2px 10px rgba(0,0,0,.45);
   margin-bottom:4px;
 ">
-  <span class="legend-item"><span class="legend-dot" style="background:#1e90ff"></span><span class="leg" data-en="Water" data-sr="Voda" style="color:#ddd;font-size:10px;">Voda</span></span>
-  <span class="legend-item"><span class="legend-dot" style="background:#f5c518"></span><span class="leg" data-en="Electricity" data-sr="Struja" style="color:#ddd;font-size:10px;">Struja</span></span>
+  <span class="legend-item"><span class="legend-dot" style="background:#c41e27"></span><span class="leg" data-en="Smoke" data-sr="Dim" style="color:#ddd;font-size:10px;">Dim</span></span>
   <span class="legend-item"><span class="legend-dot" style="background:#8b4513"></span><span class="leg" data-en="Sewage" data-sr="Kanalizacija" style="color:#ddd;font-size:10px;">Kanalizacija</span></span>
-  <span class="legend-item"><span class="legend-dot" style="background:#ff6b35"></span><span class="leg" data-en="Gas" data-sr="Gas" style="color:#ddd;font-size:10px;">Gas</span></span>
-  <span class="legend-item"><span class="legend-dot" style="background:#b71c1c"></span><span class="leg" data-en="Heating" data-sr="Grejanje" style="color:#ddd;font-size:10px;">Grejanje</span></span>
-  <span class="legend-item"><span class="legend-dot" style="background:#6b6b6b"></span><span class="leg" data-en="Road" data-sr="Put" style="color:#ddd;font-size:10px;">Put</span></span>
-  <span class="legend-item"><span class="legend-dot" style="background:#c9a227"></span><span class="leg" data-en="Streetlight" data-sr="Ulična rasveta" style="color:#ddd;font-size:10px;">Ulična rasveta</span></span>
-  <span class="legend-item"><span class="legend-dot" style="background:#6d8b3a"></span><span class="leg" data-en="Waste" data-sr="Otpad" style="color:#ddd;font-size:10px;">Otpad</span></span>
-  <span class="legend-item"><span class="legend-dot" style="background:#8342a1"></span><span class="leg" data-en="Other" data-sr="Ostalo" style="color:#ddd;font-size:10px;">Ostalo</span></span>
+  <span class="legend-item"><span class="legend-dot" style="background:#d4c600"></span><span class="leg" data-en="Sulfur" data-sr="Sumpor" style="color:#ddd;font-size:10px;">Sumpor</span></span>
+  <span class="legend-item"><span class="legend-dot" style="background:#cc3399"></span><span class="leg" data-en="Burnt plastic" data-sr="Spaljena plastika" style="color:#ddd;font-size:10px;">Spaljena plastika</span></span>
+  <span class="legend-item"><span class="legend-dot" style="background:#008ab8"></span><span class="leg" data-en="Chemicals" data-sr="Hemikalije" style="color:#ddd;font-size:10px;">Hemikalije</span></span>
+  <span class="legend-item"><span class="legend-dot" style="background:#2a682a"></span><span class="leg" data-en="Waste" data-sr="Otpad" style="color:#ddd;font-size:10px;">Otpad</span></span>
+  <span class="legend-item"><span class="legend-dot" style="background:#8342a1"></span><span class="leg" data-en="Unknown" data-sr="Nepoznato" style="color:#ddd;font-size:10px;">Nepoznato</span></span>
+  <span class="legend-item"><span class="legend-dot" style="background:#474747"></span><span class="leg" data-en="Other" data-sr="Ostalo" style="color:#ddd;font-size:10px;">Ostalo</span></span>
 </div>
 
 <div class="resize-handle">
-  <div class="user-badge" id="userBadge" style="display:none" onclick="handleUserBadgeClick()" title="Sign out">
-    <span class="username-text" id="userBadgeName"></span>
-    <span class="admin-pill" id="userBadgeAdmin" style="display:none">★ ADMIN</span>
-    <span class="signout-x">✕</span>
-  </div>
   <button id="panelToggleBtn" class="panel-toggle-btn" type="button"
           aria-expanded="true" aria-controls="appPanel" title="Hide panel">
     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
@@ -729,62 +530,64 @@ span.flatpickr-weekday {
 </div>
 
 <div id="pinMapBtn" class="pin-map-btn" style="display:none" title="Set location manually" onclick="togglePinMode()">📍</div>
+<div id="traceSourceBtn" class="trace-source-btn" style="display:none" title="Trace Possible Source" onclick="toggleTraceMode()">🔍</div>
 
-<div class="panel" id="reportFormPanel" style="display:none">
+<div class="panel">
   <div class="row">
-    <select id="category" onchange="onCategoryChange()">
-      <option value="" disabled selected>Izaberite vrstu kvara…</option>
-      <option value="Water" data-sr="Voda">Voda</option>
-      <option value="Electricity" data-sr="Struja">Struja</option>
-      <option value="Sewage" data-sr="Kanalizacija">Kanalizacija</option>
-      <option value="Gas" data-sr="Gas">Gas</option>
-      <option value="Heating" data-sr="Grejanje">Grejanje</option>
-      <option value="Road" data-sr="Put">Put</option>
-      <option value="Streetlight" data-sr="Ulična rasveta">Ulična rasveta</option>
-      <option value="Waste" data-sr="Otpad">Otpad</option>
-      <option value="Other" data-sr="Ostalo">Ostalo</option>
+    <select id="category" onchange="checkFormReady()">
+        <option value="" disabled selected>Izaberite miris…</option>
+        <option value="Smoke" data-sr="Dim">Dim</option>
+        <option value="Sewage" data-sr="Kanalizacija">Kanalizacija</option>
+        <option value="Sulfur" data-sr="Sumpor">Sumpor (miris pokvarenih jaja)</option>
+        <option value="Burnt plastic or rubber" data-sr="Spaljena plastika / guma">Spaljena plastika / guma</option>
+        <option value="Chemical solvents (paint, fuel, glue, industrial chemicals)" data-sr="Hemijski rastvarači (farba, benzin, lepak, industrijske hemikalije)">Hemijski rastvarači (farba, benzin, lepak, industrijske hemikalije)</option>
+        <option value="Waste / Trash / Garbage" data-sr="Otpad / kompost / vlaga">Otpad / kompost / vlaga</option>
+        <option value="Unknown" data-sr="Nepoznato">Nepoznato</option>
+        <option value="Other" data-sr="Ostalo">Ostalo</option>
+      </select>
+
+    <select id="intensity" onchange="checkFormReady()">
+      <option value="" disabled selected>Intensity…</option>
+      <option value="1">1 – Barely noticeable</option>
+      <option value="2">2</option>
+      <option value="3">3</option>
+      <option value="4">4</option>
+      <option value="5">5 – Moderate</option>
+      <option value="6">6</option>
+      <option value="7">7</option>
+      <option value="8">8</option>
+      <option value="9">9</option>
+      <option value="10">10 – Overwhelming</option>
     </select>
   </div>
 
-  <div class="row" id="subcategoryRow" style="display:none">
-    <select id="subcategory" onchange="checkFormReady()"></select>
-  </div>
+  <div style="display: flex; gap: 8px;">
+    <select id="reportTime" onchange="checkFormReady()" 
+            style="flex: 1; padding: 11px; border-radius: 8px; background: #262626; color: white; border: none; appearance: none;">
+      <option value="">Time (HH:MM)</option>
+    </select>
+    
+    <input type="number" id="manualWind" placeholder="Smer vetra (0-360)" min="0" max="360" 
+          oninput="checkFormReady()" onblur="validateRange(this)"
+          style="flex: 1; padding: 11px; border-radius: 8px; background: #262626; color: white; border: none;">
+
+          <input type="number" id="duration" placeholder="Trajanje (1-24h)" min="1" max="24" 
+         oninput="checkFormReady()" 
+         style="flex: 1; padding: 11px; border-radius: 8px; background: #262626; color: white; border: none;">
+   </div>
 
   <input id="comment" type="text" placeholder="Optional notes...">
 
   <div class="row" style="align-items:stretch;">
-    <button class="report-btn" id="reportBtn" onclick="reportBreak()"
+    <button class="report-btn" id="reportBtn" onclick="reportBadAir()"
             style="flex:0 0 80%;min-width:0;font-size:14px;" disabled>
-         <span id="reportBtnLabel">REPORT BREAK</span>
+         <span id="reportBtnLabel">REPORT BAD AIR</span>
     </button>
     <button class="export-btn" onclick="downloadCSV()"
             style="flex:0 0 calc(20% - 8px);min-width:0;font-size:12px;padding:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
       <span id="csvLabel">CSV</span>
     </button>
   </div>
-</div>
-
-<!-- Simple inline form switcher for login vs registration -->
-<div class="panel locked-panel" id="lockedFormPanel" style="display:flex">
-  <p id="lockedMsgText">Sign in to secure your profile and reports.</p>
-  
-  <div class="row" style="width:100%; gap:6px;">
-    <input type="text" id="authUsernameInput" placeholder="Username" autocomplete="off" style="flex:1; height:40px;">
-    <div class="pw-wrap" style="flex:1; position:relative;">
-      <input type="password" id="authPasswordInput" placeholder="Password" autocomplete="off" style="width:100%; height:40px;">
-      <button type="button" class="pw-toggle-btn" id="pwToggleBtn" onclick="togglePasswordVisibility()" title="Show/hide password">👁</button>
-    </div>
-  </div>
-
-  <button class="export-btn" id="submitAuthBtn" style="width:100%; background:#a67817; font-size:13px; font-weight:bold; height:40px;" onclick="handleAuthSubmit()">
-    <span id="authBtnLabel">Sign In</span>
-  </button>
-  
-  <span class="auth-toggle-text" id="authToggleBtn" onclick="toggleAuthMode()">Don't have an account? Register</span>
-
-  <button class="export-btn" onclick="downloadCSV()" style="width:100%; margin-top:4px; background:#333; color:#aaa;">
-    <span id="csvLabelLocked">CSV Dump</span>
-  </button>
 </div>
 
 </div>
@@ -794,7 +597,7 @@ span.flatpickr-weekday {
   <div class="generic-modal">
     <div class="generic-modal-icon">📍</div>
     <h2 id="gpsModalTitle">GPS Not Enabled</h2>
-    <p id="gpsModalBody">Location access is turned off. To report a break at your location, enable it in your settings.</p>
+    <p id="gpsModalBody">Location access is turned off. To report bad air at your location, enable it in your settings.</p>
     <p id="gpsModalAlt" style="font-size:12px;color:#999;margin-bottom:16px;">Or use the 📍 button on the map to drop a pin manually.</p>
     <button class="generic-modal-close" onclick="hideGpsModal()" id="gpsModalBtn">Got it</button>
   </div>
@@ -804,263 +607,157 @@ span.flatpickr-weekday {
 <div id="helpModal" class="generic-modal-overlay" style="display:none">
   <div class="generic-modal" style="max-width: 380px;">
     <h2 id="helpModalTitle" style="margin-top: 6px;">How to Use</h2>
-    <div id="helpModalContent" style="max-height: 55vh; overflow-y: auto; padding-right: 4px;"></div>
+    <div id="helpModalContent" style="max-height: 55vh; overflow-y: auto; padding-right: 4px;">
+      <!-- Filled programmatically via standard state language rules -->
+    </div>
     <button class="generic-modal-close" onclick="hideHelpModal()" id="helpModalBtn" style="margin-top:14px;">Close</button>
   </div>
 </div>
 
+
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<!-- Flatpickr Calendar Engine -->
 <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<!-- Flatpickr Serbian Translation File -->
 <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/sr.js"></script>
 <script>
 
+
+// 1. Populate Time Dropdown
+function populateTimeOptions() {
+  const select = document.getElementById('reportTime');
+  const intervals = ['00', '15', '30', '45'];
+  for (let h = 0; h < 24; h++) {
+    const hour = String(h).padStart(2, '0');
+    intervals.forEach(min => {
+      const timeVal = `${hour}:${min}`;
+      const opt = document.createElement('option');
+      opt.value = timeVal; opt.textContent = timeVal;
+      select.appendChild(opt);
+    });
+  }
+}
+
+// 2. Validate Wind Input Range
+function validateRange(input) {
+  let val = parseFloat(input.value);
+  if (isNaN(val)) { input.value = ""; }
+  else {
+    if (val < 0) input.value = 0;
+    if (val > 360) input.value = 360;
+  }
+  checkFormReady();
+}
+
+// 3. Updated checkFormReady
+function checkFormReady() {
+  const duration = document.getElementById('duration').value;
+  const category = document.getElementById('category').value;
+  const intensity = document.getElementById('intensity').value;
+  const time = document.getElementById('reportTime').value;
+  const wind = document.getElementById('manualWind').value;
+  const hasLoc = !!(userCoords || manualCoords);
+  
+  const windVal = parseFloat(wind);
+  const isWindValid = wind !== "" && windVal >= 0 && windVal <= 360;
+  
+  const btn = document.getElementById('reportBtn');
+  btn.disabled = !(category && intensity && time && isWindValid && hasLoc);
+}
+
+// Initialize on load
+populateTimeOptions();
+
+function initTimeInput() {
+  const now = new Date();
+  const mins = now.getMinutes();
+  const roundedMins = Math.round(mins / 15) * 15;
+  now.setMinutes(roundedMins);
+  
+  const timeInput = document.getElementById('reportTime');
+  // Formats to HH:MM
+  timeInput.value = now.toTimeString().slice(0, 5); 
+}
+initTimeInput();
+
+/* ═══════════════════════════════════════════════════
+   GLOBAL STATE DECLARATIONS
+═══════════════════════════════════════════════════ */
+let lastSyncTimestamp = new Date().toISOString();
+
+let lang = 'sr';
+let traceMode = false;
+let tracerMarker = null;
+let tracerVisualCircles = []; 
+let globalActiveData = [];
+
+let fp = null; 
+
+const weatherCache = {};
+const splineCache = {};
+
+// How many hours of historical wind data to pull when building the spline
+// trail (and the live backtrack). Change this one number to load a longer
+// or shorter trail — everything below derives from it, including the
+// "settled data" gate (window + 1h buffer) that decides when a report is
+// old enough for Open-Meteo's data to be considered final.
+const TRAIL_WINDOW_HOURS = 6;
+const TRAIL_SETTLED_GATE_HOURS = TRAIL_WINDOW_HOURS + 1;
+
+/* ═══════════════════════════════════════════════════
+   SUPABASE
+═══════════════════════════════════════════════════ */
 const SUPABASE_URL = 'https://fnkqmwweljsupbmerbkh.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZua3Ftd3dlbGpzdXBibWVyYmtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE3OTcwODUsImV4cCI6MjA5NzM3MzA4NX0.eX3mxnSpGmJ6Ebw7Y4F_jHiJarPH4ri9WNYXwmLi16I';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-const TABLE = 'brake_reports';
-const PROFILES_TABLE = 'profiles';
 
-let currentSession = null;   
-let currentProfile = null;   
-let isRegisterMode = false; // Toggles between Login and Registration UI
-
-function toggleAuthMode() {
-  isRegisterMode = !isRegisterMode;
-  const labelBtn = document.getElementById('authBtnLabel');
-  const labelToggle = document.getElementById('authToggleBtn');
-  const msgText = document.getElementById('lockedMsgText');
-
-  if (isRegisterMode) {
-    labelBtn.textContent = lang === 'sr' ? 'Registruj se' : 'Register';
-    labelToggle.textContent = lang === 'sr' ? 'Već imaš nalog? Prijavi se' : 'Already have an account? Sign In';
-    msgText.textContent = lang === 'sr' ? 'Kreirajte novo korisničko ime i lozinku.' : 'Create a new unique username and password.';
-  } else {
-    labelBtn.textContent = lang === 'sr' ? 'Prijavi se' : 'Sign In';
-    labelToggle.textContent = lang === 'sr' ? 'Nemaš nalog? Registruj se' : "Don't have an account? Register";
-    msgText.textContent = lang === 'sr' ? 'Prijavite se da osigurate vaše prijave i profil.' : 'Sign in to secure your profile and reports.';
-  }
-}
-
-function makeFakeEmail(username) {
-  return `${username.toLowerCase().trim()}@tracethebreak.local`;
-}
-
-function togglePasswordVisibility() {
-  const input = document.getElementById('authPasswordInput');
-  const btn = document.getElementById('pwToggleBtn');
-  const showing = input.type === 'text';
-  input.type = showing ? 'password' : 'text';
-  btn.textContent = showing ? '👁' : '🙈';
-  btn.classList.toggle('revealed', !showing);
-}
-
-// Error objects (esp. Supabase AuthError/PostgrestError) often stringify to "{}"
-// because `message` can be non-enumerable. This pulls the real text out reliably.
-function describeAuthError(err) {
-  if (!err) return 'Unknown error';
-  if (typeof err === 'string') return err;
-  const msg = err.message || err.error_description || err.msg || err.hint || err.details;
-  if (msg) return msg + (err.status ? ` (status ${err.status})` : '') + (err.code ? ` [${err.code}]` : '');
-  try {
-    const full = JSON.stringify(err, Object.getOwnPropertyNames(err));
-    if (full && full !== '{}') return full;
-  } catch (e) {}
-  return 'Unknown error (check Supabase Dashboard \u2192 Logs \u2192 Auth Logs for details)';
-}
-
-async function handleAuthSubmit() {
-  const username = document.getElementById('authUsernameInput').value.trim();
-  const password = document.getElementById('authPasswordInput').value;
-
-  if (!username || password.length < 6) {
-    alert(lang === 'sr' ? 'Korisničko ime je obavezno. Lozinka mora imati bar 6 karaktera.' : 'Username is required. Password must be at least 6 characters.');
-    return;
-  }
-
-  const fakeEmail = makeFakeEmail(username);
-
-  if (isRegisterMode) {
-    // 1. Registration Flow
-    try {
-      // First verify if the username exists in the profiles table to prevent profile conflicts
-      const { data: existingProf, error: checkError } = await sb.from(PROFILES_TABLE).select('username').ilike('username', username).maybeSingle();
-      if (checkError) {
-        console.error('Username check error (full):', checkError);
-        throw checkError;
-      }
-      if (existingProf) {
-        alert(lang === 'sr' ? 'Korisničko ime je već zauzeto.' : 'Username already taken.');
-        return;
-      }
-
-      const { data: signUpData, error: signUpError } = await sb.auth.signUp({
-        email: fakeEmail,
-        password: password
-      });
-      if (signUpError) throw signUpError;
-
-      if (signUpData?.user) {
-        // Create matching public profile assignment row
-        const { error: profError } = await sb.from(PROFILES_TABLE).insert([
-          { id: signUpData.user.id, username: username }
-        ]);
-        if (profError) throw profError;
-      }
-
-      document.getElementById('authPasswordInput').value = '';
-
-      alert(lang === 'sr' ? 'Nalog uspešno kreiran! Sada se možete prijaviti.' : 'Account created successfully! You can now sign in.');
-      isRegisterMode = true;
-      toggleAuthMode(); // Flip back to sign-in view automatically
-    } catch (err) {
-      console.error('Registration error (full):', err);
-      alert((lang === 'sr' ? 'Greška pri registraciji: ' : 'Registration failed: ') + describeAuthError(err));
-    }
-  } else {
-    // 2. Sign In Flow
-    try {
-      const { data, error } = await sb.auth.signInWithPassword({
-        email: fakeEmail,
-        password: password
-      });
-      if (error) throw error;
-
-      // Clear the password value BEFORE the field gets hidden by updateAuthUI().
-      // Browsers offer to "save this password" when a password field disappears
-      // right after a successful request while still holding a value — wiping it
-      // first makes that disappearance look like a reset instead of a submit.
-      document.getElementById('authPasswordInput').value = '';
-
-      currentSession = data.session;
-      await loadProfile();
-    } catch (err) {
-      console.error('Sign in error (full):', err);
-      alert((lang === 'sr' ? 'Neuspešna prijava: ' : 'Sign in failed: ') + describeAuthError(err));
-    }
-  }
-}
-
-async function handleUserBadgeClick() {
-  if (!confirm(t('signOutConfirm'))) return;
-  await sb.auth.signOut();
-  currentSession = null;
-  currentProfile = null;
-  
-  document.getElementById('authUsernameInput').value = '';
-  document.getElementById('authPasswordInput').value = '';
-  
-  updateAuthUI();
-  refreshRenderedPopups();
-}
-
-async function loadProfile() {
-  if (!currentSession) return;
-  try {
-    const { data, error } = await sb.from(PROFILES_TABLE)
-      .select('*')
-      .eq('id', currentSession.user.id)
-      .maybeSingle();
-    if (error) throw error;
-
-    if (data) {
-      currentProfile = data;
-    }
-    updateAuthUI();
-  } catch (err) {
-    console.error('Failed to load profile:', err.message);
-  }
-}
-
-function updateAuthUI() {
-  const userBadge = document.getElementById('userBadge');
-  const reportFormPanel = document.getElementById('reportFormPanel');
-  const lockedFormPanel = document.getElementById('lockedFormPanel');
-
-  if (currentSession && currentProfile) {
-    userBadge.style.display = 'flex';
-    document.getElementById('userBadgeName').textContent = currentProfile.username;
-    document.getElementById('userBadgeAdmin').style.display = currentProfile.is_admin ? 'inline-block' : 'none';
-    reportFormPanel.style.display = 'flex';
-    lockedFormPanel.style.display = 'none';
-  } else {
-    userBadge.style.display = 'none';
-    reportFormPanel.style.display = 'none';
-    lockedFormPanel.style.display = 'flex';
-  }
-  checkFormReady();
-  refreshRenderedPopups();
-}
-
-async function initAuth() {
-  const { data: { session } } = await sb.auth.getSession();
-  currentSession = session;
-  if (currentSession) await loadProfile();
-  updateAuthUI();
-
-  sb.auth.onAuthStateChange(async (event, session) => {
-    currentSession = session;
-    if (session) {
-      await loadProfile();
-    } else {
-      currentProfile = null;
-      updateAuthUI();
-    }
-  });
-}
-
+/* ═══════════════════════════════════════════════════
+   i18n
+═══════════════════════════════════════════════════ */
 const T = {
-  subtitle:     { en:'Community Infrastructure Reporting Network', sr:'Mreža za prijavu kvarova' },
+  subtitle:     { en:'Community Air Reporting Network',  sr:'Mreža za prijavu kvaliteta vazduha' },
   reportCount:  { en:'Reports',                          sr:'Prijava' },
   reportCount1: { en:'Report',                           sr:'Prijava' },
-  reportBtn:    { en:'REPORT BREAK',                     sr:'PRIJAVI KVAR' },
+  reportBtn:    { en:'REPORT BAD AIR',                   sr:'PRIJAVI LOŠ VAZDUH' },
   csvLabel:     { en:'CSV',                              sr:'CSV' },
   commentPH:    { en:'Optional notes...',                sr:'Opciona napomena...' },
   waitGps:      { en:'Waiting for GPS...',               sr:'Čekanje GPS-a...' },
+  
   submitted:    { en:'Report submitted.',                sr:'Prijava uspešna.' },
+  popupInt:     { en:'Intensity',                        sr:'Intenzitet' },
+  popupDir:     { en:'Reported Wind Direction',                        sr:'Prijavljen Smer Vetra' },
+
+  popupDuration: { en: 'Duration',                      sr: 'Trajanje' },
+
+  historical: { en: 'Historical Data', sr: 'Istorijski Podaci' },
+
+  
+  hours:         { en: 'h',                         sr: 'h' },
   timeFilter:   { en:'Time Window Filter',               sr:'Filter vremenskog prozora' },
-  catPH:        { en:'Select break type…',               sr:'Izaberite vrstu kvara…' },
+  catPH:        { en:'Select smell…',                    sr:'Izaberi miris…' },
+  intPH:        { en:'Intensity…',                       sr:'Intenzitet…' },
   gpsTitle:     { en:'GPS Not Enabled',                  sr:'GPS nije uključen' },
-  gpsBody:      { en:'Location access is turned off. To report a break at your location, enable it in your settings.', sr:'Pristup lokaciji je isključen. Da biste prijavili kvar, omogućite ga u podešavanjima.' },
+  gpsBody:      { en:'Location access is turned off. To report bad air at your location, enable it in your settings.', sr:'Pristup lokaciji je isključen. Da biste prijavili loš vazduh, omogućite ga u podešavanjima.' },
   gpsAlt:       { en:'Or use the 📍 button on the map to drop a pin manually.', sr:'Ili koristite dugme 📍 na karti da ručno postavite pin.' },
   gpsBtn:       { en:'Got it',                           sr:'Razumem' },
   noReports:    { en:'No reports in current map view.',  sr:'Nema prijava u vidljivoj oblasti.' },
-  calendarPH:   { en:'Select date range...',             sr:'Izaberi vremenski opseg...' },
-  helpTitle:    { en:'How to use TraceTheBreak',         sr:'Kako se koristi TraceTheBreak' },
+  calendarPH:   { en:'Select date range...',            sr:'Izaberi vremenski opseg...' },
+  helpTitle:    { en:'How to use TraceTheToxin',         sr:'Kako se koristi TraceTheToxin' },
   helpClose:    { en:'Close',                            sr:'Zatvori' },
-  helpStep1:    { en:'1. Choose what broke:',            sr:'1. Izaberite šta se pokvarilo:' },
-  helpStep1Body:{ en:'Select the type of break — water, electricity, sewage, gas, road, streetlight, or other.', sr:'Izaberite vrstu kvara — voda, struja, kanalizacija, gas, put, ulična rasveta ili ostalo.' },
-  helpStep2:    { en:'2. Set your location:',            sr:'2. Odredite vašu lokaciju:' },
-  helpStep2Body:{ en:'Make sure your device GPS is on, or tap the manual pin button (📍) to drop a point on the map yourself.', sr:'Proverite da li je GPS uključen, ili pritisnite dugme za ručnu lokaciju (📍) da sami postavite tačku na mapi.' },
-  helpStep3:    { en:'3. Submit:',                       sr:'3. Pošalji:' },
-  helpStep3Body:{ en:'Add an optional note, then tap "REPORT BREAK".', sr:'Dodajte opcionu napomenu i pritisnite "PRIJAVI KVAR".' },
-  popupStatus:  { en:'Status', sr:'Status' },
-  reportedByLabel: { en:'Reported by', sr:'Prijavio' },
-  reportedAtLabel:    { en:'Reported at',        sr:'Prijavljeno u' },
-  inProgressAtLabel:  { en:'In progress from',   sr:'U toku od' },
-  finishedAtLabel:    { en:'Finished at',         sr:'Završeno u' },
-  statusReported:   { en:'Reported',    sr:'Prijavljeno' },
-  statusInProgress: { en:'In progress', sr:'U toku' },
-  statusFixed:      { en:'Fixed',       sr:'Popravljeno' },
-  signOutConfirm:{ en:'Sign out of TraceTheBreak?',                sr:'Odjaviti se sa TraceTheBreak?' },
-  markInProgress:{ en:'Mark In Progress',                          sr:'Označi U Toku' },
-  markFixed:     { en:'Mark Fixed',                                sr:'Označi Popravljeno' },
-  yourReport:    { en:'Your report',                               sr:'Vaša prijava' },
-  updateFail:    { en:'Could not update status. Try again.',       sr:'Ažuriranje statusa nije uspelo. Pokušajte ponovo.' },
-  adminBadge:    { en:'ADMIN',                                     sr:'ADMIN' },
-  editBtn:       { en:'Edit',                                      sr:'Izmeni' },
-  deleteBtn:     { en:'Delete',                                    sr:'Obriši' },
-  saveBtn:       { en:'Save',                                      sr:'Sačuvaj' },
-  cancelBtn:     { en:'Cancel',                                    sr:'Otkaži' },
-  deleteConfirm: { en:'Delete this report permanently?',           sr:'Trajno obrisati ovu prijavu?' },
-  markReported:  { en:'Mark Reported',                             sr:'Označi kao prijavljeno' }
+  helpStep1:    { en:'1. Report Bad Air:',               sr:'1. Prijava lošeg vazduha:' },
+  helpStep1Body:{ en:'Select the smell type and its intensity from the dropdown options.', sr:'Izaberite vrstu mirisa i njegov intenzitet iz padajućih menija.' },
+  helpStep2:    { en:'2. Set Your Location:',            sr:'2. Odredite vašu lokaciju:' },
+  helpStep2Body:{ en:'Ensure your device GPS is turned on, or tap the manual pin button (📍) to manually drop a point anywhere on the map grid.', sr:'Proverite da li je GPS uključen, ili pritisnite dugme za ručnu lokaciju (📍) da sami postavite tačku bilo gde na mapi.' },
+  helpStep3:    { en:'3. Enter Wind Direction:',         sr:'3. Unesite smer vetra:' },
+  helpStep3Body:{ en:'Click the Windfinder icon in the bottom right corner. On their website map, click directly on your current location, read the wind direction degree value (0-360°), and type it back into this application.', sr:'Kliknite na ikonicu Windfinder u donjem desnom uglu. Na mapi na njihovom sajtu kliknite na vašu lokaciju, pročitajte vrednost smera vetra u stepenima (0-360°) i upišite je u polje u ovoj aplikaciji.' },
+  helpStep4:    { en:'4. Submit:',                       sr:'4. Pošalji:' },
+  helpStep4Body:{ en:'Verify the recorded time reflects when you noticed the odor, and tap the "REPORT BAD AIR" button.', sr:'Proverite da li izabrano vreme odgovara trenutku kada ste primetili miris, a zatim pritisnite dugme "PRIJAVI LOŠ VAZDUH".' },
+  windDirPH:    { en:'Wind Dir (0-360)', sr:'Smer Vetra (0-360)' },
+  durationPH:   { en:'Duration (1-24h)', sr:'Trajanje (1-24h)' }
 };
 
 function t(k){ return T[k]?.[lang] ?? k; }
-
-let lang = 'sr';
-let globalActiveData = [];
-let fp = null;
 
 function setLang(l){
   lang = l;
@@ -1068,7 +765,7 @@ function setLang(l){
     b.classList.toggle('active', b.getAttribute('onclick').includes("'"+l+"'"));
   });
   applyLang();
-
+  
   if (fp) {
     const savedDates = fp.selectedDates;
     fp.destroy();
@@ -1078,49 +775,50 @@ function setLang(l){
 }
 
 function applyLang(){
+
   document.getElementById('subtitle').textContent         = t('subtitle');
   document.getElementById('reportBtnLabel').textContent   = t('reportBtn');
   document.getElementById('csvLabel').textContent         = t('csvLabel');
   document.getElementById('filterTitleLabel').textContent = t('timeFilter');
   document.getElementById('comment').placeholder          = t('commentPH');
-  document.getElementById('dateRangePicker').placeholder  = t('calendarPH');
-  document.getElementById('category').options[0].text     = t('catPH');
+  document.getElementById('dateRangePicker').placeholder   = t('calendarPH');
+
+  document.getElementById('category').options[0].text  = t('catPH');
+  document.getElementById('intensity').options[0].text = t('intPH');
+  document.getElementById('manualWind').placeholder = t('windDirPH');
+  document.getElementById('duration').placeholder   = t('durationPH');
+
+  const intSel = document.getElementById('intensity');
+  const intensityLabels = lang === 'sr'
+    ? { 1:'Jedva primetno', 5:'Umereno', 10:'Nepodnošljivo' }
+    : { 1:'Barely noticeable', 5:'Moderate', 10:'Overwhelming' };
+  
+  for(let i = 1; i <= 10; i++){
+    intSel.options[i].textContent = intensityLabels[i] ? `${i} – ${intensityLabels[i]}` : `${i}`;
+  }
 
   const catEl = document.getElementById('category');
   const catLabels = lang === 'sr'
-    ? ['Voda','Struja','Kanalizacija','Gas','Grejanje','Put','Ulična rasveta','Otpad','Ostalo']
-    : ['Water','Electricity','Sewage','Gas','Heating','Road','Streetlight','Waste','Other'];
-  Array.from(catEl.options).slice(1).forEach((opt, i) => { opt.textContent = catLabels[i]; });
-
-  const subEl = document.getElementById('subcategory');
-  if (subEl && catEl.value) {
-    populateSubcategoryOptions(subEl, catEl.value, subEl.value);
-  }
+    ? ['Dim','Kanalizacija','Sumpor (miris pokvarenih jaja)','Spaljena plastika ili guma','Hemijski rastvarači (farba, lepak, ind. hemikalije)','Otpad / kompost / vlaga','Nepoznato', 'Ostalo' ]
+    : ['Smoke','Sewage','Sulfur (rotten egg smell)','Burnt plastic or rubber','Chemical solvents (paint, glue, industrial)','Waste / Compost / Humidity','Unknown', 'Other'];
+  
+  Array.from(catEl.options).slice(1).forEach((opt, i) => {
+    opt.textContent = catLabels[i];
+  });
 
   document.querySelectorAll('.leg').forEach(el=>{
     el.textContent = el.dataset[lang] || el.dataset.en;
   });
 
   const gm = document.getElementById('gpsModal');
-  if (gm && gm.style.display !== 'none') updateGpsModalText();
-
-  document.getElementById('csvLabelLocked').textContent   = t('csvLabel');
-  document.getElementById('userBadgeAdmin').textContent   = '\u2605 ' + t('adminBadge');
-  
-  const userIn = document.getElementById('authUsernameInput');
-  const passIn = document.getElementById('authPasswordInput');
-  if (userIn) userIn.placeholder = lang === 'sr' ? 'Korisničko ime' : 'Username';
-  if (passIn) passIn.placeholder = lang === 'sr' ? 'Lozinka' : 'Password';
-
-  // Force language sync into the auth text variables
-  const currentModeState = isRegisterMode;
-  isRegisterMode = !currentModeState;
-  toggleAuthMode();
+  if(gm && gm.style.display!=='none') updateGpsModalText();
 
   buildHelpModalContent();
-  refreshRenderedPopups();
 }
 
+/* ═══════════════════════════════════════════════════
+   HELP INSTRUCTION POPUP MODAL
+═══════════════════════════════════════════════════ */
 function showHelpModal() {
   buildHelpModalContent();
   document.getElementById('helpModal').style.display = 'flex';
@@ -1128,40 +826,72 @@ function showHelpModal() {
 function hideHelpModal() {
   document.getElementById('helpModal').style.display = 'none';
 }
+
 function buildHelpModalContent() {
   document.getElementById('helpModalTitle').textContent = t('helpTitle');
   document.getElementById('helpModalBtn').textContent = t('helpClose');
+
   const contentEl = document.getElementById('helpModalContent');
+  
   contentEl.innerHTML = `
     <div style="text-align: left; font-size: 13px; line-height: 1.6; display: flex; flex-direction: column; gap: 12px; margin-top: 10px;">
       <p><strong>${t('helpStep1')}</strong> ${t('helpStep1Body')}</p>
       <p><strong>${t('helpStep2')}</strong> ${t('helpStep2Body')}</p>
-      <p><strong>${t('helpStep3')}</strong> ${t('helpStep3Body')}</p>
+      <div style="background: rgba(245, 166, 35, 0.1); border-left: 3px solid #f5a623; padding: 10px 12px; border-radius: 4px;">
+        <strong>${t('helpStep3')}</strong> ${t('helpStep3Body')}
+      </div>
+      <p><strong>${t('helpStep4')}</strong> ${t('helpStep4Body')}</p>
     </div>
   `;
 }
 
+/* ═══════════════════════════════════════════════════
+   CALENDAR POPUP SETUP (FLATPICKR)
+═══════════════════════════════════════════════════ */
 function initCalendarFilter(optionalDefaultDates) {
   let initialDates = optionalDefaultDates;
+  
   if (!initialDates || initialDates.length === 0) {
     const defaultStart = new Date();
-    defaultStart.setDate(defaultStart.getDate() - 14);
+    defaultStart.setDate(defaultStart.getDate() - 3); 
     const defaultEnd = new Date();
     initialDates = [defaultStart, defaultEnd];
   }
+
   fp = flatpickr("#dateRangePicker", {
     mode: "range",
     theme: "dark",
-    dateFormat: "d.m.Y",
+    dateFormat: "d.m.Y", 
     locale: lang === 'sr' ? flatpickr.l10ns.sr : 'default',
     defaultDate: initialDates,
     onClose: async function(selectedDates) {
-      if (selectedDates.length === 2) await loadPinsByWindow();
+      if (selectedDates.length === 2) {
+        // Step 1: Always ensure pins and window state variables update first
+        await loadPinsByWindow();
+        
+        // Step 2: If currently tracing, re-run the trace calculations using the fresh data window
+        if (traceMode && tracerMarker) {
+          if (traceMode && tracerMarker) {
+            filterPinsBySourceTrajectory(tracerMarker.getLatLng());
+          }
+        }
+      }
     }
   });
 }
 
+
+
+/* ═══════════════════════════════════════════════════
+   MAP
+═══════════════════════════════════════════════════ */
 const map = L.map('map').setView([45.25,19.85],11);
+map.createPane('conePane');
+map.getPane('conePane').style.zIndex = 390; // below splinePane
+map.getPane('conePane').style.pointerEvents = 'none';
+map.createPane('splinePane');
+map.getPane('splinePane').style.zIndex = 450;
+map.getPane('splinePane').style.pointerEvents = 'none';
 
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
   attribution:'© OpenStreetMap',
@@ -1175,39 +905,98 @@ let pinMode       = false;
 let manualCoords  = null;
 let manualMarker  = null;
 
+const WindfinderControl = L.Control.extend({
+  options: { position: 'bottomright' },
+onAdd: function(map) {
+    const container = L.DomUtil.create('a', 'leaflet-bar leaflet-control leaflet-control-custom');
+    
+    // Set up the link
+    container.href = 'https://www.windfinder.com/#13/45.2294/19.8276/2026-06-25T00:00Z/spot';
+    container.target = '_blank';
+    
+    // Add the Logo Image
+    // Using a reliable transparent PNG icon
+    container.innerHTML = `<img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAACwklEQVR4AWIYseAiK6DbcoCZHIjieNLp2cZMz7Zt27Zt2wwP4dm2bbPT3d5n2zbedb5o03Sb9eEl/+gl79d5LGlDET7tcrChUE1CETlPOQwij3e67sUVmhRmQJEjaSKDMxWoUcc1r0ZVxijgMAY10U+ng+XipDRF+DIDqiU5O/0GhAdQk1erZeSrdHAK2L1s3aIUkeMMYk5U6QO5YcP8DofT/EIjyhEfBtEVwu8dDhcRGUE5nKSCaUpC5LBD4RJPtlNNmLYoIrMcWG98Wwvi0WaA+QzwpIvdcLdi9UpTRL6bgyR//AaBM1do+jwKkcr2zXeRahVFjsh6ac6MiIKU75KWLwdGj+ZshxeqUUWBe+nBDeUbA7PspGQNPwmzGf6rAKlFORykB2fyGzMXmGUEhWjtAGobvHBVJe04wJIuj7/7FJjFXbunNQFvrYZ7la5VXOQINQ0kV2kF4XsPQ6pohMzQcEh6+R68uo8CWWgFuVlZkJuTA54dh2gsIXLfKjhbmRSR56ZBfPpPhOz4BFBbTkoqxF68xXxmJ4Aict269YrwRdMARtwiD5CbmQkJ959B0OKNeS83VmoG3j3HQMyJS0ALVtdZQviqxXCJI2vUAbz7jofQzfvzgGpf+K6DwMx36DS9LXjRIjg7lyKHsxSBpfKfuBCYZcfFg3vjHrZnwKNYnbIiR0KsgTPRQjUg1eAGzDLDIzXXMVvdFtSdPLQYrNKv2h0hzc0LmOWkprJmVJfgsS5cQsI0y4HakorVhtCN+yDlhwHSfQPY1Jhm4K1u6imHYyyB2C4i66ReOO1MOBM1dwskXujifHieAsw13msHpDdBkcyaWNFRiRM2UVRlipHH3QwFhBpetWrl14QbeNLNgq9PYsFFpYslRI5Tnmxnv1YiL/SR81dpwO6F7X+zCN9lwdmIUBacI1soIjNUwf9P+w1d6+FOXuVcggAAAABJRU5ErkJggg==" 
+                             style="width: 28px; height: 28px; display: block; object-fit: contain;">`;
+    
+    // Styles
+    container.style.backgroundColor = 'rgba(20,20,20,0.88)';
+    container.style.width = '44px';
+    container.style.height = '44px';
+    container.style.display = 'flex';
+    container.style.alignItems = 'center';
+    container.style.justifyContent = 'center';
+    container.style.borderRadius = '8px';
+    container.style.border = '1px solid #3a3a3a';
+    container.style.cursor = 'pointer';
+
+    L.DomEvent.disableClickPropagation(container);
+    return container;
+}
+});
+
+// Add it to your map instance
+map.addControl(new WindfinderControl());
+
+/* ═══════════════════════════════════════════════════
+   GPS MODAL
+═══════════════════════════════════════════════════ */
 function updateGpsModalText(){
   const el = id => document.getElementById(id);
-  if (el('gpsModalTitle')) el('gpsModalTitle').textContent = t('gpsTitle');
-  if (el('gpsModalBody'))  el('gpsModalBody').textContent  = t('gpsBody');
-  if (el('gpsModalAlt'))   el('gpsModalAlt').textContent   = t('gpsAlt');
-  if (el('gpsModalBtn'))   el('gpsModalBtn').textContent   = t('gpsBtn');
-}
-function showGpsModal(){
-  const modal = document.getElementById('gpsModal');
-  if (!modal) return;
-  updateGpsModalText();
-  modal.style.display = 'flex';
-}
-function hideGpsModal(){
-  const modal = document.getElementById('gpsModal');
-  if (modal) modal.style.display = 'none';
+  if(el('gpsModalTitle')) el('gpsModalTitle').textContent  = t('gpsTitle');
+  if(el('gpsModalBody'))  el('gpsModalBody').textContent   = t('gpsBody');
+  if(el('gpsModalAlt'))   el('gpsModalAlt').textContent    = t('gpsAlt');
+  if(el('gpsModalBtn'))   el('gpsModalBtn').textContent    = t('gpsBtn');
 }
 
+function showGpsModal(){
+  const modal = document.getElementById('gpsModal');
+  if(!modal) return;
+  updateGpsModalText();
+  modal.style.display = 'flex';
+  modal.offsetHeight;
+}
+
+function hideGpsModal(){
+  const modal = document.getElementById('gpsModal');
+  if(modal) modal.style.display = 'none';
+}
+
+/* ═══════════════════════════════════════════════════
+   GPS INIT
+═══════════════════════════════════════════════════ */
+function enableManualPinMode() {
+  if (manualMarker) {
+    manualMarker.setLatLng(center);
+  } else {
+    manualMarker = L.marker(center, {
+      icon: L.divIcon({
+        className: '',
+        html: `<div style="width:20px;height:20px;background:#f5a623;border-radius:50%;border:2px solid white;box-shadow:0 3px 8px rgba(0,0,0,0.4)"></div>`,
+        iconAnchor: [10, 10]
+      })
+    }).addTo(map);
+  }
+  checkFormReady();
+}
+
+// Obfuscate a GPS fix by offsetting it a random distance (up to radiusMeters)
+// in a random direction, so the device's true location is never stored or shown.
 function fuzzCoords(lat, lon, radiusMeters = 250) {
-  const earthRadius = 6371000;
+  const earthRadius = 6371000; // meters
   const randomAngle = Math.random() * 2 * Math.PI;
+  // sqrt() gives a uniform distribution of points across the disk area
+  // (otherwise points would cluster near the center)
   const randomDist = radiusMeters * Math.sqrt(Math.random());
+
   const latRad = lat * Math.PI / 180;
   const deltaLat = (randomDist * Math.cos(randomAngle)) / earthRadius;
   const deltaLon = (randomDist * Math.sin(randomAngle)) / (earthRadius * Math.cos(latRad));
+
   return {
     lat: lat + (deltaLat * 180 / Math.PI),
     lon: lon + (deltaLon * 180 / Math.PI)
   };
-}
-
-function enableManualPinMode() {
-  checkFormReady();
 }
 
 function startWatching() {
@@ -1215,6 +1004,8 @@ function startWatching() {
     pos => {
       userCoords = fuzzCoords(pos.coords.latitude, pos.coords.longitude, 250);
       hideGpsModal();
+      
+      // Only show the user's blue dot if we have a position
       if (!userMarker) {
         userMarker = L.circleMarker([userCoords.lat, userCoords.lon], {
           radius: 8, color: '#00d0ff', fillColor: '#00d0ff', fillOpacity: .85, weight: 2
@@ -1222,25 +1013,47 @@ function startWatching() {
         map.setView([userCoords.lat, userCoords.lon], 13);
       }
       checkFormReady();
+      evaluateActiveNearbyClusters();
     },
-    err => { showGpsModal(); },
+    err => {
+      // If GPS fails, switch to manual mode automatically
+      showGpsModal();
+      //enableManualPinMode();
+    },
     { enableHighAccuracy: true, timeout: 12000 }
   );
 }
 
 function initGps() {
-  if (!navigator.geolocation) { enableManualPinMode(); return; }
+  if (!navigator.geolocation) {
+    enableManualPinMode();
+    return;
+  }
+
+  // Check permission state directly
   navigator.permissions.query({ name: 'geolocation' }).then(result => {
-    if (result.state === 'denied') { showGpsModal(); enableManualPinMode(); }
-    else { startWatching(); }
-  }).catch(() => { startWatching(); });
+    if (result.state === 'denied') {
+      showGpsModal();
+      enableManualPinMode();
+    } else {
+      startWatching();
+    }
+  }).catch(() => {
+    // If permissions API not supported, just try to get the position
+    startWatching();
+  });
 }
+
 initGps();
 
+/* ═══════════════════════════════════════════════════
+   CONTROLS (Manual Pin & Tracer)
+═══════════════════════════════════════════════════ */
 const PinControl = L.Control.extend({
   options:{ position:'bottomleft' },
   onAdd(){
     const btn = document.getElementById('pinMapBtn');
+    // Stop the click from traveling through the button to the map canvas
     L.DomEvent.disableClickPropagation(btn);
     return btn;
   }
@@ -1248,155 +1061,1261 @@ const PinControl = L.Control.extend({
 new PinControl().addTo(map);
 document.getElementById('pinMapBtn').style.display = 'flex';
 
+const TraceControl = L.Control.extend({
+  options:{ position:'bottomleft' },
+  onAdd(){
+    const btn = document.getElementById('traceSourceBtn');
+    // CRITICAL FIX: Stop trace toggle click from dropping a point onto the canvas below!
+    L.DomEvent.disableClickPropagation(btn);
+    return btn;
+  }
+});
+new TraceControl().addTo(map);
+document.getElementById('traceSourceBtn').style.display = 'flex';
+
 function togglePinMode() {
   pinMode = !pinMode;
+  
+  if (pinMode) {
+    if (traceMode) toggleTraceMode(); 
+  }
+  
   const btn = document.getElementById('pinMapBtn');
   btn.classList.toggle('active', pinMode);
-
+  
   if (pinMode) {
+    // Sweep the pins off the map for a clean workspace while placing one
     clearMarkers();
+    clearBackgroundTrails();
   } else {
-    if (manualMarker) { map.removeLayer(manualMarker); manualMarker = null; }
-    manualCoords = null;
+    if(manualMarker){ map.removeLayer(manualMarker); manualMarker = null; }
+    manualCoords = null; 
     loadPinsByWindow();
   }
   checkFormReady();
 }
 
-map.on('click', function(e) {
-  if (!pinMode) return;
-  manualCoords = { lat: e.latlng.lat, lon: e.latlng.lng };
-  if (manualMarker) {
-    manualMarker.setLatLng(e.latlng);
+function toggleTraceMode() {
+  traceMode = !traceMode;
+  
+  const btn = document.getElementById('traceSourceBtn');
+  btn.classList.toggle('active', traceMode);
+
+  if (traceMode) {
+    if (pinMode) togglePinMode(); // Turn off manual pin mode if active
+    
+    // 1. Sweep everything off the map immediately for a clean workspace
+    clearMarkers();
+    clearBackgroundTrails();
+    
+    // Clear out any stale tracing structures
+    tracerVisualCircles.forEach(c => map.removeLayer(c));
+    tracerVisualCircles = [];
+    
+    if (tracerMarker) {
+      map.removeLayer(tracerMarker);
+      tracerMarker = null;
+    }
   } else {
-    manualMarker = L.marker(e.latlng, {
-      icon: L.divIcon({
-        className: '',
-        html: `<div style="width:20px;height:20px;background:#f5a623;border-radius:50%;border:2px solid white;box-shadow:0 3px 8px rgba(0,0,0,.4)"></div>`,
-        iconAnchor: [10,10]
-      })
-    }).addTo(map);
+    // 2. Returning back to normal mode: Restore everything safely
+    if (tracerMarker) {
+      map.removeLayer(tracerMarker);
+      tracerMarker = null;
+    }
+    tracerVisualCircles.forEach(c => map.removeLayer(c));
+    tracerVisualCircles = [];
+    
+    loadPinsByWindow(); // Re-render default historical background trails and pins
   }
-  checkFormReady();
+  checkFormReady(); // Maintain UI integrity
+}
+
+map.on('click', async function(e) {
+
+  if (pinMode) {
+
+    manualCoords = {
+      lat: e.latlng.lat,
+      lon: e.latlng.lng
+    };
+
+    if (manualMarker) {
+      manualMarker.setLatLng(e.latlng);
+    } else {
+      manualMarker = L.marker(e.latlng, {
+        icon: L.divIcon({
+          className: '',
+          html: `<div style="width:20px;height:20px;background:#f5a623;border-radius:50%;border:2px solid white;box-shadow:0 3px 8px rgba(0,0,0,.4)"></div>`,
+          iconAnchor: [10,10]
+        })
+      }).addTo(map);
+    }
+
+    checkFormReady();
+    return;
+  }
+  
+  if (traceMode) {
+    const tracerCoords = { lat: e.latlng.lat, lon: e.latlng.lng };
+    
+    tracerVisualCircles.forEach(c => map.removeLayer(c));
+    tracerVisualCircles = [];
+    
+    if (tracerMarker) {
+      tracerMarker.setLatLng(e.latlng);
+    } else {
+      tracerMarker = L.marker(e.latlng, {
+        icon: L.divIcon({
+          className: '',
+          html: `<div style="width:22px;height:22px;background:#ff4d4d;border-radius:50%;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,.5)"></div>`,
+          iconAnchor: [11,11]
+        })
+      }).addTo(map);
+    }
+    
+    // Runs tracing calculation across historical dataset, then reveals ONLY the intersections
+    await filterPinsBySourceTrajectory(tracerCoords);
+  }
 });
 
-const CATEGORY_COLORS = {
-  'Water':        '#1e90ff',
-  'Electricity':  '#f5c518',
-  'Sewage':       '#8b4513',
-  'Gas':          '#ff6b35',
-  'Heating':      '#b71c1c',
-  'Road':         '#6b6b6b',
-  'Streetlight':  '#c9a227',
-  'Waste':        '#6d8b3a',
-  'Other':        '#8342a1',
-};
-const CATEGORY_ICONS = {
-  'Water': '💧', 'Electricity': '⚡', 'Sewage': '🚱', 'Gas': '🔥', 'Heating': '♨️',
-  'Road': '🕳️', 'Streetlight': '💡', 'Waste': '🗑️', 'Other': '❓'
-};
-const SUBCATEGORIES = {
-  Water: [
-    { key:'burst_leak',    en:'Burst pipe / Leak',            sr:'Puknuta cev / Curenje' },
-    { key:'no_supply',     en:'No water supply',              sr:'Nema vode' },
-    { key:'low_pressure',  en:'Low pressure',                 sr:'Nizak pritisak' },
-    { key:'discoloration', en:'Water quality / discoloration',sr:'Kvalitet vode / zamućenost' }
-  ],
-  Electricity: [
-    { key:'outage',       en:'Power outage',                       sr:'Nestanak struje' },
-    { key:'exposed_wire', en:'Exposed / damaged wire',             sr:'Oštećen ili otkriven kabl' },
-    { key:'transformer',  en:'Transformer / substation issue',     sr:'Kvar na trafostanici' },
-    { key:'voltage',      en:'Voltage fluctuation',                sr:'Kolebanje napona' }
-  ],
-  Sewage: [
-    { key:'blockage', en:'Blockage / overflow',                sr:'Začepljenje / izlivanje' },
-    { key:'manhole',  en:'Manhole cover damaged / missing',    sr:'Oštećen ili nedostaje šaht poklopac' },
-    { key:'odor',     en:'Bad odor',                           sr:'Neprijatan miris' }
-  ],
-  Gas: [
-    { key:'leak',   en:'Gas leak / smell', sr:'Curenje / miris gasa' },
-    { key:'outage', en:'Gas outage',       sr:'Nestanak gasa' }
-  ],
-  Heating: [
-    { key:'no_heat',  en:'No heat',           sr:'Nema grejanja' },
-    { key:'leak',     en:'Leak',              sr:'Curenje' },
-    { key:'low_temp', en:'Low temperature',   sr:'Niska temperatura' }
-  ],
-  Road: [
-    { key:'pothole',  en:'Pothole',                          sr:'Rupa na putu' },
-    { key:'cracked',  en:'Cracked / damaged pavement',       sr:'Oštećen kolovoz' },
-    { key:'signage',  en:'Missing / damaged signage',        sr:'Nedostaje ili oštećena signalizacija' },
-    { key:'flooding', en:'Flooding on road',                 sr:'Poplavljen put' }
-  ],
-  Streetlight: [
-    { key:'out',         en:'Light out',   sr:'Ne radi' },
-    { key:'flickering',  en:'Flickering',  sr:'Treperi' },
-    { key:'pole_damage', en:'Pole damage', sr:'Oštećen stub' }
-  ],
-  Waste: [
-    { key:'overflow', en:'Overflowing bin',    sr:'Prepunjena kanta' },
-    { key:'missed',   en:'Missed collection',  sr:'Propušteno odnošenje' },
-    { key:'dumping',  en:'Illegal dumping',    sr:'Nelegalno odlaganje' }
-  ],
-  Other: []
-};
-const STATUS_COLORS = {
-  'reported':    '#ff4b4b',
-  'in_progress': '#f5a623',
-  'fixed':       '#2ecc71',
-};
-function categoryColor(cat) { return CATEGORY_COLORS[cat] || '#aaaaaa'; }
-function categoryIcon(cat)  { return CATEGORY_ICONS[cat] || '❓'; }
-function subcategoryLabel(cat, subKey) {
-  if (!subKey) return '';
-  const list = SUBCATEGORIES[cat] || [];
-  const found = list.find(s => s.key === subKey);
-  return found ? (lang === 'sr' ? found.sr : found.en) : subKey;
+/* ═══════════════════════════════════════════════════
+   LIVE WIND SYSTEM
+═══════════════════════════════════════════════════ */
+/**
+ * Consolidated Weather Fetcher
+ * Fetches data from Open-Meteo with built-in timeout and error handling.
+ */
+// Helper to keep the degrees within 0-360 without corrupting the value
+function getProcessedWindDirection(rawDegrees) {
+  if (rawDegrees == null) return 0;
+  return (parseFloat(rawDegrees) % 360 + 360) % 360;
 }
-function populateSubcategoryOptions(selectEl, cat, selectedKey) {
-  const list = SUBCATEGORIES[cat] || [];
-  if (!list.length) {
-    selectEl.innerHTML = '';
-    return false;
+
+async function getWeatherData(lat, lng, datetime = null) {
+  const TIMEOUT_MS = 6000;
+  
+  const isHistorical = datetime && new Date(datetime).getTime() < (Date.now() - 24 * 60 * 60 * 1000);
+  
+  const baseURL = isHistorical 
+    ? 'https://archive-api.open-meteo.com/v1/archive' 
+    : 'https://api.open-meteo.com/v1/forecast';
+
+  const queryParams = isHistorical 
+    ? `?latitude=${lat}&longitude=${lng}&start_date=${datetime.split('T')[0]}&end_date=${datetime.split('T')[0]}&hourly=wind_speed_10m,wind_direction_10m,pressure_msl`
+    : `?latitude=${lat}&longitude=${lng}&current=wind_speed_10m,wind_direction_10m,pressure_msl&timezone=auto&models=icon_d2`;
+  const controller = new AbortController();
+
+  const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
+  try {
+    const response = await fetch(baseURL + queryParams, { signal: controller.signal });
+    clearTimeout(timeoutId);
+
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+
+    let windSpeed, windDirection, pressure;
+    
+    if (data.current) {
+      ({ wind_speed_10m: windSpeed, wind_direction_10m: windDirection, pressure_msl: pressure } = data.current);
+    } else if (data.hourly) {
+      const hourIndex = datetime ? new Date(datetime).getHours() : 0;
+      windSpeed = data.hourly.wind_speed_10m[hourIndex];
+      windDirection = data.hourly.wind_direction_10m[hourIndex];
+      pressure = data.hourly.pressure_msl[hourIndex];
+    }
+
+    return {
+      wind_speed: windSpeed != null ? parseFloat(windSpeed.toFixed(1)) : 0,
+      // Removed Math.round, kept 2 decimals for precision
+      wind_direction: windDirection != null ? parseFloat(getProcessedWindDirection(windDirection).toFixed(2)) : 0,
+      sea_level_pressure: pressure != null ? parseFloat(pressure.toFixed(1)) : null,
+      source: isHistorical ? "Open-Meteo Archive" : "Open-Meteo Current"
+    };
+
+  } catch (error) {
+    console.error("Weather Fetch Error:", error.message);
+    return { wind_speed: 0, wind_direction: 0, sea_level_pressure: null, source: "Offline/Default" };
   }
-  const placeholder = lang === 'sr' ? 'Detalj (opciono)…' : 'Detail (optional)…';
-  selectEl.innerHTML = `<option value="">${placeholder}</option>` +
-    list.map(s => `<option value="${s.key}" ${s.key === selectedKey ? 'selected' : ''}>${lang === 'sr' ? s.sr : s.en}</option>`).join('');
-  return true;
-}
-function onCategoryChange() {
-  const cat = document.getElementById('category').value;
-  const subSelect = document.getElementById('subcategory');
-  const subRow = document.getElementById('subcategoryRow');
-  const hasSubs = populateSubcategoryOptions(subSelect, cat, null);
-  subRow.style.display = hasSubs ? 'flex' : 'none';
-  checkFormReady();
-}
-function statusColor(s)     { return STATUS_COLORS[s] || '#aaaaaa'; }
-function statusLabel(s) {
-  if (s === 'in_progress') return t('statusInProgress');
-  if (s === 'fixed') return t('statusFixed');
-  return t('statusReported');
-}
-function translateCategory(cat) {
-  const labelsEn = { Water:'Water', Electricity:'Electricity', Sewage:'Sewage', Gas:'Gas', Heating:'Heating', Road:'Road', Streetlight:'Streetlight', Waste:'Waste', Other:'Other' };
-  const labelsSr = { Water:'Voda', Electricity:'Struja', Sewage:'Kanalizacija', Gas:'Gas', Heating:'Grejanje', Road:'Put', Streetlight:'Ulična rasveta', Waste:'Otpad', Other:'Ostalo' };
-  return (lang === 'sr' ? labelsSr[cat] : labelsEn[cat]) || cat;
 }
 
-function checkFormReady() {
-  const category = document.getElementById('category').value;
-  const hasLoc = !!(userCoords || manualCoords);
-  const isAuthed = !!(currentSession && currentProfile);
-  document.getElementById('reportBtn').disabled = !(category && hasLoc && isAuthed);
+async function triggerWindUpdate() {
+  if (typeof manualCoords === 'undefined' || !manualCoords) return;
+  
+  // Fetch new data
+  const weather = await getWeatherData(manualCoords.lat, manualCoords.lon);
+  
+  // Example: If you have a global state
+  currentWeatherData = weather;
+  
+  // Update your marker/UI if needed
+  if (typeof updateWindMarker === 'function') {
+    updateWindMarker(weather.wind_direction);
+  }
 }
 
+function startWindWhenReady(){
+  const activeLoc = (pinMode && manualCoords) ? manualCoords : userCoords;
+  if(activeLoc){
+    triggerWindUpdate();
+    setInterval(triggerWindUpdate, 5*60*1000);
+  } else { 
+    setTimeout(startWindWhenReady,1000); 
+  }
+}
+startWindWhenReady();
+
+/* ═══════════════════════════════════════════════════
+   HELPERS / MATH / SPLINES
+═══════════════════════════════════════════════════ */
+function ageColor(createdAt){
+  const h=(Date.now()-new Date(createdAt))/3600000;
+  if(h<1)   return '#a32222'; 
+  if(h<2)   return '#a33822'; 
+  if(h<6)   return '#a34d22'; 
+  if(h<12)  return '#a36322'; 
+  if(h<24)  return '#a37822'; 
+  if(h<48)  return '#9f8a5f';
+  return     '#333333';        
+}
+
+const CATEGORY_COLORS = {
+  'Smoke':                                                          '#c41e27', // vivid amber-orange
+  'Sewage':                                                         '#8b4513', // deep brown
+  'Sulfur':                                                         '#d4c600', // sharp yellow
+  'Burnt plastic or rubber':                                        '#cc3399', // hot magenta
+  'Chemical solvents (paint, fuel, glue, industrial chemicals)':   '#008ab8', // electric blue
+  'Waste / Trash / Garbage':                                        '#2a682a', // mid green
+  'Unknown':                                                        '#8342a1', // muted lavender
+  'Other':                                                          '#474747', // neutral grey
+};
+
+function categoryColor(cat) {
+  if (!cat) return '#aaaaaa';
+  // Normalize: strip trailing punctuation variants, try direct match first
+  if (CATEGORY_COLORS[cat]) return CATEGORY_COLORS[cat];
+  // Fallback: partial key match (handles Serbian DB values stored in English)
+  const key = Object.keys(CATEGORY_COLORS).find(k => cat.includes(k) || k.includes(cat));
+  return key ? CATEGORY_COLORS[key] : '#aaaaaa';
+}
+
+function degToCardinal(deg){
+  return ['N','NE','E','SE','S','SW','W','NW'][Math.round(deg/45)%8];
+}
+
+/* ═══════════════════════════════════════════════════
+   WIND & GEOMETRY UTILITIES
+═══════════════════════════════════════════════════ */
+
+// Returns distance in km between two lat/lon points using the Haversine formula.
+function getHaversineDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371; 
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+// Checks if wind data for this report is already in the session cache.
+// Must match the cache key format used in fetchHistoricWind exactly.
+function isWindCached(report) {
+  const reportTime = new Date(report.created_at);
+  const startTime = new Date(reportTime.getTime() - TRAIL_WINDOW_HOURS * 3600000);
+  const lat = parseFloat(report.latitude);
+  const lon = parseFloat(report.longitude);
+  const cacheKey = `${lat.toFixed(3)}_${lon.toFixed(3)}_${startTime.toISOString().slice(0,13)}`;
+  return !!weatherCache[cacheKey];
+}
+
+async function getHistoricAvgBearing(report) {
+  const reportTime = new Date(report.created_at);
+  const startTime = new Date(reportTime.getTime() - TRAIL_WINDOW_HOURS * 3600000);
+  const hourly = await fetchHistoricWind(
+    report.latitude, report.longitude,
+    startTime.toISOString(), reportTime.toISOString()
+  );
+  if (!hourly?.time?.length) return null;
+
+  // Collect wind directions in the 6h window
+  const dirs = [];
+  for (let i = 0; i < hourly.time.length; i++) {
+    const ts = new Date(hourly.time[i] + 'Z');
+    if (ts >= startTime && ts <= reportTime) {
+      dirs.push(hourly.wind_direction_10m[i]);
+    }
+  }
+  if (!dirs.length) return null;
+
+  // Average using circular mean to handle 0/360 wrap-around
+  const sinSum = dirs.reduce((s, d) => s + Math.sin(d * Math.PI / 180), 0);
+  const cosSum = dirs.reduce((s, d) => s + Math.cos(d * Math.PI / 180), 0);
+  return (Math.atan2(sinSum / dirs.length, cosSum / dirs.length) * 180 / Math.PI + 360) % 360;
+}
+
+function smoothPathChaikin(points, iterations = 3) {
+  if (points.length < 3) return points;
+  let current = [...points];
+  
+  for (let iter = 0; iter < iterations; iter++) {
+    const nextArr = [];
+    nextArr.push(current[0]); 
+    
+    for (let i = 0; i < current.length - 1; i++) {
+      const p0 = current[i];
+      const p1 = current[i + 1];
+      
+      const q = {
+        lat: p0.lat * 0.75 + p1.lat * 0.25,
+        lon: p0.lon * 0.75 + p1.lon * 0.25
+      };
+      const r = {
+        lat: p0.lat * 0.25 + p1.lat * 0.75,
+        lon: p0.lon * 0.25 + p1.lon * 0.75
+      };
+      
+      nextArr.push(q);
+      nextArr.push(r);
+    }
+    nextArr.push(current[current.length - 1]);
+    current = nextArr;
+  }
+  return current;
+}
+
+function makeIcon(color, windDeg, catColor) {
+  const rotation = (windDeg !== undefined) ? parseFloat(windDeg) : 0;
+  const accent = catColor || 'white';
+
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 26 26" style="overflow: visible;">
+      <circle cx="13" cy="13" r="11" fill="${color}" stroke="${accent}" stroke-width="2"/>
+      <g transform="rotate(${rotation + 180} 13 13)">
+        <line x1="13" y1="5" x2="13" y2="13" stroke="${accent}" stroke-width="3" stroke-linecap="round"/>
+        <polygon points="13,2 10,7 16,7" fill="${accent}"/>
+      </g>
+    </svg>`;
+
+  return L.divIcon({ 
+    className: 'modern-marker-shadow', 
+    html: svg, 
+    iconSize: [26, 26], 
+    iconAnchor: [13, 13], 
+    popupAnchor: [0, -14] 
+  });
+}
+
+/* ═══════════════════════════════════════════════════
+   BACKTRACK ENGINE
+═══════════════════════════════════════════════════ */
+let btLayers    = []; 
+let bgTrailLayers = [];
+const splineByReport = {}; 
+let btAnimFrame = null;
+
+function clearBacktrack(){
+  btLayers.forEach(l=>map.removeLayer(l));
+  btLayers=[];
+  if(btAnimFrame){ cancelAnimationFrame(btAnimFrame); btAnimFrame=null; }
+}
+
+// Projects a point in the direction windFromDeg (meteorological: direction wind is BLOWING TOWARD)
+// by distKm kilometres. Wind FROM 270° blows eastward, so this moves the point east.
+// Used to trace where wind carries odours from a report location.
+function moveUpwind(lat,lon,windFromDeg,distKm){
+  const R=6371, br=(windFromDeg*Math.PI)/180, d=distKm/R;
+  const lat1=lat*Math.PI/180, lon1=lon*Math.PI/180;
+  const lat2=Math.asin(Math.sin(lat1)*Math.cos(d)+Math.cos(lat1)*Math.sin(d)*Math.cos(br));
+  const lon2=lon1+Math.atan2(Math.sin(br)*Math.sin(d)*Math.cos(lat1),Math.cos(d)-Math.sin(lat1)*Math.sin(lat2));
+  return { lat:lat2*180/Math.PI, lon:lon2*180/Math.PI };
+}
+
+/* ═══════════════════════════════════════════════════
+   HISTORICAL WEATHER & SPLINE GENERATION
+═══════════════════════════════════════════════════ */
+
+// Fetches hourly wind data from Open-Meteo for a given location and time window.
+// Uses forecast API for data < 7 days old, archive API for older data.
+// Results are cached by location+hour to avoid redundant API calls.
+async function fetchHistoricWind(lat,lon,isoStart,isoEnd){
+// Supabase can return numeric columns as strings; coerce defensively so
+// .toFixed() below never throws regardless of what the caller passed in.
+lat = parseFloat(lat);
+lon = parseFloat(lon);
+const cacheKey = `${lat.toFixed(3)}_${lon.toFixed(3)}_${isoStart.slice(0,13)}`;
+const reportAgeHours = (Date.now() - new Date(isoStart).getTime()) / 3600000;
+
+// Skip spline entirely for reports newer than 6 hours
+if (reportAgeHours < 6) return null;
+
+// For archive data (>7 days), cache permanently — it never changes
+// For recent data (6h–7d), cache is valid for the session since we only
+// enter this branch once the report is old enough to have settled data
+if (weatherCache[cacheKey]) return weatherCache[cacheKey];
+
+  const daysDiff=(Date.now()-new Date(isoStart))/86400000;
+  let url = '';
+  if(daysDiff<7){
+    url=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=wind_speed_10m,wind_direction_10m,pressure_msl&wind_speed_unit=kmh&timezone=UTC&past_days=7&forecast_days=1`;
+  } else {
+    const sd=isoStart.slice(0,10), ed=isoEnd.slice(0,10);
+    url=`https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${sd}&end_date=${ed}&hourly=wind_speed_10m,wind_direction_10m,pressure_msl&wind_speed_unit=kmh&timezone=UTC`;
+  }
+
+  try {
+    let r = await fetch(url);
+    // Retry once with backoff on rate limit
+    if (r.status === 429) {
+      await new Promise(res => setTimeout(res, 1500));
+      r = await fetch(url);
+    }
+    if (!r.ok) return null;
+    const d = await r.json();
+    if (!d.hourly) return null;
+    weatherCache[cacheKey] = d.hourly;
+    return d.hourly;
+  } catch(e) {
+    return null;
+  }
+}
+
+// Wraps fetchHistoricWind with Supabase-backed persistence for a specific report.
+// This function only ever runs for reports old enough to pass TRAIL_SETTLED_GATE_HOURS
+// (renderHistoricSplineTrailForReport already gates on that), and that gate is what
+// matters here: the report's relevant TRAIL_WINDOW_HOURS wind window
+// (created_at - TRAIL_WINDOW_HOURS to created_at) is fully in the past by then, so
+// Open-Meteo's returned values for that window are settled and won't change again —
+// regardless of whether fetchHistoricWind happens to route to the forecast API
+// (< 7 days old) or the archive API (>= 7 days old). Those are two unrelated things:
+// the forecast/archive split is about which Open-Meteo endpoint has finalized data;
+// this persistence cache is about whether THIS report's own wind window has settled.
+// So we persist as soon as the report itself is old enough, not after a 7-day wait.
+async function fetchHistoricWindForReport(report, isoStart, isoEnd) {
+  const reportTime = new Date(report.created_at);
+  const reportAgeHours = (Date.now() - reportTime.getTime()) / 3600000;
+  const isSettled = reportAgeHours >= TRAIL_SETTLED_GATE_HOURS;
+
+  // 1. Try the persisted column first (instant, no network call at all)
+  if (isSettled && report.historic_wind_json) {
+    try {
+      const cached = typeof report.historic_wind_json === 'string'
+        ? JSON.parse(report.historic_wind_json)
+        : report.historic_wind_json;
+      if (cached?.time?.length) {
+        // Also warm the in-memory cache so other helpers (e.g. getHistoricAvgBearing)
+        // that call fetchHistoricWind directly for this same location/hour benefit too
+        const cacheKey = `${parseFloat(report.latitude).toFixed(3)}_${parseFloat(report.longitude).toFixed(3)}_${isoStart.slice(0,13)}`;
+        weatherCache[cacheKey] = cached;
+        return cached;
+      }
+    } catch (e) {
+      // fall through to network fetch if stored JSON is malformed
+    }
+  }
+
+  // 2. Not cached (or not settled yet) — fetch normally
+  const hourly = await fetchHistoricWind(report.latitude, report.longitude, isoStart, isoEnd);
+
+  // 3. Persist to Supabase only once this report's own wind window is settled
+  if (isSettled && hourly?.time?.length) {
+    report.historic_wind_json = hourly; // update local copy so this session won't refetch
+    backfillHistoricWind(report.id, hourly); // fire-and-forget; drawing doesn't wait on this
+  }
+
+  return hourly;
+}
+
+async function backfillHistoricWind(reportId, hourlyData) {
+  try {
+    const result = await sb
+      .from("air_reports")
+      .update({ historic_wind_json: hourlyData })
+      .eq("id", Number(reportId))
+      .select();
+    console.log("BACKFILL historic_wind_json:", result);
+    return result;
+  } catch (e) {
+    console.warn('Failed to persist historic_wind_json for report', reportId, e);
+  }
+}
+
+// Builds a raw upwind vector trail from a series of hourly wind steps.
+// Each step moves the trail in the wind direction by wind_speed km.
+// Returns array of {lat, lon} points starting from the pin origin.
+function buildRawVectorTrail(baseLat, baseLon, steps) {
+  const trail = [{ lat: baseLat, lon: baseLon }];
+  let cLat = baseLat, cLon = baseLon;
+  
+steps.forEach(s => {
+  const upwindDir = (s.dir) % 360;
+  const m = moveUpwind(cLat, cLon, upwindDir, s.spd * 1.0);
+  cLat = m.lat; cLon = m.lon;
+  trail.push({ lat: cLat, lon: cLon });
+});
+  
+  return trail;
+}
+
+async function backfillPressure(reportId, avgPressure) {
+  const result = await sb
+    .from("air_reports")
+    .update({ sea_level_pressure: parseFloat(avgPressure.toFixed(1)) })
+    .eq("id", Number(reportId))
+    .select();
+  console.log("BACKFILL sea_level_pressure:", result);
+  return result;
+}
+
+async function backfillWindSpeed(reportId, avgSpeed) {
+  const result = await sb
+    .from("air_reports")
+    .update({ wind_speed: avgSpeed })
+    .eq("id", Number(reportId))
+    .select();
+  console.log("BACKFILL wind_speed:", result);
+  return result;
+}
+
+// Overwrites wind_direction with the Open-Meteo historical circular-mean average.
+// manual_wind_direction (user-reported from Windfinder) is never touched.
+async function backfillWindDirection(reportId, avgDirection) {
+  const result = await sb
+    .from("air_reports")
+    .update({ wind_direction: parseFloat(avgDirection.toFixed(1)) })
+    .eq("id", Number(reportId))
+    .select();
+  console.log("BACKFILL wind_direction:", result);
+  return result;
+}
+
+// Fetches TRAIL_WINDOW_HOURS of historical wind data and builds a smoothed Chaikin spline trail
+async function renderHistoricSplineTrailForReport(report) {
+
+  const reportTime = new Date(report.created_at);
+  const reportAgeHours =
+    (Date.now() - reportTime.getTime()) / 3600000;
+
+  // Don't process recent reports
+  if (reportAgeHours < TRAIL_SETTLED_GATE_HOURS) {
+    return null;
+  }
+
+  // Return cached spline if available
+  if (splineCache[report.id]) {
+    return splineCache[report.id];
+  }
+
+  try {
+
+    const startTime = new Date(reportTime.getTime() - TRAIL_WINDOW_HOURS * 3600000);
+
+    const hourly = await fetchHistoricWindForReport(
+      report,
+      startTime.toISOString(),
+      reportTime.toISOString()
+    );
+
+    if (!hourly?.time?.length) {
+      return null;
+    }
+
+    const steps = [];
+
+    for (let i = 0; i < hourly.time.length; i++) {
+
+      const ts = Date.parse(hourly.time[i] + "Z");
+
+      if (
+        ts < startTime.getTime() ||
+        ts > reportTime.getTime()
+      ) {
+        continue;
+      }
+
+      const spd = hourly.wind_speed_10m[i];
+      const dir = hourly.wind_direction_10m[i];
+      const pres = hourly.pressure_msl?.[i] ?? null;
+
+      if (spd == null || dir == null) {
+        continue;
+      }
+
+      steps.push({ spd, dir, pres });
+
+    }
+
+    if (!steps.length) {
+      return null;
+    }
+
+    // Backfill wind_speed if missing (null at insert time means live fetch failed)
+    if (report.wind_speed == null) {
+      const avgSpeed = Number(
+        (steps.reduce((sum, s) => sum + s.spd, 0) / steps.length).toFixed(1)
+      );
+      report.wind_speed = avgSpeed;
+      await backfillWindSpeed(report.id, avgSpeed);
+    }
+
+    // Find the single hourly reading closest to the report time.
+    // This is what Open-Meteo says the wind was at that moment —
+    // a fair comparison to what the user read on Windfinder.
+    let closestStep = null;
+    let closestDiff = Infinity;
+    for (let i = 0; i < hourly.time.length; i++) {
+      const ts = Date.parse(hourly.time[i] + "Z");
+      const diff = Math.abs(ts - reportTime.getTime());
+      if (diff < closestDiff) {
+        closestDiff = diff;
+        closestStep = i;
+      }
+    }
+    const historicalDir = closestStep != null ? hourly.wind_direction_10m[closestStep] : null;
+    if (historicalDir != null && report.wind_direction !== historicalDir) {
+      report.wind_direction = historicalDir;
+      await backfillWindDirection(report.id, historicalDir);
+    }
+
+    const validPres = steps.filter(s => s.pres != null);
+    if (validPres.length) {
+      const avgPressure = validPres.reduce((sum, s) => sum + s.pres, 0) / validPres.length;
+      const alreadyStored = report.sea_level_pressure != null &&
+        Math.abs(report.sea_level_pressure - avgPressure) < 0.05;
+      if (!alreadyStored) {
+        report.sea_level_pressure = avgPressure;
+        await backfillPressure(report.id, avgPressure);
+      }
+    }
+
+steps.reverse(); // walk backwards from report time toward the source
+const rawTrail = buildRawVectorTrail(
+  report.latitude,
+  report.longitude,
+  steps
+);
+
+    const spline = smoothPathChaikin(rawTrail, 2);
+
+    splineCache[report.id] = spline;
+
+    return spline;
+
+  } catch (err) {
+
+    console.error(
+      `Historic spline generation failed for report ${report.id}`,
+      err
+    );
+
+    return null;
+
+  }
+
+}
+
+async function startBacktrack(lat, lon, createdAt) {
+  clearBacktrack();
+  const HOURS = TRAIL_WINDOW_HOURS;
+  
+  // Define variables here, at the top level of the function
+  const reportTime = new Date(createdAt);
+  const startTime = new Date(reportTime.getTime() - HOURS * 3600000);
+
+  try {
+    // Now startTime is guaranteed to be defined
+    const hourly = await fetchHistoricWind(lat, lon, startTime.toISOString(), reportTime.toISOString());
+    if (!hourly?.time?.length) return;
+
+    const steps = [];
+    for(let i = 0; i < hourly.time.length; i++) {
+      const ts = new Date(hourly.time[i] + 'Z');
+      if(ts >= startTime && ts <= reportTime)
+        steps.push({ spd: hourly.wind_speed_10m[i], dir: hourly.wind_direction_10m[i] });
+    }
+    
+    if(!steps.length) return;
+
+    const rawTrail = buildRawVectorTrail(lat, lon, steps);
+    const smoothed = smoothPathChaikin(rawTrail, 3);
+
+    if (smoothed.length < 2) return;
+
+  } catch(err) { 
+    console.error('Backtrack Error:', err); 
+  }
+}
+
+/* ═══════════════════════════════════════════════════
+   BACKGROUND TRAIL RENDERING
+═══════════════════════════════════════════════════ */
+
+function clearBackgroundTrails() {
+  bgTrailLayers.forEach(l => map.removeLayer(l));
+  bgTrailLayers = [];
+}
+
+async function generateAllBackgroundTrails(reports, tracerCoords = null) {
+  clearBackgroundTrails();
+
+  // Create a shallow copy and sort it so that older reports are drawn first, 
+  // and the newest reports are drawn LAST (putting them on top visually)
+  const sortedReports = [...reports].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
+  // PASS 1: Draw all solid cones synchronously (no API calls needed)
+  const coneEdges = new Map(); // report.id -> { left: [], right: [] }
+  sortedReports.forEach((report) => {
+    const startLat = parseFloat(report.latitude);
+    const startLon = parseFloat(report.longitude);
+    const windDeg = parseFloat(report.manual_wind_direction ?? report.wind_direction);
+
+
+    const totalDistKm = 1.5;
+    const totalSegments = 5;
+    const stepDistKm = totalDistKm / totalSegments;
+    const expansionAngleDeg = 30;
+
+    const baseColor = categoryColor(report.category);
+    const upwindBearingRad = ((windDeg + 180) % 360) * Math.PI / 180;
+
+    coneEdges.set(report.id, { left: [], right: [] });
+
+    const coneClipDistKm = tracerCoords ? (() => {
+      const distToSource = getHaversineDistance(startLat, startLon, tracerCoords.lat, tracerCoords.lon);
+      return distToSource + 5.0;
+    })() : Infinity;
+
+    for (let i = 0; i < totalSegments; i++) {
+      const currentSegmentDistStart = i * stepDistKm;
+      const currentSegmentDistEnd = (i + 1) * stepDistKm;
+      if (currentSegmentDistStart >= coneClipDistKm) continue;
+
+      const pStart = moveUpwind(startLat, startLon, windDeg, currentSegmentDistStart);
+      const pEnd = moveUpwind(startLat, startLon, windDeg, currentSegmentDistEnd);
+
+      const widthStart = currentSegmentDistStart * Math.sin(expansionAngleDeg * Math.PI / 180);
+      const widthEnd = currentSegmentDistEnd * Math.sin(expansionAngleDeg * Math.PI / 180);
+
+      const leftAngle = upwindBearingRad - Math.PI / 2;
+      const rightAngle = upwindBearingRad + Math.PI / 2;
+
+      const cosStartLat = Math.cos(pStart.lat * Math.PI / 180);
+      const cosEndLat = Math.cos(pEnd.lat * Math.PI / 180);
+
+      const pStartLeftLat = pStart.lat + (Math.cos(leftAngle) * widthStart) / 111.32;
+      const pStartLeftLon = pStart.lon + (Math.sin(leftAngle) * widthStart) / (111.32 * cosStartLat);
+      const pStartRightLat = pStart.lat + (Math.cos(rightAngle) * widthStart) / 111.32;
+      const pStartRightLon = pStart.lon + (Math.sin(rightAngle) * widthStart) / (111.32 * cosStartLat);
+      const pEndLeftLat = pEnd.lat + (Math.cos(leftAngle) * widthEnd) / 111.32;
+      const pEndLeftLon = pEnd.lon + (Math.sin(leftAngle) * widthEnd) / (111.32 * cosEndLat);
+      const pEndRightLat = pEnd.lat + (Math.cos(rightAngle) * widthEnd) / 111.32;
+      const pEndRightLon = pEnd.lon + (Math.sin(rightAngle) * widthEnd) / (111.32 * cosEndLat);
+
+      const edges = coneEdges.get(report.id);
+
+      const leftLine = L.polyline(edges.left, {
+        color: baseColor,
+        weight: 1,
+        opacity: 0.5,
+        className: 'bg-trail-teal',
+        interactive: false,
+        pane: 'conePane'
+      }).addTo(map);
+
+      const rightLine = L.polyline(edges.right, {
+        color: baseColor,
+        weight: 1,
+        opacity: 0.5,
+        className: 'bg-trail-teal',
+        interactive: false,
+        pane: 'conePane'
+      }).addTo(map);
+
+      bgTrailLayers.push(leftLine, rightLine);
+
+      // build continuous left/right boundary lines
+      if (i === 0) {
+        edges.left.push([pStartLeftLat, pStartLeftLon]);
+        edges.right.push([pStartRightLat, pStartRightLon]);
+      }
+
+      edges.left.push([pEndLeftLat, pEndLeftLon]);
+      edges.right.push([pEndRightLat, pEndRightLon]);
+
+
+      const segmentEnvelope = [
+        [pStartLeftLat, pStartLeftLon],
+        [pEndLeftLat, pEndLeftLon],
+        [pEndRightLat, pEndRightLon],
+        [pStartRightLat, pStartRightLon]
+      ];
+
+      const segmentFactor = i / totalSegments;
+      const segmentFillOpacity = 0.35 * (1.0 - segmentFactor);
+      const segmentStrokeOpacity = 0.15 * (1.0 - segmentFactor);
+
+      const coneSegment = L.polygon(segmentEnvelope, {
+        color: baseColor,
+        fillColor: baseColor,
+        weight: 1,
+        fillOpacity: segmentFillOpacity,
+        opacity: segmentStrokeOpacity,
+        className: 'bg-trail-teal',
+        interactive: false,
+        pane: 'conePane'
+      }).addTo(map);
+
+      bgTrailLayers.push(coneSegment);
+    }
+  });
+
+// PASS 2: Fetch historic splines concurrently — safe to parallelize now that
+// archival reports (>7 days) are served from the persisted historic_wind_json
+// column instead of hitting Open-Meteo every time. Only genuinely new/uncached
+// fetches go to the network, so rate-limit pressure stays low even running in parallel.
+  const splineResults = await Promise.all(
+    sortedReports.map(report => renderHistoricSplineTrailForReport(report))
+  );
+
+  sortedReports.forEach((report, idx) => {
+    const smoothedTrail = splineResults[idx];
+    if (!smoothedTrail || smoothedTrail.length < 2) return;
+
+    const baseColor = categoryColor(report.category);
+    let splineLatLngs = smoothedTrail.map(p => [p.lat, p.lon]);
+
+    // If called from tracer, clip the spline a short buffer distance PAST
+    // whichever point on the trail actually passes closest to the tracer.
+    // (Previously this used straight-line distance from the source pin to
+    // the tracer, budgeted as an arc-length travel distance. That only works
+    // for roughly-straight trails; for winding/looping trails the arc-length
+    // needed to reach the point nearest the tracer can be much shorter or
+    // longer than the straight-line distance, causing the trail to cut off
+    // way too early or way too late. Finding the actual closest vertex fixes
+    // this regardless of how much the trail curves.)
+    if (tracerCoords) {
+      let closestIdx = 0;
+      let closestDist = Infinity;
+      for (let i = 0; i < splineLatLngs.length; i++) {
+        const d = getHaversineDistance(
+          splineLatLngs[i][0], splineLatLngs[i][1],
+          tracerCoords.lat, tracerCoords.lon
+        );
+        if (d < closestDist) {
+          closestDist = d;
+          closestIdx = i;
+        }
+      }
+
+      // Walk a small fixed buffer past the closest point so the line visibly
+      // passes through the trace point rather than stopping dead on it.
+      const bufferPastPointKm = 1.0;
+      let cumDist = 0;
+      let cutIdx = splineLatLngs.length - 1;
+      for (let i = closestIdx + 1; i < splineLatLngs.length; i++) {
+        cumDist += getHaversineDistance(
+          splineLatLngs[i-1][0], splineLatLngs[i-1][1],
+          splineLatLngs[i][0], splineLatLngs[i][1]
+        );
+        if (cumDist >= bufferPastPointKm) {
+          cutIdx = i;
+          break;
+        }
+      }
+
+      splineLatLngs = splineLatLngs.slice(0, cutIdx + 1);
+    }
+
+    const dottedSpline = L.polyline(splineLatLngs, {
+      color: baseColor,
+      weight: 2,
+      opacity: 0.75,
+      dashArray: '4, 7',
+      lineCap: 'round',
+      lineJoin: 'round',
+      className: `bg-trail-teal spline-report-${report.id}`,
+      interactive: false,
+      pane: 'splinePane'
+    }).addTo(map);
+    bgTrailLayers.push(dottedSpline);
+    splineByReport[report.id] = dottedSpline;
+  });
+}
+
+/* ═══════════════════════════════════════════════════
+   CROWD VALIDATION & CLUSTERING ENGINE
+═══════════════════════════════════════════════════ */
+function evaluateActiveNearbyClusters() {
+  const currentLoc = pinMode && manualCoords ? manualCoords : userCoords;
+  if (!currentLoc || !globalActiveData.length) {
+    return;
+  }
+
+  const now = Date.now();
+  const CLUSTER_RADIUS_KM = 3.0;
+  const CLUSTER_TIME_WINDOW_MS = 2 * 3600 * 1000; 
+
+  const candidateReports = globalActiveData.filter(r => {
+    const ageMs = now - new Date(r.created_at).getTime();
+    if (ageMs > CLUSTER_TIME_WINDOW_MS) return false;
+    
+    const distance = getHaversineDistance(currentLoc.lat, currentLoc.lon, r.latitude, r.longitude);
+    return distance <= CLUSTER_RADIUS_KM;
+  });
+
+  if (!candidateReports.length) {
+    return;
+  }
+
+  const categoryCounts = {};
+  candidateReports.forEach(r => {
+    categoryCounts[r.category] = (categoryCounts[r.category] || 0) + 1;
+  });
+
+  let topCategory = '';
+  let maxCount = 0;
+  for (const cat in categoryCounts) {
+    if (categoryCounts[cat] > maxCount) {
+      maxCount = categoryCounts[cat];
+      topCategory = cat;
+    }
+  }
+
+  if (maxCount >= 2) {
+    console.log(`Active community cluster detected for category: ${topCategory} (${maxCount} reports)`);
+  }
+}
+/* ═══════════════════════════════════════════════════
+   PINS RENDER ENGINE
+═══════════════════════════════════════════════════ */
+function clearMarkers(){
+  reportMarkers.forEach(m=>map.removeLayer(m));
+  reportMarkers=[];
+}
+function translateCategory(category) {
+  const srToEn = {
+    "Dim": "Smoke",
+    "Kanalizacija": "Sewage",
+    "Sumpor": "Sulfur",
+    "Spaljena plastika / guma": "Burnt plastic or rubber",
+    "Hemijski rastvarači (farba, benzin, lepak, industrijske hemikalije)":
+      "Chemical solvents (paint, fuel, glue, industrial chemicals)",
+    "Otpad / kompost / vlaga": "Waste / Trash / Garbage",
+    "Nepoznato": "Unknown",
+    "Ostalo": "Other"
+  };
+
+  const enToSr = Object.fromEntries(
+    Object.entries(srToEn).map(([sr, en]) => [en, sr])
+  );
+
+  return lang === 'en'
+    ? (srToEn[category] || category)
+    : (enToSr[category] || category);
+
+  return map[category] || category;
+}
+
+function renderPin(report, index = 0){ 
+  // Helper to format dates consistently
+  const formatDate = (dateStr) => {
+    if (!dateStr) return null;
+    const d = new Date(dateStr);
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
+  const formattedDate = formatDate(report.created_at);
+  
+  const color = ageColor(report.created_at);
+  const catCol = categoryColor(report.category);
+  const card  = degToCardinal(report.wind_direction);
+
+const popupHtml = `<div class="popup-inner" style="padding:0;min-width:160px;max-width:200px;font-family:sans-serif;">
+  <div style="background:${catCol};padding:4px 8px;border-radius:6px 6px 0 0;display:flex;flex-direction:column;align-items:flex-start;gap:1px;">
+    <span style="font-size:11px;font-weight:700;color:white;">
+      ${translateCategory(report.category)}
+    </span>
+    <span style="font-size:9px;color:rgba(255,255,255,.8);">
+      ${formattedDate}
+    </span>
+  </div>
+
+  <div style="padding:5px 8px;display:flex;flex-direction:column;gap:2px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <span style="font-size:9px;color:#888;text-transform:uppercase;">${t('popupInt')}</span>
+      <span style="font-size:11px;font-weight:600;color:#111;">${report.intensity}/10</span>
+    </div>
+
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <span style="font-size:9px;color:#888;text-transform:uppercase;">${t('popupDuration')}</span>
+      <span style="font-size:11px;font-weight:600;color:#111;">${report.duration || 1}${t('hours')}</span>
+    </div>
+
+    <div style="height:1px;background:#eee;margin:2px 0;"></div>
+
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <span style="font-size:9px;color:#888;text-transform:uppercase;">${t('popupDir')}</span>
+      <span style="font-size:11px;font-weight:600;color:#111;">
+        ${report.manual_wind_direction != null ? report.manual_wind_direction + '°' : '–'}
+      </span>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:1px;margin-top:1px;">
+      <span style="font-size:9px;color:#bbb;text-transform:uppercase;">${t('historical')}</span>
+      <span style="font-size:10px;color:#999;white-space:nowrap;padding-left:2px;">
+        ${report.wind_direction != null ? Math.round(report.wind_direction) + '°' + (card ? ` ${card}` : '') : '–'} •
+        ${report.wind_speed != null ? report.wind_speed + ' km/h' : '–'} •
+        ${report.sea_level_pressure != null ? Math.round(report.sea_level_pressure) + ' hPa' : '–'}
+      </span>
+    </div>
+
+    ${report.comment ? `
+    <div style="height:1px;background:#eee;margin:2px 0;"></div>
+    <div style="font-size:10px;color:#555;font-style:italic;line-height:1.2;">
+      ${report.comment}
+    </div>` : ''}
+  </div>
+</div>`;
+  
+
+  const zIndexPriority = 10000 - index;
+  const marker=L.marker([report.latitude,report.longitude],{
+    icon: makeIcon(color, report.manual_wind_direction ?? report.wind_direction, catCol),
+
+    zIndexOffset: zIndexPriority 
+  }).addTo(map);
+
+  marker.bindPopup(popupHtml);
+  marker.on('popupopen', () => {
+    startBacktrack(report.latitude, report.longitude, new Date().toISOString());
+    const spline = splineByReport[report.id];
+    if (spline) {
+      const el = spline.getElement();
+      if (el) {
+        clearTimeout(el._animTimer);
+        el.classList.add('bg-trail-animated');
+      }
+    }
+  });
+  marker.on('popupclose', () => {
+    const spline = splineByReport[report.id];
+    if (spline) {
+      const el = spline.getElement();
+      if (el) {
+        el._animTimer = setTimeout(() => el.classList.remove('bg-trail-animated'), 5000);
+      }
+    }
+  });
+  reportMarkers.push(marker);
+}
+
+/* ═══════════════════════════════════════════════════
+   CORE DATA RETRIEVAL
+═══════════════════════════════════════════════════ */
+async function fetchAll(){
+  const {data,error}=await sb.from('air_reports').select('*').order('created_at',{ascending:false});
+  if(error){ console.error(error); return []; }
+  return data;
+}
+
+async function loadPinsByWindow() {
+  clearMarkers(); clearBacktrack(); clearBackgroundTrails();
+  const data = await fetchAll();
+  globalActiveData = data; 
+  
+  if (data.length > 0) {
+      lastSyncTimestamp = data[0].created_at;
+  }
+
+  if (!fp || !fp.selectedDates || fp.selectedDates.length < 2) return;
+
+  const filterStart = new Date(fp.selectedDates[0]);
+  filterStart.setHours(0, 0, 0, 0);
+  const filterEnd = new Date(fp.selectedDates[1]);
+  filterEnd.setHours(23, 59, 59, 999);
+
+  let n = 0;
+  let activeReports = [];
+
+  data.forEach((r, index) => {
+    const reportTimestamp = new Date(r.created_at).getTime();
+    if (reportTimestamp < filterStart.getTime() || reportTimestamp > filterEnd.getTime()) return;
+
+    n++;
+    renderPin(r, index);
+    activeReports.push(r);
+  });
+
+  const rcEl = document.getElementById('reportCount');
+  if (rcEl) rcEl.textContent = n + ' ' + (n === 1 ? t('reportCount1') : t('reportCount'));
+
+  evaluateActiveNearbyClusters();
+  if (!traceMode) generateAllBackgroundTrails(activeReports);
+}
+
+/* ═══════════════════════════════════════════════════
+   HIGH-PRECISION SPLINE SEGMENT INTERCEPT TRACER
+═══════════════════════════════════════════════════ */
+let activeTraceRequestId = 0;
+
+function distanceToSegment(p, p1, p2) {
+  const R = 6371; // Earth's radius in km
+  const latMid = (p1.lat + p2.lat) / 2 * Math.PI / 180;
+  const cosLat = Math.cos(latMid);
+  
+  const x = p.lon * cosLat;
+  const y = p.lat;
+  const x1 = p1.lon * cosLat;
+  const y1 = p1.lat;
+  const x2 = p2.lon * cosLat;
+  const y2 = p2.lat;
+  
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const l2 = dx * dx + dy * dy;
+  
+  let tVal = 0;
+  if (l2 > 0) {
+    tVal = ((x - x1) * dx + (y - y1) * dy) / l2;
+    tVal = Math.max(0, Math.min(1, tVal));
+  }
+  
+  const closestLat = y1 + tVal * dy;
+  const closestLon = (x1 + tVal * dx) / cosLat;
+  
+  const dLat = (p.lat - closestLat) * Math.PI / 180;
+  const dLon = (p.lon - closestLon) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(closestLat*Math.PI/180) * Math.cos(p.lat*Math.PI/180) * Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+async function filterPinsBySourceTrajectory(tracerCoords) {
+  const BASE_RADIUS_KM = 2.0;
+  const DISPERSION_RATE_KM_H = 2.0;
+  const currentRequestId = ++activeTraceRequestId;
+
+  clearMarkers();
+  clearBackgroundTrails();
+  tracerVisualCircles.forEach(c => map.removeLayer(c));
+  tracerVisualCircles = [];
+
+  // Red radius circle around tracer dot
+  const primaryRadiusCircle = L.circle([tracerCoords.lat, tracerCoords.lon], {
+    radius: BASE_RADIUS_KM * 1000,
+    color: '#ff4d4d',
+    fillColor: '#ff4d4d',
+    fillOpacity: 0.15,
+    weight: 1.5,
+    dashArray: '3, 4',
+    interactive: false
+  }).addTo(map);
+  tracerVisualCircles.push(primaryRadiusCircle);
+
+  // Apply date filter
+  const filterStart = new Date(fp.selectedDates[0]); filterStart.setHours(0, 0, 0, 0);
+  const filterEnd = new Date(fp.selectedDates[1]); filterEnd.setHours(23, 59, 59, 999);
+  const timeFilteredData = globalActiveData.filter(r => {
+    const ts = new Date(r.created_at).getTime();
+    return ts >= filterStart.getTime() && ts <= filterEnd.getTime();
+  });
+
+  const activeReportsToDrawTrails = [];
+  const results = [];
+
+  for (const [index, report] of timeFilteredData.entries()) {
+    if (currentRequestId !== activeTraceRequestId) return;
+
+    const reportAgeHours = (Date.now() - new Date(report.created_at).getTime()) / 3600000;
+    if (reportAgeHours < 6) {
+      results.push(null);
+      continue;
+    }
+
+    // Use the same trail as drawn on map — downwind from pin
+    const trailCoordinates = await renderHistoricSplineTrailForReport(report);
+
+    if (!trailCoordinates || trailCoordinates.length < 2) {
+      results.push(null);
+      if (!isWindCached(report)) await new Promise(r => setTimeout(r, 100));
+      continue;
+    }
+
+    let matchFound = false;
+    for (let i = 0; i < trailCoordinates.length - 1; i++) {
+      const p1 = trailCoordinates[i];
+      const p2 = trailCoordinates[i + 1];
+      const distanceKM = distanceToSegment(tracerCoords, p1, p2);
+      const maxAllowedDistance = BASE_RADIUS_KM + (DISPERSION_RATE_KM_H * (i + 1) * (6 / trailCoordinates.length));
+
+      if (distanceKM <= maxAllowedDistance) {
+        matchFound = true;
+        const dispersionIndicator = L.circle([p1.lat, p1.lon], {
+          radius: maxAllowedDistance * 1000,
+          color: '#ff8800',
+          fillColor: 'transparent',
+          weight: 1,
+          dashArray: '5, 5',
+          opacity: 0.4,
+          interactive: false
+        }).addTo(map);
+        tracerVisualCircles.push(dispersionIndicator);
+        break;
+      }
+    }
+
+    results.push(matchFound ? { report, index } : null);
+    if (!isWindCached(report)) await new Promise(r => setTimeout(r, 100));
+  }
+
+  if (currentRequestId !== activeTraceRequestId) return;
+
+  results.forEach(res => {
+    if (res) {
+      renderPin(res.report, res.index);
+      activeReportsToDrawTrails.push(res.report);
+    }
+  });
+
+  generateAllBackgroundTrails(activeReportsToDrawTrails, tracerCoords);
+
+  const n = reportMarkers.length;
+  const rcEl = document.getElementById('reportCount');
+  if (rcEl) rcEl.textContent = n + ' ' + (n === 1 ? t('reportCount1') : t('reportCount'));
+}
+
+
+/* ═══════════════════════════════════════════════════
+   REPORT ACTION
+═══════════════════════════════════════════════════ */
 function resetReportingForm() {
-  document.getElementById('category').selectedIndex = 0;
-  document.getElementById('subcategory').innerHTML = '';
-  document.getElementById('subcategoryRow').style.display = 'none';
+  // 1. Reset dropdown select boxes to their default placeholder states
+  const categorySelect = document.getElementById('category');
+  const intensitySelect = document.getElementById('intensity');
+  
+  categorySelect.selectedIndex = 0;
+  intensitySelect.selectedIndex = 0;
+
+  // 2. Clear out the wind direction input field
+  const windInput = document.getElementById('manualWind');
+  windInput.value = "";
+
   document.getElementById('comment').value = "";
-  document.getElementById('reportBtn').disabled = true;
+
+  const durationInput = document.getElementById('duration');
+  if (durationInput) {
+    if (durationInput.tagName === 'SELECT') {
+      durationInput.selectedIndex = 0;
+    } else {
+      durationInput.value = "";
+    }
+  }
+  
+  initTimeInput();
+
+  const btn = document.getElementById('reportBtn');
+  btn.disabled = true;
 
   // If the user manually dropped a pin to file this report, turn pin-drop
   // mode back off so the pin doesn't stay "clicked"/active after submit.
@@ -1408,319 +2327,117 @@ function resetReportingForm() {
   manualCoords = null;
 }
 
-async function reportBreak(){
-  if (!currentSession || !currentProfile) { updateAuthUI(); return; }
-
+async function reportBadAir(){
   const coords = pinMode && manualCoords ? manualCoords : userCoords;
-  if (!coords) { alert(t('waitGps')); return; }
+  if(!coords){ alert(t('waitGps')); return; }
 
-  const category    = document.getElementById('category').value;
-  const subcategory = document.getElementById('subcategory').value || null;
-  const comment      = document.getElementById('comment').value;
+  const category  = document.getElementById('category').value;
+  const intensity = document.getElementById('intensity').value;
+  const comment   = document.getElementById('comment').value;
+  const durationInput = document.getElementById('duration').value;
+  const durationValue = durationInput && durationInput !== "" ? parseInt(durationInput) : 1;
+
+  // New input values
+  const timeVal = document.getElementById('reportTime').value; // "HH:MM"
+  const manualWind = document.getElementById('manualWind').value; // number string or ""
+
+  // Create Date object for current date + user-selected time
+  const reportDate = new Date();
+  const [hours, minutes] = timeVal.split(':');
+  reportDate.setHours(hours, minutes, 0, 0);
+
+  // Parse manual wind direction — this is the user-reported value from Windfinder,
+  // stored permanently in manual_wind_direction and used as the initial wind_direction
+  // until the spline engine backfills it with Open-Meteo historical data.
+  const manualWindNum = manualWind !== "" ? parseFloat(manualWind) : null;
+
+  // Fetch weather separately so a failure doesn't block the report insert
+  let finalSpeed = null;
+  let finalPressure = 0;
+  try {
+    const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lon}&current=wind_speed_10m,wind_direction_10m,pressure_msl&timezone=UTC&models=icon_d2`);
+    const w = await r.json();
+    const c = w.current;
+    if (c) {
+      finalSpeed    = c.wind_speed_10m    != null ? parseFloat(parseFloat(c.wind_speed_10m).toFixed(1))  : null;
+      finalPressure = c.pressure_msl      != null ? parseFloat(c.pressure_msl) : 0;
+    }
+  } catch (weatherErr) {
+    console.warn('Weather fetch failed at report time, wind_speed will be backfilled later:', weatherErr);
+  }
 
   try {
-    const { error } = await sb.from(TABLE).insert([{
-      latitude:  parseFloat(coords.lat),
-      longitude: parseFloat(coords.lon),
-      category,
-      subcategory,
-      status: 'reported',
+    const { error } = await sb.from('air_reports').insert([{
+      latitude:              parseFloat(coords.lat),
+      longitude:             parseFloat(coords.lon),
+      // manual_wind_direction: the user-reported value — never updated after this
+      manual_wind_direction: manualWindNum,
+      // wind_direction: starts as the manual value; overwritten by backfillWindDirection()
+      // once historical Open-Meteo data is available (>7h after report)
+      wind_direction:        null,
+      // wind_speed: from live Open-Meteo at submit time; null if fetch failed,
+      // will be backfilled by renderHistoricSplineTrailForReport()
+      wind_speed:            null,
+      sea_level_pressure:    null,
       comment,
-      created_at: new Date().toISOString(),
-      owner_id: currentSession.user.id,
-      owner_username: currentProfile.username
+      category,
+      intensity:             parseInt(intensity),
+      duration:              durationValue,
+      created_at:            reportDate.toISOString()
     }]);
+
     if (error) throw error;
 
     alert(t('submitted'));
     resetReportingForm();
     await loadPinsByWindow();
-  } catch (err) {
-    console.error('Report submit error (full):', err);
-    alert(describeAuthError(err));
+
+  } catch(err) {
+    alert(err.message);
   }
 }
 
-function clearMarkers(){
-  reportMarkers.forEach(m => map.removeLayer(m));
-  reportMarkers = [];
-}
-
-function formatDate(dateStr) {
-  if (!dateStr) return '';
-  const d = new Date(dateStr);
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-function buildTimelineItem(label, dateStr, reached, color) {
-  const dotColor = reached ? color : 'rgba(255,255,255,.18)';
-  const dateText = reached ? formatDate(dateStr) : '—';
-  return `<div class="timeline-item ${reached ? '' : 'pending'}">
-    <div class="timeline-line"></div>
-    <div class="timeline-dot" style="background:${dotColor};"></div>
-    <div class="timeline-content">
-      <span class="timeline-label">${label}</span>
-      <span class="timeline-date">${dateText}</span>
-    </div>
-  </div>`;
-}
-
-function buildPopupHtml(report) {
-  const catCol = categoryColor(report.category);
-  const sCol   = statusColor(report.status);
-  const isOwner = !!(currentSession && report.owner_id === currentSession.user.id);
-  const isAdmin = !!(currentProfile && currentProfile.is_admin);
-  const reporterName = report.owner_username || (lang === 'sr' ? 'Nepoznato' : 'Unknown');
-  const headerTitle = report.subcategory
-    ? `${translateCategory(report.category)} / ${subcategoryLabel(report.category, report.subcategory)}`
-    : translateCategory(report.category);
-
-  let actionsHtml = '';
-  if (isAdmin) {
-    // Admins get full control: jump to any status, plus edit/delete
-    const statuses = [
-      { key: 'reported',    label: t('markReported'),   bg: STATUS_COLORS.reported },
-      { key: 'in_progress', label: t('markInProgress'), bg: STATUS_COLORS.in_progress },
-      { key: 'fixed',       label: t('markFixed'),      bg: STATUS_COLORS.fixed }
-    ].filter(s => s.key !== report.status);
-    actionsHtml = `<div class="status-action-row">
-      ${statuses.map(s => `<button class="status-action-btn" style="background:${s.bg};" onclick="updateReportStatus('${report.id}','${s.key}')">${s.label}</button>`).join('')}
-    </div>
-    <div class="status-action-row" style="border-top:none;padding-top:0;">
-      <button class="status-action-btn" style="background:#3a3a3a;" onclick="enterEditMode('${report.id}')">${t('editBtn')}</button>
-      <button class="status-action-btn" style="background:#7a1f1f;" onclick="deleteReport('${report.id}')">${t('deleteBtn')}</button>
-    </div>`;
-  } else if (isOwner && report.status !== 'fixed') {
-    const showProgress = report.status === 'reported';
-    actionsHtml = `<div class="status-action-row">
-      ${showProgress ? `<button class="status-action-btn progress-btn" onclick="updateReportStatus('${report.id}','in_progress')">${t('markInProgress')}</button>` : ''}
-      <button class="status-action-btn fixed-btn" onclick="updateReportStatus('${report.id}','fixed')">${t('markFixed')}</button>
-    </div>`;
-  }
-
-  return `<div class="popup-inner popup-card">
-    <div class="popup-header" style="background:${catCol};">
-      <span class="popup-header-title">${headerTitle}</span>
-      <span class="popup-header-date">${formatDate(report.created_at)}</span>
-    </div>
-    <div class="popup-body">
-      <div class="popup-row">
-        <span class="popup-row-label">${t('popupStatus')}</span>
-        <span class="status-pill" style="background:${sCol};">${statusLabel(report.status)}</span>
-      </div>
-      <div class="popup-row">
-        <span class="popup-row-label">${t('reportedByLabel')}</span>
-        <span class="popup-row-value">${escapeHtml(reporterName)}${isOwner ? ` <span class="owner-tag">(${t('yourReport')})</span>` : ''}</span>
-      </div>
-    </div>
-    <div class="popup-timeline">
-      ${buildTimelineItem(t('reportedAtLabel'), report.created_at, true, STATUS_COLORS.reported)}
-      ${buildTimelineItem(t('inProgressAtLabel'), report.in_progress_at, !!report.in_progress_at, STATUS_COLORS.in_progress)}
-      ${buildTimelineItem(t('finishedAtLabel'), report.fixed_at, !!report.fixed_at, STATUS_COLORS.fixed)}
-    </div>
-    ${report.comment ? `<div class="popup-note">${escapeHtml(report.comment)}</div>` : ''}
-    ${actionsHtml}
-  </div>`;
-}
-
-function buildEditPopupHtml(report) {
-  const uid = report.id;
-  const cats = ['Water','Electricity','Sewage','Gas','Heating','Road','Streetlight','Waste','Other'];
-  const catOptions = cats.map(c => `<option value="${c}" ${c === report.category ? 'selected' : ''}>${translateCategory(c)}</option>`).join('');
-  const statuses = [
-    { key:'reported', label: statusLabel('reported') },
-    { key:'in_progress', label: statusLabel('in_progress') },
-    { key:'fixed', label: statusLabel('fixed') }
-  ];
-  const statusOptions = statuses.map(s => `<option value="${s.key}" ${s.key === report.status ? 'selected' : ''}>${s.label}</option>`).join('');
-
-  return `<div class="popup-inner popup-edit-form">
-    <select id="edit-cat-${uid}" style="width:100%;" onchange="onEditCategoryChange('${uid}')">${catOptions}</select>
-    <select id="edit-subcat-${uid}" style="width:100%;"></select>
-    <select id="edit-status-${uid}" style="width:100%;">${statusOptions}</select>
-    <input type="text" id="edit-comment-${uid}" value="${escapeHtml(report.comment || '')}" style="width:100%;">
-    <div class="status-action-row" style="padding:0;border-top:none;">
-      <button class="status-action-btn" style="background:#a67817;" onclick="saveReportEdits('${uid}')">${t('saveBtn')}</button>
-      <button class="status-action-btn" style="background:#3a3a3a;" onclick="cancelEdit('${uid}')">${t('cancelBtn')}</button>
-    </div>
-  </div>`;
-}
-
-function onEditCategoryChange(reportId) {
-  const catSelect = document.getElementById(`edit-cat-${reportId}`);
-  const subSelect = document.getElementById(`edit-subcat-${reportId}`);
-  if (!catSelect || !subSelect) return;
-  populateSubcategoryOptions(subSelect, catSelect.value, null);
-}
-
-function enterEditMode(reportId) {
-  const marker = reportMarkers.find(m => m._reportId === reportId);
-  const report = globalActiveData.find(r => r.id === reportId);
-  if (!marker || !report) return;
-  marker.setPopupContent(buildEditPopupHtml(report));
-  // subcategory <select> starts empty in the template; populate it now that
-  // it's actually in the DOM, preselecting the report's current subcategory
-  setTimeout(() => {
-    const subSelect = document.getElementById(`edit-subcat-${reportId}`);
-    if (subSelect) populateSubcategoryOptions(subSelect, report.category, report.subcategory);
-  }, 0);
-}
-
-function cancelEdit(reportId) {
-  const marker = reportMarkers.find(m => m._reportId === reportId);
-  const report = globalActiveData.find(r => r.id === reportId);
-  if (!marker || !report) return;
-  marker.setPopupContent(buildPopupHtml(report));
-}
-
-// Computes which timeline timestamp(s) to set/clear for a given status transition.
-// Moving to in_progress stamps in_progress_at; moving to fixed stamps fixed_at
-// (leaving in_progress_at as-is in case a report skipped straight to fixed);
-// reverting to reported clears both, since the report is back at square one.
-function buildStatusPatch(newStatus) {
-  const now = new Date().toISOString();
-  if (newStatus === 'reported')    return { status: 'reported',    in_progress_at: null, fixed_at: null };
-  if (newStatus === 'in_progress') return { status: 'in_progress', in_progress_at: now,  fixed_at: null };
-  if (newStatus === 'fixed')       return { status: 'fixed',       fixed_at: now };
-  return { status: newStatus };
-}
-
-async function saveReportEdits(reportId) {
-  const category    = document.getElementById(`edit-cat-${reportId}`).value;
-  const subcatEl     = document.getElementById(`edit-subcat-${reportId}`);
-  const subcategory  = (subcatEl && subcatEl.value) ? subcatEl.value : null;
-  const status       = document.getElementById(`edit-status-${reportId}`).value;
-  const comment       = document.getElementById(`edit-comment-${reportId}`).value;
-  try {
-    const { error } = await sb.from(TABLE)
-      .update({ category, subcategory, comment, updated_at: new Date().toISOString(), ...buildStatusPatch(status) })
-      .eq('id', reportId);
-    if (error) throw error;
-    await loadPinsByWindow();
-  } catch (err) {
-    console.error('Edit save error (full):', err);
-    alert(describeAuthError(err));
-  }
-}
-
-async function deleteReport(reportId) {
-  if (!confirm(t('deleteConfirm'))) return;
-  try {
-    const { error } = await sb.from(TABLE).delete().eq('id', reportId);
-    if (error) throw error;
-    await loadPinsByWindow();
-  } catch (err) {
-    console.error('Delete error (full):', err);
-    alert(describeAuthError(err));
-  }
-}
-
-async function updateReportStatus(reportId, newStatus) {
-  if (!currentSession) return;
-  try {
-    const { error } = await sb.from(TABLE)
-      .update({ updated_at: new Date().toISOString(), ...buildStatusPatch(newStatus) })
-      .eq('id', reportId);
-    if (error) throw error;
-    await loadPinsByWindow();
-  } catch (err) {
-    console.error('Status update error (full):', err);
-    alert(t('updateFail'));
-  }
-}
-
-function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
-}
-
-function renderPin(report) {
-  const catCol = categoryColor(report.category);
-  const sCol   = statusColor(report.status);
-  const opacity = report.status === 'fixed' ? 0.55 : 1;
-
-  const marker = L.marker([report.latitude, report.longitude], {
-    icon: L.divIcon({
-      className: '',
-      html: `<div style="width:22px;height:22px;border-radius:50%;background:${catCol};border:3px solid ${sCol};opacity:${opacity};box-shadow:0 2px 6px rgba(0,0,0,.5);"></div>`,
-      iconAnchor: [11,11]
-    })
-  }).addTo(map);
-
-  marker._reportId = report.id;
-  marker.bindPopup(buildPopupHtml(report));
-  reportMarkers.push(marker);
-}
-
-function refreshRenderedPopups() {
-  reportMarkers.forEach(m => {
-    const report = globalActiveData.find(r => r.id === m._reportId);
-    if (report) m.setPopupContent(buildPopupHtml(report));
-  });
-}
-
-async function loadPinsByWindow() {
-  if (!fp || !fp.selectedDates || fp.selectedDates.length < 2) return;
-
-  const start = new Date(fp.selectedDates[0]);
-  start.setHours(0,0,0,0);
-  const end = new Date(fp.selectedDates[1]);
-  end.setHours(23,59,59,999);
-
-  try {
-    let query = sb.from(TABLE)
-      .select('*')
-      .gte('created_at', start.toISOString())
-      .lte('created_at', end.toISOString())
-      .order('created_at', { ascending: true });
-
-    const { data, error } = await query;
-    if (error) throw error;
-
-    globalActiveData = data || [];
-    clearMarkers();
-    globalActiveData.forEach(r => renderPin(r));
-
-    const n = reportMarkers.length;
-    const rcEl = document.getElementById('reportCount');
-    if (rcEl) rcEl.textContent = n + ' ' + (n === 1 ? t('reportCount1') : t('reportCount'));
-  } catch (err) {
-    console.error('Failed to load reports:', err.message);
-  }
-}
-
+/* ═══════════════════════════════════════════════════
+   CSV EXPORT
+═══════════════════════════════════════════════════ */
 function downloadCSV() {
   const bounds = map.getBounds();
-  const visible = globalActiveData.filter(r => bounds.contains(L.latLng(r.latitude, r.longitude)));
+  const filterStart = fp.selectedDates[0] ? fp.selectedDates[0].getTime() : 0;
+  const filterEnd = fp.selectedDates[1] ? fp.selectedDates[1].getTime() : Infinity;
 
-  if (!visible.length) { alert(t('noReports')); return; }
+  const visible = globalActiveData.filter(r => {
+    if(!bounds.contains(L.latLng(r.latitude, r.longitude))) return false;
+    const ts = new Date(r.created_at).getTime();
+    if(ts < filterStart || ts > filterEnd) return false;
+    return true;
+  });
+
+  if(!visible.length){ alert(t('noReports')); return; }
 
   let csv = `Report Generated/Downloaded On: ${new Date().toLocaleString()}\n\n`;
-  csv += 'ID,ReportedAt,InProgressAt,FixedAt,Latitude,Longitude,Category,Subcategory,Status,ReportedBy,Comment\n';
+  csv += 'ID,Date,Latitude,Longitude,Category,Intensity,WindSpeed,WindDirection,SeaLevelPressure,Comment\n';
+  // 2. Explicitly map each field from the report object 'r'
   visible.forEach(r => {
     csv += `${r.id},` +
            `${r.created_at},` +
-           `${r.in_progress_at || ''},` +
-           `${r.fixed_at || ''},` +
            `${r.latitude},` +
            `${r.longitude},` +
            `${r.category},` +
-           `${r.subcategory || ''},` +
-           `${r.status},` +
-           `${r.owner_username || ''},` +
+           `${r.intensity || ''},` +
+           `${r.wind_speed || 0},` +
+           `${r.wind_direction || 0},` +
+           `${r.sea_level_pressure || 0},` + // ADD THIS FIELD
            `"${(r.comment || '').replace(/"/g, '""')}"\n`;
   });
 
-  let filename = 'TraceTheBreak.csv';
+  let filename = 'TraceTheToxin.csv';
   if (fp.selectedDates.length === 2) {
     const pad = (n) => String(n).padStart(2, '0');
     const d1 = fp.selectedDates[0];
     const d2 = fp.selectedDates[1];
     const startStr = `${pad(d1.getDate())}${pad(d1.getMonth() + 1)}${d1.getFullYear()}`;
     const endStr = `${pad(d2.getDate())}${pad(d2.getMonth() + 1)}${d2.getFullYear()}`;
-    filename = `TraceTheBreak_${startStr}_${endStr}.csv`;
+    filename = `TraceTheToxin_${startStr}_${endStr}.csv`;
   }
 
   const a = document.createElement('a');
@@ -1731,14 +2448,21 @@ function downloadCSV() {
   document.body.removeChild(a);
 }
 
+/* ═══════════════════════════════════════════════════
+   MAP PANEL TOGGLE (tap the round button to smoothly
+   hide the panel below the map and expand it, or bring
+   it back. Two states only.)
+═══════════════════════════════════════════════════ */
 (function initMapPanelToggle(){
   const btn   = document.getElementById('panelToggleBtn');
   const panel = document.getElementById('appPanel');
   if (!btn || !panel) return;
 
-  const TRANSITION_MS = 320;
+  const TRANSITION_MS = 320; // matches the CSS transition duration + a small buffer
   let collapsed = false;
 
+  // Keep Leaflet's tile layer in sync while the CSS height transition
+  // is animating, not just at the start/end.
   function animateMapDuringTransition(){
     if (typeof map === 'undefined' || !map.invalidateSize) return;
     const start = performance.now();
@@ -1754,6 +2478,8 @@ function downloadCSV() {
     collapsed = next;
 
     if (collapsed) {
+      // Lock to the current rendered height, force a reflow, then
+      // animate down to 0 so the transition has a real start point.
       panel.style.height = panel.scrollHeight + 'px';
       panel.getBoundingClientRect();
       requestAnimationFrame(() => {
@@ -1767,7 +2493,7 @@ function downloadCSV() {
       panel.addEventListener('transitionend', function onEnd(e){
         if (e.propertyName !== 'height') return;
         panel.removeEventListener('transitionend', onEnd);
-        if (!collapsed) panel.style.height = 'auto';
+        if (!collapsed) panel.style.height = 'auto'; // let dynamic content (calendar etc.) breathe afterward
       });
     }
 
@@ -1780,11 +2506,13 @@ function downloadCSV() {
   btn.addEventListener('click', () => setCollapsed(!collapsed));
 })();
 
+/* ═══════════════════════════════════════════════════
+   ORCHESTRATION ARCHITECTURE
+═══════════════════════════════════════════════════ */
 initCalendarFilter();
-applyLang();
+applyLang(); 
 showHelpModal();
 loadPinsByWindow();
-initAuth();
 
 </script>
 
