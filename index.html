@@ -503,6 +503,7 @@ span.flatpickr-weekday {
   <span class="legend-item"><span class="legend-dot" style="background:#cc3399"></span><span class="leg" data-en="Burnt plastic" data-sr="Spaljena plastika" style="color:#ddd;font-size:10px;">Spaljena plastika</span></span>
   <span class="legend-item"><span class="legend-dot" style="background:#008ab8"></span><span class="leg" data-en="Chemicals" data-sr="Hemikalije" style="color:#ddd;font-size:10px;">Hemikalije</span></span>
   <span class="legend-item"><span class="legend-dot" style="background:#2a682a"></span><span class="leg" data-en="Waste" data-sr="Otpad" style="color:#ddd;font-size:10px;">Otpad</span></span>
+  <span class="legend-item"><span class="legend-dot" style="background:#3ec46d"></span><span class="leg" data-en="Clean Air" data-sr="Čist vazduh" style="color:#ddd;font-size:10px;">Čist vazduh</span></span>
   <span class="legend-item"><span class="legend-dot" style="background:#8342a1"></span><span class="leg" data-en="Unknown" data-sr="Nepoznato" style="color:#ddd;font-size:10px;">Nepoznato</span></span>
   <span class="legend-item"><span class="legend-dot" style="background:#474747"></span><span class="leg" data-en="Other" data-sr="Ostalo" style="color:#ddd;font-size:10px;">Ostalo</span></span>
 </div>
@@ -528,6 +529,10 @@ span.flatpickr-weekday {
   <div class="select-wrap">
     <input type="text" id="dateRangePicker" placeholder="Select date range..." readonly>
   </div>
+  <button class="export-btn" onclick="downloadCSV()"
+          style="width:auto;flex:0 0 auto;padding:11px 14px;font-size:12px;white-space:nowrap;">
+    <span id="csvLabel">CSV</span>
+  </button>
 </div>
 
 <div id="pinMapBtn" class="pin-map-btn" style="display:none" title="Set location manually" onclick="togglePinMode()">📍</div>
@@ -543,6 +548,7 @@ span.flatpickr-weekday {
         <option value="Burnt plastic or rubber" data-sr="Spaljena plastika / guma">Spaljena plastika / guma</option>
         <option value="Chemical solvents (paint, fuel, glue, industrial chemicals)" data-sr="Hemijski rastvarači (farba, benzin, lepak, industrijske hemikalije)">Hemijski rastvarači (farba, benzin, lepak, industrijske hemikalije)</option>
         <option value="Waste / Trash / Garbage" data-sr="Otpad / kompost / vlaga">Otpad / kompost / vlaga</option>
+        <option value="Clean Air" data-sr="Čist vazduh">Čist vazduh</option>
         <option value="Unknown" data-sr="Nepoznato">Nepoznato</option>
         <option value="Other" data-sr="Ostalo">Ostalo</option>
       </select>
@@ -581,12 +587,8 @@ span.flatpickr-weekday {
 
   <div class="row" style="align-items:stretch;">
     <button class="report-btn" id="reportBtn" onclick="reportBadAir()"
-            style="flex:0 0 80%;min-width:0;font-size:14px;" disabled>
+            style="width:100%;min-width:0;font-size:14px;" disabled>
          <span id="reportBtnLabel">REPORT BAD AIR</span>
-    </button>
-    <button class="export-btn" onclick="downloadCSV()"
-            style="flex:0 0 calc(20% - 8px);min-width:0;font-size:12px;padding:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-      <span id="csvLabel">CSV</span>
     </button>
   </div>
 </div>
@@ -665,6 +667,25 @@ function checkFormReady() {
   
   const btn = document.getElementById('reportBtn');
   btn.disabled = !(category && intensity && time && isWindValid && hasLoc);
+
+  updateReportButtonStyle(category);
+}
+
+// Swaps the report button's color/label to match the "Clean Air" category
+// when it's selected, and back to the default red "bad air" styling
+// otherwise.
+function updateReportButtonStyle(category) {
+  const btn = document.getElementById('reportBtn');
+  const label = document.getElementById('reportBtnLabel');
+  if (!btn || !label) return;
+
+  if (category === 'Clean Air') {
+    btn.style.background = CATEGORY_COLORS['Clean Air'];
+    label.textContent = t('reportBtnCleanAir');
+  } else {
+    btn.style.background = '';
+    label.textContent = t('reportBtn');
+  }
 }
 
 // Initialize on load
@@ -681,6 +702,18 @@ function initTimeInput() {
   timeInput.value = now.toTimeString().slice(0, 5); 
 }
 initTimeInput();
+
+// The time dropdown defaults to "now", but if the app is left open for a
+// while (screen locked, tab backgrounded, etc.) "now" quietly goes stale.
+// Keep it ticking forward automatically as long as the user hasn't
+// deliberately picked a different time themselves.
+let userSetTime = false;
+document.getElementById('reportTime').addEventListener('change', () => {
+  userSetTime = true;
+});
+setInterval(() => {
+  if (!userSetTime) initTimeInput();
+}, 5000);
 
 /* ═══════════════════════════════════════════════════
    GLOBAL STATE DECLARATIONS
@@ -721,6 +754,7 @@ const T = {
   reportCount:  { en:'Reports',                          sr:'Prijava' },
   reportCount1: { en:'Report',                           sr:'Prijava' },
   reportBtn:    { en:'REPORT BAD AIR',                   sr:'PRIJAVI LOŠ VAZDUH' },
+  reportBtnCleanAir: { en:'REPORT CLEAN AIR',             sr:'PRIJAVI ČIST VAZDUH' },
   csvLabel:     { en:'CSV',                              sr:'CSV' },
   commentPH:    { en:'Optional notes...',                sr:'Opciona napomena...' },
   waitGps:      { en:'Waiting for GPS...',               sr:'Čekanje GPS-a...' },
@@ -779,6 +813,7 @@ function applyLang(){
 
   document.getElementById('subtitle').textContent         = t('subtitle');
   document.getElementById('reportBtnLabel').textContent   = t('reportBtn');
+  updateReportButtonStyle(document.getElementById('category').value);
   document.getElementById('csvLabel').textContent         = t('csvLabel');
   document.getElementById('filterTitleLabel').textContent = t('timeFilter');
   document.getElementById('comment').placeholder          = t('commentPH');
@@ -800,8 +835,8 @@ function applyLang(){
 
   const catEl = document.getElementById('category');
   const catLabels = lang === 'sr'
-    ? ['Dim','Kanalizacija','Sumpor (miris pokvarenih jaja)','Spaljena plastika ili guma','Hemijski rastvarači (farba, lepak, ind. hemikalije)','Otpad / kompost / vlaga','Nepoznato', 'Ostalo' ]
-    : ['Smoke','Sewage','Sulfur (rotten egg smell)','Burnt plastic or rubber','Chemical solvents (paint, glue, industrial)','Waste / Compost / Humidity','Unknown', 'Other'];
+    ? ['Dim','Kanalizacija','Sumpor (miris pokvarenih jaja)','Spaljena plastika ili guma','Hemijski rastvarači (farba, lepak, ind. hemikalije)','Otpad / kompost / vlaga','Čist vazduh','Nepoznato', 'Ostalo' ]
+    : ['Smoke','Sewage','Sulfur (rotten egg smell)','Burnt plastic or rubber','Chemical solvents (paint, glue, industrial)','Waste / Compost / Humidity','Clean Air','Unknown', 'Other'];
   
   Array.from(catEl.options).slice(1).forEach((opt, i) => {
     opt.textContent = catLabels[i];
@@ -950,9 +985,17 @@ function updateGpsModalText(){
   if(el('gpsModalBtn'))   el('gpsModalBtn').textContent    = t('gpsBtn');
 }
 
+// Only auto-pop the "GPS not enabled" notice once per page load. After
+// that we keep silently retrying GPS in the background (see the
+// setInterval(startWatching, ...) below) without interrupting the user
+// again and again.
+let gpsModalShownThisLoad = false;
+
 function showGpsModal(){
   const modal = document.getElementById('gpsModal');
   if(!modal) return;
+  if (gpsModalShownThisLoad) return;
+  gpsModalShownThisLoad = true;
   updateGpsModalText();
   modal.style.display = 'flex';
   modal.offsetHeight;
@@ -1005,13 +1048,17 @@ function startWatching() {
     pos => {
       userCoords = fuzzCoords(pos.coords.latitude, pos.coords.longitude, 250);
       hideGpsModal();
-      
-      // Only show the user's blue dot if we have a position
+
+      // Create the blue dot the first time we get a fix, then just move
+      // it on every subsequent fix so the dot tracks the device instead
+      // of freezing at the very first location the app ever saw.
       if (!userMarker) {
         userMarker = L.circleMarker([userCoords.lat, userCoords.lon], {
           radius: 8, color: '#00d0ff', fillColor: '#00d0ff', fillOpacity: .85, weight: 2
         }).addTo(map);
         map.setView([userCoords.lat, userCoords.lon], 13);
+      } else {
+        userMarker.setLatLng([userCoords.lat, userCoords.lon]);
       }
       checkFormReady();
       evaluateActiveNearbyClusters();
@@ -1024,6 +1071,14 @@ function startWatching() {
     { enableHighAccuracy: true, timeout: 12000 }
   );
 }
+
+// Re-check GPS every 5s. This does two things at once:
+//  1. Keeps the blue dot in sync if the device has physically moved
+//     while the app was left open.
+//  2. Catches the case where GPS was off at load and the user turns it
+//     on afterwards — the very next tick will pick up a fix, hide the
+//     "GPS Not Enabled" modal, and drop the blue dot in automatically.
+setInterval(startWatching, 5000);
 
 function initGps() {
   if (!navigator.geolocation) {
@@ -1287,6 +1342,7 @@ const CATEGORY_COLORS = {
   'Burnt plastic or rubber':                                        '#cc3399', // hot magenta
   'Chemical solvents (paint, fuel, glue, industrial chemicals)':   '#008ab8', // electric blue
   'Waste / Trash / Garbage':                                        '#2a682a', // mid green
+  'Clean Air':                                                      '#3ec46d', // fresh leaf green
   'Unknown':                                                        '#8342a1', // muted lavender
   'Other':                                                          '#474747', // neutral grey
 };
@@ -1386,24 +1442,47 @@ function smoothPathChaikin(points, iterations = 3) {
   return current;
 }
 
-function makeIcon(color, windDeg, catColor) {
+function makeIcon(color, windDeg, catColor, category) {
   const rotation = (windDeg !== undefined) ? parseFloat(windDeg) : 0;
   const accent = catColor || 'white';
+  const isCleanAir = category === 'Clean Air';
+
+  // "Clean Air" reports keep the same circle every other category uses,
+  // just with 8 small petals ringed around it — needs a bit more canvas
+  // than the plain circle so the petals don't get clipped.
+  const size = isCleanAir ? 40 : 26;
+  const cx = size / 2, cy = size / 2;
+  const circleR = 11;
+
+  let petals = '';
+  if (isCleanAir) {
+    const petalCount = 8;
+    const orbitRadius = circleR + 4;
+    const petalRx = 2.6, petalRy = 4.4;
+    for (let i = 0; i < petalCount; i++) {
+      const angle = (360 / petalCount) * i;
+      const rad = angle * Math.PI / 180;
+      const px = cx + orbitRadius * Math.sin(rad);
+      const py = cy - orbitRadius * Math.cos(rad);
+      petals += `<ellipse cx="${px.toFixed(2)}" cy="${py.toFixed(2)}" rx="${petalRx}" ry="${petalRy}" fill="${accent}" stroke="${accent}" stroke-width="1" transform="rotate(${angle} ${px.toFixed(2)} ${py.toFixed(2)})"/>`;
+    }
+  }
 
   const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 26 26" style="overflow: visible;">
-      <circle cx="13" cy="13" r="11" fill="${color}" stroke="${accent}" stroke-width="2"/>
-      <g transform="rotate(${rotation + 180} 13 13)">
-        <line x1="13" y1="5" x2="13" y2="13" stroke="${accent}" stroke-width="3" stroke-linecap="round"/>
-        <polygon points="13,2 10,7 16,7" fill="${accent}"/>
+    <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="overflow: visible;">
+      ${petals}
+      <circle cx="${cx}" cy="${cy}" r="${circleR}" fill="${color}" stroke="${accent}" stroke-width="2"/>
+      <g transform="rotate(${rotation + 180} ${cx} ${cy})">
+        <line x1="${cx}" y1="${cy - 8}" x2="${cx}" y2="${cy}" stroke="${accent}" stroke-width="3" stroke-linecap="round"/>
+        <polygon points="${cx},${cy - 11} ${cx - 3},${cy - 6} ${cx + 3},${cy - 6}" fill="${accent}"/>
       </g>
     </svg>`;
 
   return L.divIcon({ 
     className: 'modern-marker-shadow', 
     html: svg, 
-    iconSize: [26, 26], 
-    iconAnchor: [13, 13], 
+    iconSize: [size, size], 
+    iconAnchor: [cx, cy], 
     popupAnchor: [0, -14] 
   });
 }
@@ -2003,6 +2082,7 @@ function translateCategory(category) {
     "Hemijski rastvarači (farba, benzin, lepak, industrijske hemikalije)":
       "Chemical solvents (paint, fuel, glue, industrial chemicals)",
     "Otpad / kompost / vlaga": "Waste / Trash / Garbage",
+    "Čist vazduh": "Clean Air",
     "Nepoznato": "Unknown",
     "Ostalo": "Other"
   };
@@ -2083,7 +2163,7 @@ const popupHtml = `<div class="popup-inner" style="padding:0;min-width:160px;max
 
   const zIndexPriority = 10000 - index;
   const marker=L.marker([report.latitude,report.longitude],{
-    icon: makeIcon(color, report.manual_wind_direction ?? report.wind_direction, catCol),
+    icon: makeIcon(color, report.manual_wind_direction ?? report.wind_direction, catCol, report.category),
 
     zIndexOffset: zIndexPriority 
   }).addTo(map);
@@ -2313,10 +2393,12 @@ function resetReportingForm() {
     }
   }
   
+  userSetTime = false;
   initTimeInput();
 
   const btn = document.getElementById('reportBtn');
   btn.disabled = true;
+  updateReportButtonStyle('');
 
   // If the user manually dropped a pin to file this report, turn pin-drop
   // mode back off so the pin doesn't stay "clicked"/active after submit.
@@ -2524,7 +2606,25 @@ function downloadCSV() {
 ═══════════════════════════════════════════════════ */
 initCalendarFilter();
 applyLang(); 
-showHelpModal();
+
+// Auto-show the "How to Use" help popup at most once a day per device.
+// The help (?) button always still opens it on demand regardless.
+(function maybeAutoShowHelpModal(){
+  const HELP_MODAL_STORAGE_KEY = 'helpModalLastShownAt';
+  const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+  let lastShownAt = 0;
+  try {
+    lastShownAt = parseInt(localStorage.getItem(HELP_MODAL_STORAGE_KEY), 10) || 0;
+  } catch (e) { /* localStorage unavailable — fall back to showing it */ }
+
+  if (Date.now() - lastShownAt > ONE_DAY_MS) {
+    showHelpModal();
+    try {
+      localStorage.setItem(HELP_MODAL_STORAGE_KEY, Date.now().toString());
+    } catch (e) { /* ignore write failures (private browsing, etc.) */ }
+  }
+})();
+
 loadPinsByWindow();
 
 </script>
