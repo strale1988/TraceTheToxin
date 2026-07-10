@@ -607,7 +607,7 @@ span.flatpickr-weekday {
     <div class="generic-modal-icon"><img src="icons/pin.png" alt="Pin" style="width:18px;height:18px;vertical-align:middle;"></div>
     <h2 id="gpsModalTitle">GPS Not Enabled</h2>
     <p id="gpsModalBody">Location access is turned off. To report bad air at your location, enable it in your settings.</p>
-    <p id="gpsModalAlt" style="font-size:12px;color:#999;margin-bottom:16px;">Or use the button on the map to drop a pin manually.</p>
+    <p id="gpsModalAlt" style="font-size:12px;color:#999;margin-bottom:16px;">Or use the <img src="icons/pin.png" alt="Pin" style="width:18px;height:18px;vertical-align:middle;"> button on the map to drop a pin manually.</p>
     <button class="generic-modal-close" onclick="hideGpsModal()" id="gpsModalBtn">Got it</button>
   </div>
 </div>
@@ -991,7 +991,7 @@ function updateGpsModalText(){
   const el = id => document.getElementById(id);
   if(el('gpsModalTitle')) el('gpsModalTitle').textContent  = t('gpsTitle');
   if(el('gpsModalBody'))  el('gpsModalBody').textContent   = t('gpsBody');
-  if(el('gpsModalAlt'))   el('gpsModalAlt').textContent    = t('gpsAlt');
+  if(el('gpsModalAlt')) el('gpsModalAlt').innerHTML = t('gpsAlt');
   if(el('gpsModalBtn'))   el('gpsModalBtn').textContent    = t('gpsBtn');
 }
 
