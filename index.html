@@ -9,7 +9,7 @@
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   
-  <link rel="icon" type="image/png" href="TraceTheToxin.png">
+  <link rel="icon" type="image/png" href=".icons/TraceTheToxin.png">
   <meta property="og:image" content="https://github.io"/>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 
@@ -446,7 +446,9 @@ span.flatpickr-weekday {
       <p id="subtitle">Community Air Reporting Network</p>
     </div>
     <div class="right-controls">
-      <button class="help-icon-btn" id="helpTopBtn" title="Help / Pomoć" onclick="showHelpModal()">❓</button>
+      <button class="help-icon-btn" id="helpTopBtn" title="Help / Pomoć" onclick="showHelpModal()">
+        <img src="help.png" alt="Help" style="width:20px;height:20px;">
+      </button>
       <div class="lang-toggle">
         <button class="lang-btn"        onclick="setLang('en')">🇬🇧 EN</button>
         <button class="lang-btn active" onclick="setLang('sr')">🇷🇸 SR</button> 
@@ -535,8 +537,12 @@ span.flatpickr-weekday {
   </button>
 </div>
 
-<div id="pinMapBtn" class="pin-map-btn" style="display:none" title="Set location manually" onclick="togglePinMode()">📍</div>
-<div id="traceSourceBtn" class="trace-source-btn" style="display:none" title="Trace Possible Source" onclick="toggleTraceMode()">🔍</div>
+<div id="pinMapBtn" class="pin-map-btn" ...>
+    <img src="pin.png" alt="Pin" style="width:22px;height:22px;">
+</div>
+<div id="traceSourceBtn" class="trace-source-btn" ...>
+    <img src="search.png" alt="Trace" style="width:22px;height:22px;">
+</div>
 
 <div class="panel">
   <div class="row">
@@ -774,7 +780,7 @@ const T = {
   intPH:        { en:'Intensity…',                       sr:'Intenzitet…' },
   gpsTitle:     { en:'GPS Not Enabled',                  sr:'GPS nije uključen' },
   gpsBody:      { en:'Location access is turned off. To report bad air at your location, enable it in your settings.', sr:'Pristup lokaciji je isključen. Da biste prijavili loš vazduh, omogućite ga u podešavanjima.' },
-  gpsAlt:       { en:'Or use the 📍 button on the map to drop a pin manually.', sr:'Ili koristite dugme 📍 na karti da ručno postavite pin.' },
+  gpsAlt:       { en:'Or use the manual pin button (<img src="pin.png" style="width:16px;height:16px;vertical-align:middle;">) button on the map to drop a pin manually.', sr:'Ili koristite dugme manual pin button (<img src="pin.png" style="width:16px;height:16px;vertical-align:middle;">) na karti da ručno postavite pin.' },
   gpsBtn:       { en:'Got it',                           sr:'Razumem' },
   noReports:    { en:'No reports in current map view.',  sr:'Nema prijava u vidljivoj oblasti.' },
   calendarPH:   { en:'Select date range...',            sr:'Izaberi vremenski opseg...' },
@@ -783,7 +789,7 @@ const T = {
   helpStep1:    { en:'1. Report Bad Air:',               sr:'1. Prijava lošeg vazduha:' },
   helpStep1Body:{ en:'Select the smell type and its intensity from the dropdown options.', sr:'Izaberite vrstu mirisa i njegov intenzitet iz padajućih menija.' },
   helpStep2:    { en:'2. Set Your Location:',            sr:'2. Odredite vašu lokaciju:' },
-  helpStep2Body:{ en:'Ensure your device GPS is turned on, or tap the manual pin button (📍) to manually drop a point anywhere on the map grid.', sr:'Proverite da li je GPS uključen, ili pritisnite dugme za ručnu lokaciju (📍) da sami postavite tačku bilo gde na mapi.' },
+  helpStep2Body:{ en:'Ensure your device GPS is turned on, or tap the manual pin button (manual pin button (<img src="pin.png" style="width:16px;height:16px;vertical-align:middle;">)) to manually drop a point anywhere on the map grid.', sr:'Proverite da li je GPS uključen, ili pritisnite dugme za ručnu lokaciju (manual pin button (<img src="pin.png" style="width:16px;height:16px;vertical-align:middle;">)) da sami postavite tačku bilo gde na mapi.' },
   helpStep3:    { en:'3. Enter Wind Direction:',         sr:'3. Unesite smer vetra:' },
   helpStep3Body:{ en:'Click the Windfinder icon in the bottom right corner. On their website map, click directly on your current location, read the wind direction degree value (0-360°), and type it back into this application.', sr:'Kliknite na ikonicu Windfinder u donjem desnom uglu. Na mapi na njihovom sajtu kliknite na vašu lokaciju, pročitajte vrednost smera vetra u stepenima (0-360°) i upišite je u polje u ovoj aplikaciji.' },
   helpStep4:    { en:'4. Submit:',                       sr:'4. Pošalji:' },
