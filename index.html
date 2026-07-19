@@ -9,21 +9,79 @@
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   
-  <link rel="icon" type="image/png" href="icons/TraceTheToxin.png">
+  <link rel="icon" type="image/png" href="image/TraceTheToxin.png">
   <meta property="og:image" content="https://github.io"/>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/themes/dark.css">
+  <script>
+    (function(){
+      try {
+        var mode = localStorage.getItem('ttt_theme_mode') || 'dark';
+        var systemDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        var resolved = mode === 'auto' ? (systemDark ? 'dark' : 'light') : mode;
+        document.documentElement.dataset.theme = resolved;
+      } catch (e) {}
+    })();
+  </script>
   <style>
 .map-tiles-grayscale { filter: grayscale(1) brightness(0.85); }
 
 *{ margin:0; padding:0; box-sizing:border-box; }
 
+button, [onclick], [role="button"]{
+  -webkit-user-select:none;
+  user-select:none;
+  -webkit-touch-callout:none;
+}
+
+:root{
+  --bg-app:#111111;
+  --bg-surface:#181818;
+  --bg-surface-alt:#262626;
+  --border-color:#292929;
+  --border-color-strong:#3a3a3a;
+  --text-primary:#ffffff;
+  --text-secondary:#bbbbbb;
+  --text-muted:#888888;
+  --accent:#00a7b5;
+  --accent-contrast:#ffffff;
+  --danger:#ff4b4b;
+  --danger-strong:#7a1f1f;
+  --icon-tint-filter: brightness(0) invert(1);
+  --floating-bg: rgba(20,20,20,.88);
+  --floating-border: #3a3a3a;
+  --floating-shadow: rgba(0,0,0,.55);
+  --map-tile-filter: grayscale(1) brightness(0.85);
+  --radius-sm:6px; --radius-md:8px; --radius-lg:10px; --radius-xl:14px; --radius-pill:20px;
+  --fs-9:9px; --fs-10:10px; --fs-11:11px; --fs-12:12px; --fs-12-5:12.5px; --fs-13:13px;
+  --fs-14:14px; --fs-15:15px; --fs-16:16px; --fs-18:18px; --fs-19:19px; --fs-20:20px; --fs-22:22px;
+  --fw-medium:500; --fw-semibold:600; --fw-bold:700; --fw-heavy:800;
+}
+html[data-theme="light"]{
+  --bg-app:#f4f4f2;
+  --bg-surface:#ffffff;
+  --bg-surface-alt:#ececeb;
+  --border-color:#e2e2e0;
+  --border-color-strong:#ddd;
+  --text-primary:#1a1a1a;
+  --text-secondary:#555;
+  --text-muted:#888;
+  --accent:#00838f;
+  --accent-contrast:#ffffff;
+  --icon-tint-filter: brightness(0) invert(32%);
+  --floating-bg: rgba(255,255,255,.92);
+  --floating-border: #e2e2e0;
+  --floating-shadow: rgba(0,0,0,.18);
+  --map-tile-filter: none;
+}
+.leaflet-tile-pane{ filter:var(--map-tile-filter); }
+
 body{
   font-family:-apple-system,BlinkMacSystemFont,sans-serif;
-  background:#111;
-  color:white;
+  background:var(--bg-app);
+  color:var(--text-primary);
   height: 100svh;
   display:flex;
   flex-direction:column;
@@ -31,8 +89,8 @@ body{
 
 header{
   padding:10px 12px;
-  background:#181818;
-  border-bottom:1px solid #333;
+  background:var(--bg-surface);
+  border-bottom:1px solid var(--border-color);
 }
 
 .header-top{
@@ -41,8 +99,8 @@ header{
   align-items:flex-start;
 }
 
-header h1{ font-size:19px; }
-header p{ font-size:11px; opacity:.7; margin-top:2px; }
+header h1{ font-size:var(--fs-19); }
+header p{ font-size:var(--fs-11); opacity:.7; margin-top:2px; }
 
 .right-controls{
   display:flex;
@@ -51,36 +109,26 @@ header p{ font-size:11px; opacity:.7; margin-top:2px; }
   flex-shrink:0;
 }
 
-.lang-toggle{
-  display:flex;
-  gap:4px;
-  align-items:center;
-}
-
-.lang-btn, .help-icon-btn{
-  background:#303030;
-  color:#aaa;
+.help-icon-btn{
+  background:var(--bg-surface-alt);
+  color:var(--text-secondary);
   border:none;
-  border-radius:6px;
-  padding:5px 8px;
-  font-size:11px;
-  font-weight:600;
-  cursor:pointer;
-  transition:background .15s,color .15s;
-  -webkit-tap-highlight-color:transparent;
-  touch-action:manipulation;
-}
-.lang-btn.active{ background:#00a7b5; color:white; }
-.help-icon-btn{ 
-  background:#262626; 
-  border:1px solid #444; 
-  font-size:14px; 
-  padding:4px 8px;
+  border-radius:50%;
+  width:36px;
+  height:36px;
+  padding:0;
+  font-size:var(--fs-14);
   display:flex;
   align-items:center;
   justify-content:center;
+  cursor:pointer;
+  box-shadow:0 1px 3px var(--floating-shadow);
+  transition:transform .12s ease, background .15s ease;
+  -webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;
 }
-.help-icon-btn:active{ background:#333; }
+.help-icon-btn:active{ background:var(--border-color-strong); transform:scale(.9); }
+.help-icon-btn .icon-img{ filter:var(--icon-tint-filter); }
 
 #map {
   flex: 1;
@@ -90,81 +138,33 @@ header p{ font-size:11px; opacity:.7; margin-top:2px; }
   overflow: hidden;
 }
 
-.resize-handle {
-  flex-shrink: 0;
-  flex-grow: 0;
-  height: 40px;
-  min-height: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #181818;
-  border-top: 1px solid #292929;
-  border-bottom: 1px solid #292929;
-  position: relative;
-  z-index: 5;
-  overflow: visible;
-}
-
-.panel-toggle-btn {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: #262626;
-  border: 1px solid #3a3a3a;
-  color: #aaa;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  padding: 0;
-  box-shadow: 0 2px 6px rgba(0,0,0,.45);
-  transition: background .15s, color .15s, transform .15s;
-  -webkit-tap-highlight-color: transparent;
-  touch-action: manipulation;
-}
-.panel-toggle-btn:hover { background:#303030; color:#ddd; }
-.panel-toggle-btn:active { transform: scale(.9); }
-.panel-toggle-btn svg { transition: transform .25s ease; }
-.panel-toggle-btn.collapsed svg { transform: rotate(180deg); }
-
-.app-panel {
-  display: flex;
-  flex-direction: column;
-  flex-shrink: 0;
-  overflow: hidden;
-  opacity: 1;
-  transition: height .28s ease, opacity .22s ease;
-}
-
 .filter-label-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 10px 14px 4px 14px;
-  background: #181818;
-  font-size: 11px;
+  background: var(--bg-surface);
+  font-size: var(--fs-11);
   font-weight: bold;
 }
 
 .filter-title {
-  color: #888;
+  color: var(--text-muted);
   letter-spacing: .3px;
   text-transform: uppercase;
-  font-size: 10px;
+  font-size: var(--fs-10);
 }
 
 #reportCount {
-  color: #aaa;
-  font-size: 12px;
+  color: var(--text-secondary);
+  font-size: var(--fs-12);
   text-align: right;
   width: 80px;
 }
 
 .filter-select-row {
-  background: #181818;
+  background: var(--bg-surface);
   padding: 0 12px 14px 12px;
-  border-bottom: 1px solid #292929;
   display: flex;
   gap: 8px;
   align-items: center;
@@ -183,63 +183,30 @@ input[type=number]::-webkit-outer-spin-button {
   flex: 1;
 }
 
-.panel{
-  background:#181818;
-  padding:12px 12px;
-  padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)); 
-  display:flex;
-  flex-direction:column;
-  gap:8px;
-  flex-shrink: 0; 
-  
-}
-
-.row{ display:flex; gap:8px; }
-/* Stack Category and Intensity vertically */
-.panel .row:first-child {
-  flex-direction: column;
-  gap: 8px; /* Maintains the spacing between them */
-}
-select{
-  flex:1;
-  padding:11px 10px;
-  border:none;
-  border-radius:8px;
-  background:#262626;
-  color:white;
-  font-size:13px;
-  -webkit-appearance:none;
-  appearance:none;
-  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23888' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
-  background-repeat:no-repeat;
-  background-position:right 10px center;
-  padding-right:28px;
-}
-
-input[type="text"]{
+input[type="text"], input[type="number"], input[type="time"]{
   width:100%;
   padding:11px 10px;
   border:none;
-  border-radius:8px;
-  background:#262626;
-  color:white;
-  font-size:13px;
+  border-radius:var(--radius-md);
+  background:var(--bg-surface-alt);
+  color:var(--text-primary);
+  font-size:var(--fs-13);
 }
 
 button{
   padding:12px;
   border:none;
-  border-radius:8px;
+  border-radius:var(--radius-md);
   cursor:pointer;
   font-weight:bold;
-  font-size:13px;
+  font-size:var(--fs-13);
   -webkit-tap-highlight-color:transparent;
   touch-action:manipulation;
 }
 
-.report-btn{ background:#ff4b4b; color:white; width:100%; transition:opacity .2s; }
+.report-btn{ background:var(--danger); color:white; width:100%; transition:opacity .2s; }
 .report-btn:disabled{ opacity:.35; cursor:not-allowed; }
-.export-btn{ background:#00a7b5; color:white; width:100%; }
+.export-btn{ background:var(--accent); color:white; width:100%; }
 
 .legend{
   display:flex;
@@ -435,6 +402,240 @@ span.flatpickr-weekday {
 }
 
 
+/* ═══════════════════════════════════════════════════
+   SPLASHSCREEN LOADER
+═══════════════════════════════════════════════════ */
+#splashScreen{
+  position:fixed; inset:0; z-index:10001;
+  display:flex; flex-direction:column; align-items:center;
+  background:var(--bg-app);
+  opacity:1;
+  transition:opacity .25s ease;
+}
+#splashScreen.splash-hidden{ opacity:0; pointer-events:none; }
+.splash-spinner-wrap{
+  position:relative; flex:1; width:100%;
+  display:flex; align-items:center; justify-content:center;
+}
+.splash-logo{
+  position:relative; z-index:1;
+  width:86px; height:86px;
+  object-fit:contain; border-radius:24px;
+}
+.splash-halo{
+  position:absolute; top:50%; left:50%;
+  width:86px; height:86px; border-radius:50%;
+  background:var(--accent);
+  transform:translate(-50%,-50%) scale(.7);
+  opacity:.45;
+  animation:splash-halo-pulse 1.8s ease-out infinite;
+}
+.splash-halo-2{ animation-delay:.9s; }
+@keyframes splash-halo-pulse{
+  0%{ transform:translate(-50%,-50%) scale(.7); opacity:.45; }
+  70%{ transform:translate(-50%,-50%) scale(1.55); opacity:0; }
+  100%{ opacity:0; }
+}
+.splash-text{
+  flex:0 0 auto;
+  padding-bottom:calc(env(safe-area-inset-bottom, 0px) + 36px);
+  color:var(--text-primary); font-size:var(--fs-13); font-weight:var(--fw-semibold); opacity:.75;
+}
+
+/* ═══════════════════════════════════════════════════
+   CIRCULAR FLOATING BUTTONS (right side)
+═══════════════════════════════════════════════════ */
+.bottomright-stack{
+  display:flex; flex-direction:column; align-items:center; gap:10px;
+  position:fixed; right:12px; z-index:420;
+  bottom:calc(100px + env(safe-area-inset-bottom, 0px));
+}
+.pin-map-btn{
+  background:var(--floating-bg);
+  border:1px solid var(--floating-border);
+  border-radius:50%;
+  width:44px; height:44px;
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer; font-size:22px;
+  box-shadow:0 2px 8px var(--floating-shadow);
+  transition:background .15s ease, transform .12s ease, box-shadow .15s ease;
+  user-select:none;
+  -webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;
+}
+.pin-map-btn:active{ transform:scale(.9); }
+.pin-map-btn.active{ background:#f5a623; border-color:#f5a623; }
+.pin-map-btn .icon-img{ filter:var(--icon-tint-filter); }
+.pin-map-btn.active .icon-img{ filter:none; }
+
+.trace-source-btn{
+  background:var(--floating-bg);
+  border:1px solid var(--floating-border);
+  border-radius:50%;
+  width:44px; height:44px;
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer; font-size:22px;
+  box-shadow:0 2px 8px var(--floating-shadow);
+  transition:background .15s ease, transform .12s ease;
+  user-select:none;
+  -webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;
+}
+.trace-source-btn:active{ transform:scale(.9); }
+.trace-source-btn.active{ background:var(--danger); border-color:var(--danger); }
+.trace-source-btn .icon-img{ filter:var(--icon-tint-filter); }
+.trace-source-btn.active .icon-img{ filter:none; }
+
+/* ═══════════════════════════════════════════════════
+   REPORT FAB (red circular +)
+═══════════════════════════════════════════════════ */
+.report-fab-btn{
+  width:60px; height:60px;
+  border-radius:50%;
+  background:var(--danger);
+  color:#fff;
+  box-shadow:0 4px 14px rgba(0,0,0,.35);
+  border:none;
+  position:fixed;
+  left:50%;
+  transform:translateX(-50%);
+  bottom:calc(18px + env(safe-area-inset-bottom, 0px));
+  z-index:420;
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer;
+  transition:transform .12s ease, box-shadow .12s ease;
+  -webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;
+}
+.report-fab-btn:active{ transform:translateX(-50%) scale(.9); }
+.report-fab-btn svg{ width:28px; height:28px; }
+
+/* ═══════════════════════════════════════════════════
+   REPORT WIZARD (full-screen, step based, no dropdowns)
+═══════════════════════════════════════════════════ */
+.wiz-overlay{
+  position:fixed; inset:0; z-index:9999;
+  background:var(--bg-app);
+  display:flex; flex-direction:column;
+}
+.wiz-header{ display:flex; align-items:center; gap:10px; padding:calc(14px + env(safe-area-inset-top,0px)) 16px 14px; flex:0 0 auto; }
+.wiz-back-btn, .wiz-close-btn{
+  width:34px; height:34px; border-radius:50%;
+  background:var(--bg-surface-alt); border:none; color:var(--text-primary);
+  font-size:var(--fs-18); display:flex; align-items:center; justify-content:center; cursor:pointer;
+  -webkit-tap-highlight-color:transparent; touch-action:manipulation;
+}
+.wiz-progress{ flex:1; display:flex; gap:4px; }
+.wiz-progress span{ height:4px; flex:1; border-radius:2px; background:var(--border-color-strong); }
+.wiz-progress span.done{ background:var(--danger); }
+.wiz-body{ flex:1; overflow-y:auto; padding:4px 20px 20px; }
+.wiz-step-label{ color:var(--text-secondary); font-size:var(--fs-13); margin:0 0 4px; }
+.wiz-step-title{ font-size:var(--fs-20); font-weight:var(--fw-semibold); margin:0 0 18px; color:var(--text-primary); }
+.wiz-grid{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }
+.wiz-tile{
+  border:1px solid transparent; border-radius:14px; padding:16px 6px;
+  display:flex; flex-direction:column; align-items:center; gap:10px;
+  cursor:pointer; text-align:center; color:#fff;
+  -webkit-tap-highlight-color:transparent; touch-action:manipulation;
+}
+.wiz-tile:active{ filter:brightness(0.9); }
+.wiz-tile-icon{ width:34px; height:34px; }
+.wiz-tile span{ font-size:var(--fs-12-5); line-height:1.25; }
+.wiz-details-row{ margin:0 0 16px; }
+.wiz-details-row label{ display:block; font-size:var(--fs-13); color:var(--text-secondary); margin:0 0 6px; }
+.wiz-details-two-col{ display:flex; gap:8px; }
+.wiz-details-two-col .wiz-details-row{ flex:1; }
+.wiz-submit-btn{
+  width:100%; background:var(--danger); color:#fff; border:none;
+  border-radius:var(--radius-xl); padding:16px; font-size:var(--fs-16); font-weight:var(--fw-semibold); cursor:pointer;
+}
+.wiz-submit-btn:disabled{ opacity:.5; }
+.wiz-intensity-value{
+  font-size:40px; font-weight:var(--fw-heavy); text-align:center; margin:8px 0 4px;
+}
+.wiz-intensity-label{ text-align:center; color:var(--text-secondary); font-size:var(--fs-13); margin-bottom:18px; }
+.wiz-intensity-slider{
+  width:100%; -webkit-appearance:none; appearance:none;
+  height:8px; border-radius:4px; background:var(--bg-surface-alt); outline:none;
+}
+.wiz-intensity-slider::-webkit-slider-thumb{
+  -webkit-appearance:none; width:26px; height:26px; border-radius:50%;
+  background:var(--danger); cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,.4);
+}
+.wiz-intensity-slider::-moz-range-thumb{
+  width:26px; height:26px; border-radius:50%; border:none;
+  background:var(--danger); cursor:pointer;
+}
+.wiz-cooldown-notice{
+  background:var(--bg-surface-alt); border-left:3px solid var(--danger);
+  border-radius:6px; padding:12px 14px; font-size:var(--fs-13); color:var(--text-secondary); margin-top:12px;
+}
+
+/* ═══════════════════════════════════════════════════
+   SETTINGS MODAL (fullscreen)
+═══════════════════════════════════════════════════ */
+.fullscreen-modal-overlay{ position:fixed; inset:0; z-index:9999; background:var(--bg-app); display:flex; flex-direction:column; }
+.fullscreen-modal-header{
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+  padding:calc(14px + env(safe-area-inset-top,0px)) 16px 14px 16px;
+  border-bottom:1px solid var(--border-color); flex-shrink:0;
+}
+.fullscreen-modal-header h2{ font-size:var(--fs-16); font-weight:var(--fw-bold); margin:0; flex:1; min-width:0; }
+.fullscreen-modal-close{
+  background:var(--bg-surface-alt); color:var(--text-primary); border:none; border-radius:50%;
+  width:36px; height:36px; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center; font-size:var(--fs-18); cursor:pointer;
+  transition:transform .12s ease, background .15s ease;
+  -webkit-tap-highlight-color:transparent; touch-action:manipulation;
+}
+.fullscreen-modal-close:active{ background:var(--border-color-strong); transform:scale(.9); }
+.fullscreen-modal-close .icon-img{ width:18px; height:18px; filter:var(--icon-tint-filter); }
+.fullscreen-modal-body{ flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:16px 16px calc(24px + env(safe-area-inset-bottom,0px)); display:flex; flex-direction:column; gap:16px; }
+.detail-section{ background:var(--bg-surface); border:1px solid var(--border-color); border-radius:var(--radius-xl); padding:14px; }
+.detail-section-title{ font-size:var(--fs-10); font-weight:var(--fw-bold); letter-spacing:.4px; text-transform:uppercase; color:var(--text-muted); margin-bottom:10px; }
+.detail-export-hint{ font-size:var(--fs-12); color:var(--text-secondary); margin:8px 0 0; line-height:1.4; }
+.icon-img{ width:20px; height:20px; object-fit:contain; vertical-align:middle; }
+.icon-img-inline{ width:16px; height:16px; margin:0 4px -3px 0; }
+
+.settings-btn{
+  background:var(--bg-surface-alt); color:var(--text-primary); border:none; border-radius:var(--radius-xl);
+  display:flex; align-items:center; justify-content:center; gap:6px;
+  padding:12px; font-size:var(--fs-13); font-weight:var(--fw-semibold); cursor:pointer;
+  transition:background .15s ease, transform .1s ease;
+  -webkit-tap-highlight-color:transparent; touch-action:manipulation;
+}
+.settings-btn:active{ background:var(--border-color-strong); transform:scale(.98); }
+
+.theme-segment{ display:flex; background:var(--bg-surface-alt); border-radius:var(--radius-md); padding:3px; gap:3px; }
+.theme-segment-btn{
+  flex:1; border:none; background:transparent; color:var(--text-secondary);
+  font-size:var(--fs-12-5); font-weight:var(--fw-bold); padding:8px 6px; border-radius:var(--radius-sm);
+  cursor:pointer; -webkit-tap-highlight-color:transparent; touch-action:manipulation;
+  transition:background .15s, color .15s;
+}
+.theme-segment-btn.active{ background:var(--bg-surface); color:var(--text-primary); box-shadow:0 1px 4px var(--floating-shadow); }
+
+.settings-toggle-row{
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+  background:var(--bg-surface-alt); border-radius:var(--radius-xl); padding:12px 14px; margin-top:8px;
+  font-size:var(--fs-13); font-weight:var(--fw-semibold); color:var(--text-primary);
+  cursor:pointer; -webkit-tap-highlight-color:transparent; touch-action:manipulation;
+}
+.toggle-switch{ position:relative; display:inline-block; width:42px; height:24px; flex-shrink:0; }
+.toggle-switch input{ position:absolute; inset:0; opacity:0; margin:0; cursor:pointer; }
+.toggle-switch-track{ position:absolute; inset:0; background:var(--border-color-strong); border-radius:999px; transition:background .15s ease; }
+.toggle-switch-thumb{ position:absolute; top:2px; left:2px; width:20px; height:20px; border-radius:50%; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.3); transition:transform .15s ease; }
+.toggle-switch input:checked + .toggle-switch-track{ background:var(--accent); }
+.toggle-switch input:checked + .toggle-switch-track .toggle-switch-thumb{ transform:translateX(18px); }
+
+/* Flatpickr input theme modification override */
+#dateRangePicker {
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='18' rx='2' ry='2'%3E%3C/rect%3E%3Cline x1='16' y1='2' x2='16' y2='6'%3E%3C/line%3E%3Cline x1='8' y1='2' x2='8' y2='6'%3E%3C/line%3E%3Cline x1='3' y1='10' x2='21' y2='10'%3E%3C/line%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 32px !important;
+}
 </style>
 </head>
 <body>
@@ -447,19 +648,31 @@ span.flatpickr-weekday {
     </div>
     <div class="right-controls">
       <button class="help-icon-btn" id="helpTopBtn" title="Help / Pomoć" onclick="showHelpModal()">
-        <img src="icons/help.png" alt="Help" style="width:20px;height:20px;">
+        <img class="icon-img" src="icons/help.png" alt="Help">
       </button>
-      <div class="lang-toggle">
-        <button class="lang-btn"        onclick="setLang('en')">🇬🇧 EN</button>
-        <button class="lang-btn active" onclick="setLang('sr')">🇷🇸 SR</button> 
-      </div>
+      <button class="help-icon-btn" id="settingsBtn" title="Settings / Podešavanja" onclick="showSettingsModal()">
+        <img class="icon-img" src="icons/settings.png" alt="Settings">
+      </button>
     </div>
   </div>
 </header>
 
 <div id="map"></div>
 
+<div id="splashScreen">
+  <div class="splash-spinner-wrap">
+    <span class="splash-halo"></span>
+    <span class="splash-halo splash-halo-2"></span>
+    <img src="image/TraceTheToxin.png" alt="TraceTheToxin" class="splash-logo">
+  </div>
+  <div class="splash-text" id="splashText">Loading map…</div>
+</div>
+
 <div id="mapLegend" style="
+  position:fixed;
+  left:8px;
+  bottom:calc(148px + env(safe-area-inset-bottom, 0px));
+  z-index:410;
   background:rgba(18,18,18,.88);
   backdrop-filter:blur(4px);
   -webkit-backdrop-filter:blur(4px);
@@ -485,6 +698,11 @@ span.flatpickr-weekday {
 </div>
 
 <div id="catLegend" style="
+  position:fixed;
+  left:8px;
+  right:84px;
+  bottom:calc(90px + env(safe-area-inset-bottom, 0px));
+  z-index:410;
   background:rgba(18,18,18,.88);
   backdrop-filter:blur(4px);
   -webkit-backdrop-filter:blur(4px);
@@ -510,95 +728,84 @@ span.flatpickr-weekday {
   <span class="legend-item"><span class="legend-dot" style="background:#474747"></span><span class="leg" data-en="Other" data-sr="Ostalo" style="color:#ddd;font-size:10px;">Ostalo</span></span>
 </div>
 
-<div class="resize-handle">
-  <button id="panelToggleBtn" class="panel-toggle-btn" type="button"
-          aria-expanded="true" aria-controls="appPanel" title="Hide panel">
-    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
-         stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-      <polyline points="6 9 12 15 18 9"></polyline>
-    </svg>
-  </button>
-</div>
-
-<div id="appPanel" class="app-panel">
-
-<div class="filter-label-row">
-  <span class="filter-title" id="filterTitleLabel">Time Window Filter</span>
-  <span id="reportCount">0 Reports</span>
-</div>
-
-<div class="filter-select-row">
-  <div class="select-wrap">
-    <input type="text" id="dateRangePicker" placeholder="Select date range..." readonly>
+<div id="bottomRightStack" class="bottomright-stack">
+  <div id="pinMapBtn" class="pin-map-btn" style="display:none" title="Set location manually" onclick="togglePinMode()">
+    <img class="icon-img" src="icons/pin.png" alt="Pin">
   </div>
-  <button class="export-btn" onclick="downloadCSV()"
-          style="width:auto;flex:0 0 auto;padding:11px 14px;font-size:12px;white-space:nowrap;">
-    <span id="csvLabel">CSV</span>
-  </button>
-</div>
-
-<div id="pinMapBtn" class="pin-map-btn" style="display:none" title="Set location manually" onclick="togglePinMode()">
-  <img src="icons/pin.png" alt="Pin" style="width:24px;height:24px;">
-</div>
-<div id="traceSourceBtn" class="trace-source-btn" style="display:none" title="Trace Possible Source" onclick="toggleTraceMode()">
-  <img src="icons/search.png" alt="Trace" style="width:24px;height:24px;">
-</div>
-
-<div class="panel">
-  <div class="row">
-    <select id="category" onchange="checkFormReady()">
-        <option value="" disabled selected>Izaberite miris…</option>
-        <option value="Smoke" data-sr="Dim">Dim</option>
-        <option value="Sewage" data-sr="Kanalizacija">Kanalizacija</option>
-        <option value="Sulfur" data-sr="Sumpor">Sumpor (miris pokvarenih jaja)</option>
-        <option value="Burnt plastic or rubber" data-sr="Spaljena plastika / guma">Spaljena plastika / guma</option>
-        <option value="Chemical solvents (paint, fuel, glue, industrial chemicals)" data-sr="Hemijski rastvarači (farba, benzin, lepak, industrijske hemikalije)">Hemijski rastvarači (farba, benzin, lepak, industrijske hemikalije)</option>
-        <option value="Waste / Trash / Garbage" data-sr="Otpad / kompost / vlaga">Otpad / kompost / vlaga</option>
-        <option value="Clean Air" data-sr="Čist vazduh">Čist vazduh</option>
-        <option value="Unknown" data-sr="Nepoznato">Nepoznato</option>
-        <option value="Other" data-sr="Ostalo">Ostalo</option>
-      </select>
-
-    <select id="intensity" onchange="checkFormReady()">
-      <option value="" disabled selected>Intensity…</option>
-      <option value="1">1 – Barely noticeable</option>
-      <option value="2">2</option>
-      <option value="3">3</option>
-      <option value="4">4</option>
-      <option value="5">5 – Moderate</option>
-      <option value="6">6</option>
-      <option value="7">7</option>
-      <option value="8">8</option>
-      <option value="9">9</option>
-      <option value="10">10 – Overwhelming</option>
-    </select>
-  </div>
-
-  <div style="display: flex; gap: 8px;">
-    <select id="reportTime" onchange="checkFormReady()" 
-            style="flex: 1; padding: 11px; border-radius: 8px; background: #262626; color: white; border: none; appearance: none;">
-      <option value="">Time (HH:MM)</option>
-    </select>
-    
-    <input type="number" id="manualWind" placeholder="Smer vetra (0-360)" min="0" max="360" 
-          oninput="checkFormReady()" onblur="validateRange(this)"
-          style="flex: 1; padding: 11px; border-radius: 8px; background: #262626; color: white; border: none;">
-
-          <input type="number" id="duration" placeholder="Trajanje (1-24h)" min="1" max="24" 
-         oninput="checkFormReady()" 
-         style="flex: 1; padding: 11px; border-radius: 8px; background: #262626; color: white; border: none;">
-   </div>
-
-  <input id="comment" type="text" placeholder="Optional notes...">
-
-  <div class="row" style="align-items:stretch;">
-    <button class="report-btn" id="reportBtn" onclick="reportBadAir()"
-            style="width:100%;min-width:0;font-size:14px;" disabled>
-         <span id="reportBtnLabel">REPORT BAD AIR</span>
-    </button>
+  <div id="traceSourceBtn" class="trace-source-btn" style="display:none" title="Trace Possible Source" onclick="toggleTraceMode()">
+    <img class="icon-img" src="icons/search.png" alt="Trace">
   </div>
 </div>
 
+<button type="button" class="report-fab-btn" id="reportFabBtn" title="Report bad air" aria-label="Report bad air" onclick="reportFabTap()">
+  <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <line x1="12" y1="5" x2="12" y2="19"></line>
+    <line x1="5" y1="12" x2="19" y2="12"></line>
+  </svg>
+</button>
+
+<!-- Report Wizard (no dropdowns; category tiles -> intensity slider -> details) -->
+<div class="wiz-overlay" id="reportWizard" style="display:none">
+  <div class="wiz-header">
+    <button type="button" class="wiz-back-btn" id="wizBackBtn" onclick="wizGoBack()" aria-label="Back">‹</button>
+    <div class="wiz-progress" id="wizProgress"></div>
+    <button type="button" class="wiz-close-btn" onclick="closeReportWizard()" aria-label="Cancel">✕</button>
+  </div>
+  <div class="wiz-body" id="wizBody"></div>
+</div>
+
+<!-- Settings modal -->
+<div id="settingsModal" class="fullscreen-modal-overlay" style="display:none">
+  <div class="fullscreen-modal-header">
+    <h2 id="settingsModalTitle">Settings</h2>
+    <button class="fullscreen-modal-close" onclick="hideSettingsModal()" aria-label="Close"><img class="icon-img" src="icons/close.png" alt="close"></button>
+  </div>
+  <div class="fullscreen-modal-body">
+
+    <div class="detail-section" id="helpSettingsSection">
+      <div class="detail-section-title" id="helpSectionTitle">Help</div>
+      <button type="button" class="settings-btn" style="width:100%;" onclick="showHelpModal()" id="settingsHelpBtn">
+        <img class="icon-img icon-img-inline" src="icons/help.png" alt=""> How to use TraceTheToxin
+      </button>
+    </div>
+
+    <div class="detail-section" id="languageSettingsSection">
+      <div class="detail-section-title" id="languageSectionTitle">Language</div>
+      <div class="theme-segment" id="langSegment">
+        <button type="button" class="theme-segment-btn" onclick="setLang('en')" id="langBtnEn">🇬🇧 EN</button>
+        <button type="button" class="theme-segment-btn active" onclick="setLang('sr')" id="langBtnSr">🇷🇸 SR</button>
+        <button type="button" class="theme-segment-btn" onclick="setLang('auto')" id="langBtnAuto"><span id="langBtnAutoLabel">Auto</span></button>
+      </div>
+      <p class="detail-export-hint" id="langAutoHint">We'll set the language based on your device/browser settings.</p>
+    </div>
+
+    <div class="detail-section" id="themeSettingsSection">
+      <div class="detail-section-title" id="themeSectionTitle">Theme</div>
+      <div class="theme-segment" id="themeSegment">
+        <button type="button" class="theme-segment-btn" onclick="setThemeMode('light')" id="themeBtnLight">Light</button>
+        <button type="button" class="theme-segment-btn active" onclick="setThemeMode('dark')" id="themeBtnDark">Dark</button>
+        <button type="button" class="theme-segment-btn" onclick="setThemeMode('auto')" id="themeBtnAuto">Auto</button>
+      </div>
+      <p class="detail-export-hint" id="themeAutoHint">Auto follows your device's light/dark setting.</p>
+    </div>
+
+    <div class="detail-section" style="padding:0;overflow:hidden;">
+      <div class="filter-label-row" style="border-radius:0;">
+        <span class="filter-title" id="filterTitleLabel">Time Window Filter</span>
+        <span id="reportCount">0 Reports</span>
+      </div>
+      <div class="filter-select-row">
+        <div class="select-wrap">
+          <input type="text" id="dateRangePicker" placeholder="Select date range..." readonly>
+        </div>
+        <button class="export-btn" onclick="downloadCSV()"
+                style="width:auto;flex:0 0 auto;padding:11px 14px;font-size:12px;white-space:nowrap;">
+          <span id="csvLabel">CSV</span>
+        </button>
+      </div>
+    </div>
+
+  </div>
 </div>
 
 <!-- GPS/Error Alert Modal -->
@@ -633,22 +840,7 @@ span.flatpickr-weekday {
 <script>
 
 
-// 1. Populate Time Dropdown
-function populateTimeOptions() {
-  const select = document.getElementById('reportTime');
-  const intervals = ['00', '15', '30', '45'];
-  for (let h = 0; h < 24; h++) {
-    const hour = String(h).padStart(2, '0');
-    intervals.forEach(min => {
-      const timeVal = `${hour}:${min}`;
-      const opt = document.createElement('option');
-      opt.value = timeVal; opt.textContent = timeVal;
-      select.appendChild(opt);
-    });
-  }
-}
-
-// 2. Validate Wind Input Range
+// Validate Wind Input Range
 function validateRange(input) {
   let val = parseFloat(input.value);
   if (isNaN(val)) { input.value = ""; }
@@ -656,70 +848,240 @@ function validateRange(input) {
     if (val < 0) input.value = 0;
     if (val > 360) input.value = 360;
   }
-  checkFormReady();
+  checkWizSubmitReady();
 }
 
-// 3. Updated checkFormReady
-function checkFormReady() {
-  const duration = document.getElementById('duration').value;
-  const category = document.getElementById('category').value;
-  const intensity = document.getElementById('intensity').value;
-  const time = document.getElementById('reportTime').value;
-  const wind = document.getElementById('manualWind').value;
-  const hasLoc = !!(userCoords || manualCoords);
-  
-  const windVal = parseFloat(wind);
-  const isWindValid = wind !== "" && windVal >= 0 && windVal <= 360;
-  
-  const btn = document.getElementById('reportBtn');
-  btn.disabled = !(category && intensity && time && isWindValid && hasLoc);
-
-  updateReportButtonStyle(category);
-}
-
-// Swaps the report button's color/label to match the "Clean Air" category
-// when it's selected, and back to the default red "bad air" styling
-// otherwise.
-function updateReportButtonStyle(category) {
-  const btn = document.getElementById('reportBtn');
-  const label = document.getElementById('reportBtnLabel');
-  if (!btn || !label) return;
-
-  if (category === 'Clean Air') {
-    btn.style.background = CATEGORY_COLORS['Clean Air'];
-    label.textContent = t('reportBtnCleanAir');
-  } else {
-    btn.style.background = '';
-    label.textContent = t('reportBtn');
-  }
-}
-
-// Initialize on load
-populateTimeOptions();
-
-function initTimeInput() {
+function nowRoundedToQuarterHour() {
   const now = new Date();
   const mins = now.getMinutes();
-  const roundedMins = Math.round(mins / 15) * 15;
-  now.setMinutes(roundedMins);
-  
-  const timeInput = document.getElementById('reportTime');
-  // Formats to HH:MM
-  timeInput.value = now.toTimeString().slice(0, 5); 
+  now.setMinutes(Math.round(mins / 15) * 15);
+  return now.toTimeString().slice(0, 5);
 }
-initTimeInput();
 
-// The time dropdown defaults to "now", but if the app is left open for a
-// while (screen locked, tab backgrounded, etc.) "now" quietly goes stale.
-// Keep it ticking forward automatically as long as the user hasn't
-// deliberately picked a different time themselves.
-let userSetTime = false;
-document.getElementById('reportTime').addEventListener('change', () => {
-  userSetTime = true;
-});
-setInterval(() => {
-  if (!userSetTime) initTimeInput();
-}, 5000);
+/* ═══════════════════════════════════════════════════
+   SPAM PROTECTION — max 1 report per device per hour
+═══════════════════════════════════════════════════ */
+const REPORT_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour
+const REPORT_COOLDOWN_KEY = 'ttt_last_report_ts';
+
+function getReportCooldownRemainingMs() {
+  try {
+    const last = parseInt(localStorage.getItem(REPORT_COOLDOWN_KEY), 10) || 0;
+    const remaining = REPORT_COOLDOWN_MS - (Date.now() - last);
+    return remaining > 0 ? remaining : 0;
+  } catch (e) { return 0; } // localStorage unavailable — fail open
+}
+
+function markReportSubmittedNow() {
+  try { localStorage.setItem(REPORT_COOLDOWN_KEY, Date.now().toString()); } catch (e) {}
+}
+
+/* ═══════════════════════════════════════════════════
+   REPORT WIZARD — category tiles → intensity slider →
+   details & submit. No dropdown selects anywhere.
+═══════════════════════════════════════════════════ */
+const WIZ_CATEGORIES = [
+  { value:'Smoke',                                                            icon:'smoke.png' },
+  { value:'Sewage',                                                           icon:'sewage.png' },
+  { value:'Sulfur',                                                           icon:'sulfur.png' },
+  { value:'Burnt plastic or rubber',                                         icon:'burnt_plastic.png' },
+  { value:'Chemical solvents (paint, fuel, glue, industrial chemicals)',      icon:'chemicals.png' },
+  { value:'Waste / Trash / Garbage',                                         icon:'waste.png' },
+  { value:'Clean Air',                                                       icon:'clean_air.png' },
+  { value:'Unknown',                                                         icon:'unknown.png' },
+  { value:'Other',                                                           icon:'other.png' },
+];
+const WIZ_CATEGORY_LABELS = {
+  en: ['Smoke','Sewage','Sulfur','Burnt plastic','Chemicals','Waste','Clean Air','Unknown','Other'],
+  sr: ['Dim','Kanalizacija','Sumpor','Spaljena plastika','Hemikalije','Otpad','Čist vazduh','Nepoznato','Ostalo'],
+};
+
+let wizState = { step: 0, category: null, intensity: 5 };
+
+function reportFabTap() {
+  const remaining = getReportCooldownRemainingMs();
+  if (remaining > 0) {
+    const mins = Math.ceil(remaining / 60000);
+    alert(t('cooldownActive').replace('{n}', mins));
+    return;
+  }
+  openReportWizard();
+}
+
+function openReportWizard() {
+  wizState = { step: 0, category: null, intensity: 5 };
+  document.getElementById('reportWizard').style.display = 'flex';
+  renderWizStep();
+}
+
+function closeReportWizard() {
+  document.getElementById('reportWizard').style.display = 'none';
+  if (pinMode) {
+    pinMode = false;
+    const pinBtn = document.getElementById('pinMapBtn');
+    if (pinBtn) pinBtn.classList.remove('active');
+  }
+  if (manualMarker) { map.removeLayer(manualMarker); manualMarker = null; }
+  manualCoords = null;
+}
+
+function wizGoBack() {
+  if (wizState.step > 0) { wizState.step -= 1; renderWizStep(); }
+  else closeReportWizard();
+}
+
+function renderWizProgress(totalSteps) {
+  const el = document.getElementById('wizProgress');
+  el.innerHTML = Array.from({ length: totalSteps }, (_, i) =>
+    `<span class="${i <= wizState.step ? 'done' : ''}"></span>`).join('');
+  document.getElementById('wizBackBtn').style.visibility = wizState.step === 0 ? 'hidden' : 'visible';
+}
+
+function renderWizStep() {
+  renderWizProgress(3);
+  if (wizState.step === 0) renderWizCategoryStep();
+  else if (wizState.step === 1) renderWizIntensityStep();
+  else renderWizDetailsStep();
+}
+
+function renderWizCategoryStep() {
+  const labels = WIZ_CATEGORY_LABELS[lang] || WIZ_CATEGORY_LABELS.en;
+  const body = document.getElementById('wizBody');
+  body.innerHTML = `
+    <p class="wiz-step-label">${t('wizStepLabel')} 1</p>
+    <h3 class="wiz-step-title">${t('wizCategoryTitle')}</h3>
+    <div class="wiz-grid">
+      ${WIZ_CATEGORIES.map((c, i) => `
+        <div class="wiz-tile" style="background:${categoryColor(c.value)};" onclick="wizSelectCategory('${c.value.replace(/'/g, "\\'")}')">
+          <div class="wiz-tile-icon" style="background-color:#fff;-webkit-mask-image:url('icons/reports/${c.icon}');mask-image:url('icons/reports/${c.icon}');-webkit-mask-size:contain;mask-size:contain;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;-webkit-mask-position:center;mask-position:center;"></div>
+          <span>${labels[i]}</span>
+        </div>`).join('')}
+    </div>`;
+}
+
+function wizSelectCategory(value) {
+  wizState.category = value;
+  wizState.step = 1;
+  renderWizStep();
+}
+
+function renderWizIntensityStep() {
+  const body = document.getElementById('wizBody');
+  body.innerHTML = `
+    <p class="wiz-step-label">${t('wizStepLabel')} 2</p>
+    <h3 class="wiz-step-title">${t('wizIntensityTitle')}</h3>
+    <div class="wiz-intensity-value" id="wizIntensityValue" style="color:${categoryColor(wizState.category)};">${wizState.intensity}</div>
+    <div class="wiz-intensity-label" id="wizIntensityWord">${intensityWord(wizState.intensity)}</div>
+    <input type="range" min="1" max="10" step="1" class="wiz-intensity-slider" id="wizIntensitySlider"
+           value="${wizState.intensity}" oninput="wizOnIntensityInput(this.value)">
+    <div class="wiz-details-row" style="margin-top:24px;">
+      <button type="button" class="wiz-submit-btn" style="background:${categoryColor(wizState.category)};" onclick="wizGoToDetails()">${t('wizContinue')}</button>
+    </div>`;
+}
+
+function intensityWord(n) {
+  n = parseInt(n, 10);
+  const words = lang === 'sr'
+    ? { 1:'Jedva primetno', 5:'Umereno', 10:'Nepodnošljivo' }
+    : { 1:'Barely noticeable', 5:'Moderate', 10:'Overwhelming' };
+  return words[n] || '';
+}
+
+function wizOnIntensityInput(v) {
+  wizState.intensity = parseInt(v, 10);
+  document.getElementById('wizIntensityValue').textContent = wizState.intensity;
+  document.getElementById('wizIntensityWord').textContent = intensityWord(wizState.intensity);
+}
+
+function wizGoToDetails() {
+  wizState.step = 2;
+  renderWizStep();
+}
+
+function renderWizDetailsStep() {
+  const body = document.getElementById('wizBody');
+  body.innerHTML = `
+    <p class="wiz-step-label">${t('wizStepLabel')} 3</p>
+    <h3 class="wiz-step-title">${t('wizDetailsTitle')}</h3>
+    <div class="wiz-details-two-col">
+      <div class="wiz-details-row">
+        <label>${t('wizTimeLabel')}</label>
+        <input type="time" id="reportTime" value="${nowRoundedToQuarterHour()}" oninput="checkWizSubmitReady()">
+      </div>
+      <div class="wiz-details-row">
+        <label>${t('windDirPH')}</label>
+        <input type="number" id="manualWind" min="0" max="360" placeholder="0-360"
+               oninput="checkWizSubmitReady()" onblur="validateRange(this)">
+      </div>
+    </div>
+    <div class="wiz-details-row">
+      <label>${t('durationPH')}</label>
+      <input type="number" id="duration" min="1" max="24" placeholder="1-24" oninput="checkWizSubmitReady()">
+    </div>
+    <div class="wiz-details-row">
+      <label>${t('commentPH')}</label>
+      <input type="text" id="comment" placeholder="${t('commentPH')}">
+    </div>
+    <div class="wiz-details-row" id="wizLocationHint" style="font-size:12px;color:var(--text-secondary);"></div>
+    <button type="button" class="wiz-submit-btn" id="wizSubmitBtn"
+            style="background:${wizState.category === 'Clean Air' ? categoryColor('Clean Air') : ''}"
+            onclick="reportBadAir()" disabled>
+      <span id="reportBtnLabel">${wizState.category === 'Clean Air' ? t('reportBtnCleanAir') : t('reportBtn')}</span>
+    </button>`;
+  checkWizSubmitReady();
+}
+
+function checkWizSubmitReady() {
+  const btn = document.getElementById('wizSubmitBtn');
+  if (!btn) return;
+  const timeEl = document.getElementById('reportTime');
+  const windEl = document.getElementById('manualWind');
+  const durEl  = document.getElementById('duration');
+  const time = timeEl ? timeEl.value : '';
+  const wind = windEl ? windEl.value : '';
+  const windVal = parseFloat(wind);
+  const isWindValid = wind !== '' && windVal >= 0 && windVal <= 360;
+  const hasLoc = !!(userCoords || manualCoords);
+  btn.disabled = !(time && isWindValid && hasLoc);
+  const hintEl = document.getElementById('wizLocationHint');
+  if (hintEl) hintEl.textContent = hasLoc ? '' : t('wizNoLocationHint');
+}
+
+/* ═══════════════════════════════════════════════════
+   THEME (Light / Dark / Auto)
+═══════════════════════════════════════════════════ */
+function resolveThemeMode(mode) {
+  if (mode === 'auto') {
+    const systemDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    return systemDark ? 'dark' : 'light';
+  }
+  return mode;
+}
+function initTheme() {
+  const mode = localStorage.getItem('ttt_theme_mode') || 'dark';
+  applyThemeMode(mode);
+}
+function applyThemeMode(mode) {
+  document.documentElement.dataset.theme = resolveThemeMode(mode);
+  ['Light','Dark','Auto'].forEach(m => {
+    const btn = document.getElementById('themeBtn' + m);
+    if (btn) btn.classList.toggle('active', m.toLowerCase() === mode);
+  });
+}
+function setThemeMode(mode) {
+  try { localStorage.setItem('ttt_theme_mode', mode); } catch (e) {}
+  applyThemeMode(mode);
+}
+
+/* ═══════════════════════════════════════════════════
+   SETTINGS MODAL
+═══════════════════════════════════════════════════ */
+function showSettingsModal() {
+  document.getElementById('settingsModal').style.display = 'flex';
+}
+function hideSettingsModal() {
+  document.getElementById('settingsModal').style.display = 'none';
+}
 
 /* ═══════════════════════════════════════════════════
    GLOBAL STATE DECLARATIONS
@@ -799,15 +1161,43 @@ const T = {
   helpStep4:    { en:'4. Submit:',                       sr:'4. Pošalji:' },
   helpStep4Body:{ en:'Verify the recorded time reflects when you noticed the odor, and tap the "REPORT BAD AIR" button.', sr:'Proverite da li izabrano vreme odgovara trenutku kada ste primetili miris, a zatim pritisnite dugme "PRIJAVI LOŠ VAZDUH".' },
   windDirPH:    { en:'Wind Dir (0-360)', sr:'Smer Vetra (0-360)' },
-  durationPH:   { en:'Duration (1-24h)', sr:'Trajanje (1-24h)' }
+  durationPH:   { en:'Duration (1-24h)', sr:'Trajanje (1-24h)' },
+
+  wizStepLabel:      { en:'Step',                        sr:'Korak' },
+  wizCategoryTitle:  { en:"What's the smell?",           sr:'Kakav je miris?' },
+  wizIntensityTitle: { en:'How intense is it?',          sr:'Koliko je intenzivno?' },
+  wizDetailsTitle:   { en:'Add the details',             sr:'Dodajte detalje' },
+  wizContinue:       { en:'Continue',                    sr:'Nastavi' },
+  wizTimeLabel:      { en:'Time noticed',                sr:'Vreme zapažanja' },
+  wizNoLocationHint: { en:'Waiting for GPS — or drop a pin manually on the map.', sr:'Čekanje GPS-a — ili ručno postavite pin na mapi.' },
+  cooldownActive:    { en:'You can submit one report per hour from this device. Please try again in {n} min.', sr:'Sa ovog uređaja možete poslati jednu prijavu na sat vremena. Pokušajte ponovo za {n} min.' },
+
+  settingsTitle:     { en:'Settings',                    sr:'Podešavanja' },
+  helpSectionTitle:  { en:'Help',                        sr:'Pomoć' },
+  settingsHelpBtn:   { en:'How to use TraceTheToxin',    sr:'Kako se koristi TraceTheToxin' },
+  languageSectionTitle: { en:'Language',                 sr:'Jezik' },
+  langAutoHint:      { en:"We'll set the language based on your device/browser settings.", sr:'Jezik ćemo podesiti na osnovu podešavanja vašeg uređaja/pregledača.' },
+  langBtnAutoLabel:  { en:'Auto',                        sr:'Auto' },
+  themeSectionTitle: { en:'Theme',                       sr:'Tema' },
+  themeAutoHint:     { en:"Auto follows your device's light/dark setting.", sr:'Auto prati podešavanje svetle/tamne teme vašeg uređaja.' },
+  themeBtnLight:     { en:'Light',                       sr:'Svetla' },
+  themeBtnDark:      { en:'Dark',                        sr:'Tamna' },
+  themeBtnAuto:      { en:'Auto',                        sr:'Auto' }
 };
 
 function t(k){ return T[k]?.[lang] ?? k; }
 
 function setLang(l){
-  lang = l;
-  document.querySelectorAll('.lang-btn').forEach(b=>{
-    b.classList.toggle('active', b.getAttribute('onclick').includes("'"+l+"'"));
+  if (l === 'auto') {
+    const browserLang = (navigator.language || 'en').slice(0, 2).toLowerCase();
+    lang = browserLang === 'sr' ? 'sr' : 'en';
+  } else {
+    lang = l;
+  }
+  try { localStorage.setItem('ttt_lang_mode', l); } catch (e) {}
+
+  document.querySelectorAll('#langSegment .theme-segment-btn').forEach(b=>{
+    b.classList.toggle('active', b.getAttribute('onclick') && b.getAttribute('onclick').includes("'"+l+"'"));
   });
   applyLang();
   
@@ -820,37 +1210,30 @@ function setLang(l){
 }
 
 function applyLang(){
+  const el = id => document.getElementById(id);
 
-  document.getElementById('subtitle').textContent         = t('subtitle');
-  document.getElementById('reportBtnLabel').textContent   = t('reportBtn');
-  updateReportButtonStyle(document.getElementById('category').value);
-  document.getElementById('csvLabel').textContent         = t('csvLabel');
-  document.getElementById('filterTitleLabel').textContent = t('timeFilter');
-  document.getElementById('comment').placeholder          = t('commentPH');
-  document.getElementById('dateRangePicker').placeholder   = t('calendarPH');
+  if (el('subtitle'))         el('subtitle').textContent = t('subtitle');
+  if (el('csvLabel'))         el('csvLabel').textContent = t('csvLabel');
+  if (el('filterTitleLabel')) el('filterTitleLabel').textContent = t('timeFilter');
+  if (el('dateRangePicker'))  el('dateRangePicker').placeholder = t('calendarPH');
 
-  document.getElementById('category').options[0].text  = t('catPH');
-  document.getElementById('intensity').options[0].text = t('intPH');
-  document.getElementById('manualWind').placeholder = t('windDirPH');
-  document.getElementById('duration').placeholder   = t('durationPH');
+  if (el('settingsModalTitle')) el('settingsModalTitle').textContent = t('settingsTitle');
+  if (el('helpSectionTitle'))   el('helpSectionTitle').textContent = t('helpSectionTitle');
+  if (el('settingsHelpBtn'))    el('settingsHelpBtn').innerHTML = `<img class="icon-img icon-img-inline" src="icons/help.png" alt=""> ${t('settingsHelpBtn')}`;
+  if (el('languageSectionTitle')) el('languageSectionTitle').textContent = t('languageSectionTitle');
+  if (el('langAutoHint'))       el('langAutoHint').textContent = t('langAutoHint');
+  if (el('langBtnAutoLabel'))   el('langBtnAutoLabel').textContent = t('langBtnAutoLabel');
+  if (el('themeSectionTitle'))  el('themeSectionTitle').textContent = t('themeSectionTitle');
+  if (el('themeAutoHint'))      el('themeAutoHint').textContent = t('themeAutoHint');
+  if (el('themeBtnLight'))      el('themeBtnLight').textContent = t('themeBtnLight');
+  if (el('themeBtnDark'))       el('themeBtnDark').textContent = t('themeBtnDark');
+  if (el('themeBtnAuto'))       el('themeBtnAuto').textContent = t('themeBtnAuto');
 
-  const intSel = document.getElementById('intensity');
-  const intensityLabels = lang === 'sr'
-    ? { 1:'Jedva primetno', 5:'Umereno', 10:'Nepodnošljivo' }
-    : { 1:'Barely noticeable', 5:'Moderate', 10:'Overwhelming' };
-  
-  for(let i = 1; i <= 10; i++){
-    intSel.options[i].textContent = intensityLabels[i] ? `${i} – ${intensityLabels[i]}` : `${i}`;
-  }
-
-  const catEl = document.getElementById('category');
-  const catLabels = lang === 'sr'
-    ? ['Dim','Kanalizacija','Sumpor (miris pokvarenih jaja)','Spaljena plastika ili guma','Hemijski rastvarači (farba, lepak, ind. hemikalije)','Otpad / kompost / vlaga','Čist vazduh','Nepoznato', 'Ostalo' ]
-    : ['Smoke','Sewage','Sulfur (rotten egg smell)','Burnt plastic or rubber','Chemical solvents (paint, glue, industrial)','Waste / Compost / Humidity','Clean Air','Unknown', 'Other'];
-  
-  Array.from(catEl.options).slice(1).forEach((opt, i) => {
-    opt.textContent = catLabels[i];
-  });
+  // Only re-render the active wizard step if the wizard is currently open,
+  // since its inputs (category tiles, comment field, etc.) are rebuilt
+  // fresh from scratch each time a step renders.
+  const wiz = el('reportWizard');
+  if (wiz && wiz.style.display !== 'none') renderWizStep();
 
   document.querySelectorAll('.leg').forEach(el=>{
     el.textContent = el.dataset[lang] || el.dataset.en;
@@ -2381,51 +2764,31 @@ async function filterPinsBySourceTrajectory(tracerCoords) {
    REPORT ACTION
 ═══════════════════════════════════════════════════ */
 function resetReportingForm() {
-  // 1. Reset dropdown select boxes to their default placeholder states
-  const categorySelect = document.getElementById('category');
-  const intensitySelect = document.getElementById('intensity');
-  
-  categorySelect.selectedIndex = 0;
-  intensitySelect.selectedIndex = 0;
-
-  // 2. Clear out the wind direction input field
-  const windInput = document.getElementById('manualWind');
-  windInput.value = "";
-
-  document.getElementById('comment').value = "";
-
-  const durationInput = document.getElementById('duration');
-  if (durationInput) {
-    if (durationInput.tagName === 'SELECT') {
-      durationInput.selectedIndex = 0;
-    } else {
-      durationInput.value = "";
-    }
-  }
-  
-  userSetTime = false;
-  initTimeInput();
-
-  const btn = document.getElementById('reportBtn');
-  btn.disabled = true;
-  updateReportButtonStyle('');
-
   // If the user manually dropped a pin to file this report, turn pin-drop
   // mode back off so the pin doesn't stay "clicked"/active after submit.
   if (pinMode) {
     pinMode = false;
-    document.getElementById('pinMapBtn').classList.remove('active');
+    const pinBtn = document.getElementById('pinMapBtn');
+    if (pinBtn) pinBtn.classList.remove('active');
   }
   if (manualMarker) { map.removeLayer(manualMarker); manualMarker = null; }
   manualCoords = null;
 }
 
 async function reportBadAir(){
+  // Spam protection: at most one report per device per hour.
+  const remaining = getReportCooldownRemainingMs();
+  if (remaining > 0) {
+    const mins = Math.ceil(remaining / 60000);
+    alert(t('cooldownActive').replace('{n}', mins));
+    return;
+  }
+
   const coords = pinMode && manualCoords ? manualCoords : userCoords;
   if(!coords){ alert(t('waitGps')); return; }
 
-  const category  = document.getElementById('category').value;
-  const intensity = document.getElementById('intensity').value;
+  const category  = wizState.category;
+  const intensity = wizState.intensity;
   const comment   = document.getElementById('comment').value;
   const durationInput = document.getElementById('duration').value;
   const durationValue = durationInput && durationInput !== "" ? parseInt(durationInput) : 1;
@@ -2481,8 +2844,10 @@ async function reportBadAir(){
 
     if (error) throw error;
 
+    markReportSubmittedNow();
     alert(t('submitted'));
     resetReportingForm();
+    closeReportWizard();
     await loadPinsByWindow();
 
   } catch(err) {
@@ -2552,64 +2917,6 @@ function downloadCSV() {
   a.click();
   document.body.removeChild(a);
 }
-
-/* ═══════════════════════════════════════════════════
-   MAP PANEL TOGGLE (tap the round button to smoothly
-   hide the panel below the map and expand it, or bring
-   it back. Two states only.)
-═══════════════════════════════════════════════════ */
-(function initMapPanelToggle(){
-  const btn   = document.getElementById('panelToggleBtn');
-  const panel = document.getElementById('appPanel');
-  if (!btn || !panel) return;
-
-  const TRANSITION_MS = 320; // matches the CSS transition duration + a small buffer
-  let collapsed = false;
-
-  // Keep Leaflet's tile layer in sync while the CSS height transition
-  // is animating, not just at the start/end.
-  function animateMapDuringTransition(){
-    if (typeof map === 'undefined' || !map.invalidateSize) return;
-    const start = performance.now();
-    function step(now){
-      map.invalidateSize({ animate: false, pan: false });
-      if (now - start < TRANSITION_MS) requestAnimationFrame(step);
-    }
-    requestAnimationFrame(step);
-  }
-
-  function setCollapsed(next){
-    if (collapsed === next) return;
-    collapsed = next;
-
-    if (collapsed) {
-      // Lock to the current rendered height, force a reflow, then
-      // animate down to 0 so the transition has a real start point.
-      panel.style.height = panel.scrollHeight + 'px';
-      panel.getBoundingClientRect();
-      requestAnimationFrame(() => {
-        panel.style.height = '0px';
-        panel.style.opacity = '0';
-      });
-    } else {
-      const target = panel.scrollHeight;
-      panel.style.height = target + 'px';
-      panel.style.opacity = '1';
-      panel.addEventListener('transitionend', function onEnd(e){
-        if (e.propertyName !== 'height') return;
-        panel.removeEventListener('transitionend', onEnd);
-        if (!collapsed) panel.style.height = 'auto'; // let dynamic content (calendar etc.) breathe afterward
-      });
-    }
-
-    btn.classList.toggle('collapsed', collapsed);
-    btn.setAttribute('aria-expanded', String(!collapsed));
-    btn.title = collapsed ? 'Show panel' : 'Hide panel';
-    animateMapDuringTransition();
-  }
-
-  btn.addEventListener('click', () => setCollapsed(!collapsed));
-})();
 
 /* ═══════════════════════════════════════════════════
    ORCHESTRATION ARCHITECTURE
