@@ -736,7 +736,7 @@ span.flatpickr-weekday {
     </div>
 
     <div class="detail-section" id="languageSettingsSection">
-      <div class="detail-section-title" id="languageSectionTitle"><img class="icon-img icon-img-inline" src="icons/language.png" alt=""> Language</div>
+      <div class="detail-section-title" id="languageSectionTitle">Language</div>
       <div class="theme-segment" id="langSegment">
         <button type="button" class="theme-segment-btn" onclick="setLang('en')" id="langBtnEn">🇬🇧 EN</button>
         <button type="button" class="theme-segment-btn active" onclick="setLang('sr')" id="langBtnSr">🇷🇸 SR</button>
@@ -746,7 +746,7 @@ span.flatpickr-weekday {
     </div>
 
     <div class="detail-section" id="themeSettingsSection">
-      <div class="detail-section-title" id="themeSectionTitle"><img class="icon-img icon-img-inline" src="icons/theme.png" alt=""> Theme</div>
+      <div class="detail-section-title" id="themeSectionTitle">Theme</div>
       <div class="theme-segment" id="themeSegment">
         <button type="button" class="theme-segment-btn" onclick="setThemeMode('light')" id="themeBtnLight">Light</button>
         <button type="button" class="theme-segment-btn active" onclick="setThemeMode('dark')" id="themeBtnDark">Dark</button>
@@ -758,7 +758,7 @@ span.flatpickr-weekday {
 
     <div class="detail-section" style="padding:0;overflow:hidden;">
       <div class="filter-label-row" style="border-radius:0;">
-        <span class="filter-title" id="filterTitleLabel"><img class="icon-img icon-img-inline" src="icons/export.png" alt=""> Time Window Filter</span>
+        <span class="filter-title" id="filterTitleLabel">Time Window Filter</span>
         <span id="reportCount">0 Reports</span>
       </div>
       <div class="filter-select-row">
@@ -920,7 +920,7 @@ function renderWizCategoryStep() {
     <div class="wiz-grid">
       ${WIZ_CATEGORIES.map((c, i) => `
         <div class="wiz-tile" style="background:${categoryColor(c.value)};" onclick="wizSelectCategory('${c.value.replace(/'/g, "\\'")}')">
-          <div class="wiz-tile-icon" style="background-color:#fff;-webkit-mask-image:url('icons/reports/${c.icon}');mask-image:url('icons/reports/${c.icon}');-webkit-mask-size:contain;mask-size:contain;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;-webkit-mask-position:center;mask-position:center;"></div>
+          <div class="wiz-tile-icon" style="background-color:#fff;-webkit-mask-image:url('icons/${c.icon}');mask-image:url('icons/${c.icon}');-webkit-mask-size:contain;mask-size:contain;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;-webkit-mask-position:center;mask-position:center;"></div>
           <span>${labels[i]}</span>
         </div>`).join('')}
     </div>`;
@@ -1270,16 +1270,16 @@ function applyLang(){
 
   if (el('subtitle'))         el('subtitle').textContent = t('subtitle');
   if (el('csvLabel'))         el('csvLabel').textContent = t('csvLabel');
-  if (el('filterTitleLabel')) el('filterTitleLabel').innerHTML = `<img class="icon-img icon-img-inline" src="icons/export.png" alt=""> ${t('timeFilter')}`;
+  if (el('filterTitleLabel')) el('filterTitleLabel').textContent = t('timeFilter');
   if (el('dateRangePicker'))  el('dateRangePicker').placeholder = t('calendarPH');
 
   if (el('settingsModalTitle')) el('settingsModalTitle').textContent = t('settingsTitle');
   if (el('helpSectionTitle'))   el('helpSectionTitle').textContent = t('helpSectionTitle');
   if (el('settingsHelpBtn'))    el('settingsHelpBtn').innerHTML = `<img class="icon-img icon-img-inline" src="icons/help.png" alt=""> ${t('settingsHelpBtn')}`;
-  if (el('languageSectionTitle')) el('languageSectionTitle').innerHTML = `<img class="icon-img icon-img-inline" src="icons/language.png" alt=""> ${t('languageSectionTitle')}`;
+  if (el('languageSectionTitle')) el('languageSectionTitle').textContent = t('languageSectionTitle');
   if (el('langAutoHint'))       el('langAutoHint').textContent = t('langAutoHint');
   if (el('langBtnAutoLabel'))   el('langBtnAutoLabel').textContent = t('langBtnAutoLabel');
-  if (el('themeSectionTitle'))  el('themeSectionTitle').innerHTML = `<img class="icon-img icon-img-inline" src="icons/theme.png" alt=""> ${t('themeSectionTitle')}`;
+  if (el('themeSectionTitle'))  el('themeSectionTitle').textContent = t('themeSectionTitle');
   if (el('themeAutoHint'))      el('themeAutoHint').textContent = t('themeAutoHint');
   if (el('themeBtnLight'))      el('themeBtnLight').textContent = t('themeBtnLight');
   if (el('themeBtnDark'))       el('themeBtnDark').textContent = t('themeBtnDark');
