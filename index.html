@@ -486,6 +486,21 @@ span.flatpickr-weekday {
 .trace-source-btn .icon-img{ filter:var(--icon-tint-filter); }
 .trace-source-btn.active .icon-img{ filter:none; }
 
+.windfinder-btn{
+  background:var(--floating-bg);
+  border:1px solid var(--floating-border);
+  border-radius:50%;
+  width:44px; height:44px;
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer;
+  box-shadow:0 2px 8px var(--floating-shadow);
+  transition:background .15s ease, transform .12s ease;
+  text-decoration:none;
+  -webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;
+}
+.windfinder-btn:active{ transform:scale(.9); }
+
 /* ═══════════════════════════════════════════════════
    REPORT FAB (red circular +)
 ═══════════════════════════════════════════════════ */
@@ -668,64 +683,67 @@ span.flatpickr-weekday {
   <div class="splash-text" id="splashText">Loading map…</div>
 </div>
 
-<div id="mapLegend" style="
+<!-- Both legends stack inside one flex column so spacing is automatic —
+     no matter how many lines the category legend wraps to, it can never
+     collide with the time legend above it. Anchored low (just above the
+     report FAB) and inset from the right so it never reaches the button
+     column on the right side. -->
+<div id="legendStack" style="
   position:fixed;
   left:8px;
-  bottom:calc(148px + env(safe-area-inset-bottom, 0px));
+  right:64px;
+  bottom:calc(86px + env(safe-area-inset-bottom, 0px));
   z-index:410;
-  background:rgba(18,18,18,.88);
-  backdrop-filter:blur(4px);
-  -webkit-backdrop-filter:blur(4px);
-  border-radius:10px;
-  padding:5px 10px;
   display:flex;
-  align-items:center;
+  flex-direction:column;
   gap:6px;
-  flex-wrap:nowrap;
   pointer-events:none;
-  border:1px solid rgba(255,255,255,.09);
-  box-shadow:0 2px 10px rgba(0,0,0,.45);
-  margin-bottom:4px;
 ">
-  <span class="legend-item"><span class="legend-dot" style="background:#a32222"></span><span class="leg" data-en="&lt;1h"  data-sr="&lt;1h"  style="color:#ddd;font-size:10px;">&lt;1h</span></span>
-  <span class="legend-item"><span class="legend-dot" style="background:#a33822"></span><span class="leg" data-en="1–2h"  data-sr="1–2h"   style="color:#ddd;font-size:10px;">1–2h</span></span>
-  <span class="legend-item"><span class="legend-dot" style="background:#a34d22"></span><span class="leg" data-en="2–6h"  data-sr="2–6h"   style="color:#ddd;font-size:10px;">2–6h</span></span>
-  <span class="legend-item"><span class="legend-dot" style="background:#a36322"></span><span class="leg" data-en="6–12h" data-sr="6–12h"  style="color:#ddd;font-size:10px;">6–12h</span></span>
-  <span class="legend-item"><span class="legend-dot" style="background:#a37822"></span><span class="leg" data-en="12–24h" data-sr="12–24h" style="color:#ddd;font-size:10px;">12–24h</span></span>
-  <span class="legend-item"><span class="legend-dot" style="background:#9f8a5f"></span><span class="leg" data-en="24-48h" data-sr="24-48h" style="color:#ddd;font-size:10px;">24-48h</span></span>
-  <span class="legend-item"><span class="legend-dot" style="background:#333333"></span><span class="leg" data-en="48h+" data-sr="48h+" style="color:#ddd;font-size:10px;">48h+</span></span>
+  <div id="catLegend" style="
+    background:rgba(18,18,18,.88);
+    backdrop-filter:blur(4px);
+    -webkit-backdrop-filter:blur(4px);
+    border-radius:10px;
+    padding:5px 10px;
+    display:flex;
+    align-items:center;
+    gap:6px;
+    flex-wrap:wrap;
+    border:1px solid rgba(255,255,255,.09);
+    box-shadow:0 2px 10px rgba(0,0,0,.45);
+  ">
+    <span class="legend-item"><span class="legend-dot" style="background:#c41e27"></span><span class="leg" data-en="Smoke" data-sr="Dim" style="color:#ddd;font-size:10px;">Dim</span></span>
+    <span class="legend-item"><span class="legend-dot" style="background:#8b4513"></span><span class="leg" data-en="Sewage" data-sr="Kanalizacija" style="color:#ddd;font-size:10px;">Kanalizacija</span></span>
+    <span class="legend-item"><span class="legend-dot" style="background:#d4c600"></span><span class="leg" data-en="Sulfur" data-sr="Sumpor" style="color:#ddd;font-size:10px;">Sumpor</span></span>
+    <span class="legend-item"><span class="legend-dot" style="background:#cc3399"></span><span class="leg" data-en="Burnt plastic" data-sr="Spaljena plastika" style="color:#ddd;font-size:10px;">Spaljena plastika</span></span>
+    <span class="legend-item"><span class="legend-dot" style="background:#008ab8"></span><span class="leg" data-en="Chemicals" data-sr="Hemikalije" style="color:#ddd;font-size:10px;">Hemikalije</span></span>
+    <span class="legend-item"><span class="legend-dot" style="background:#2a682a"></span><span class="leg" data-en="Waste" data-sr="Otpad" style="color:#ddd;font-size:10px;">Otpad</span></span>
+    <span class="legend-item"><span class="legend-dot" style="background:#3ec46d"></span><span class="leg" data-en="Clean Air" data-sr="Čist vazduh" style="color:#ddd;font-size:10px;">Čist vazduh</span></span>
+    <span class="legend-item"><span class="legend-dot" style="background:#8342a1"></span><span class="leg" data-en="Unknown" data-sr="Nepoznato" style="color:#ddd;font-size:10px;">Nepoznato</span></span>
+    <span class="legend-item"><span class="legend-dot" style="background:#474747"></span><span class="leg" data-en="Other" data-sr="Ostalo" style="color:#ddd;font-size:10px;">Ostalo</span></span>
+  </div>
 
-</div>
-
-<div id="catLegend" style="
-  position:fixed;
-  left:8px;
-  right:84px;
-  bottom:calc(90px + env(safe-area-inset-bottom, 0px));
-  z-index:410;
-  background:rgba(18,18,18,.88);
-  backdrop-filter:blur(4px);
-  -webkit-backdrop-filter:blur(4px);
-  border-radius:10px;
-  padding:5px 10px;
-  display:flex;
-  align-items:center;
-  gap:6px;
-  flex-wrap:wrap;
-  pointer-events:none;
-  border:1px solid rgba(255,255,255,.09);
-  box-shadow:0 2px 10px rgba(0,0,0,.45);
-  margin-bottom:4px;
-">
-  <span class="legend-item"><span class="legend-dot" style="background:#c41e27"></span><span class="leg" data-en="Smoke" data-sr="Dim" style="color:#ddd;font-size:10px;">Dim</span></span>
-  <span class="legend-item"><span class="legend-dot" style="background:#8b4513"></span><span class="leg" data-en="Sewage" data-sr="Kanalizacija" style="color:#ddd;font-size:10px;">Kanalizacija</span></span>
-  <span class="legend-item"><span class="legend-dot" style="background:#d4c600"></span><span class="leg" data-en="Sulfur" data-sr="Sumpor" style="color:#ddd;font-size:10px;">Sumpor</span></span>
-  <span class="legend-item"><span class="legend-dot" style="background:#cc3399"></span><span class="leg" data-en="Burnt plastic" data-sr="Spaljena plastika" style="color:#ddd;font-size:10px;">Spaljena plastika</span></span>
-  <span class="legend-item"><span class="legend-dot" style="background:#008ab8"></span><span class="leg" data-en="Chemicals" data-sr="Hemikalije" style="color:#ddd;font-size:10px;">Hemikalije</span></span>
-  <span class="legend-item"><span class="legend-dot" style="background:#2a682a"></span><span class="leg" data-en="Waste" data-sr="Otpad" style="color:#ddd;font-size:10px;">Otpad</span></span>
-  <span class="legend-item"><span class="legend-dot" style="background:#3ec46d"></span><span class="leg" data-en="Clean Air" data-sr="Čist vazduh" style="color:#ddd;font-size:10px;">Čist vazduh</span></span>
-  <span class="legend-item"><span class="legend-dot" style="background:#8342a1"></span><span class="leg" data-en="Unknown" data-sr="Nepoznato" style="color:#ddd;font-size:10px;">Nepoznato</span></span>
-  <span class="legend-item"><span class="legend-dot" style="background:#474747"></span><span class="leg" data-en="Other" data-sr="Ostalo" style="color:#ddd;font-size:10px;">Ostalo</span></span>
+  <div id="mapLegend" style="
+    background:rgba(18,18,18,.88);
+    backdrop-filter:blur(4px);
+    -webkit-backdrop-filter:blur(4px);
+    border-radius:10px;
+    padding:5px 10px;
+    display:flex;
+    align-items:center;
+    gap:6px;
+    flex-wrap:wrap;
+    border:1px solid rgba(255,255,255,.09);
+    box-shadow:0 2px 10px rgba(0,0,0,.45);
+  ">
+    <span class="legend-item"><span class="legend-dot" style="background:#a32222"></span><span class="leg" data-en="&lt;1h"  data-sr="&lt;1h"  style="color:#ddd;font-size:10px;">&lt;1h</span></span>
+    <span class="legend-item"><span class="legend-dot" style="background:#a33822"></span><span class="leg" data-en="1–2h"  data-sr="1–2h"   style="color:#ddd;font-size:10px;">1–2h</span></span>
+    <span class="legend-item"><span class="legend-dot" style="background:#a34d22"></span><span class="leg" data-en="2–6h"  data-sr="2–6h"   style="color:#ddd;font-size:10px;">2–6h</span></span>
+    <span class="legend-item"><span class="legend-dot" style="background:#a36322"></span><span class="leg" data-en="6–12h" data-sr="6–12h"  style="color:#ddd;font-size:10px;">6–12h</span></span>
+    <span class="legend-item"><span class="legend-dot" style="background:#a37822"></span><span class="leg" data-en="12–24h" data-sr="12–24h" style="color:#ddd;font-size:10px;">12–24h</span></span>
+    <span class="legend-item"><span class="legend-dot" style="background:#9f8a5f"></span><span class="leg" data-en="24-48h" data-sr="24-48h" style="color:#ddd;font-size:10px;">24-48h</span></span>
+    <span class="legend-item"><span class="legend-dot" style="background:#333333"></span><span class="leg" data-en="48h+" data-sr="48h+" style="color:#ddd;font-size:10px;">48h+</span></span>
+  </div>
 </div>
 
 <div id="bottomRightStack" class="bottomright-stack">
@@ -735,6 +753,9 @@ span.flatpickr-weekday {
   <div id="traceSourceBtn" class="trace-source-btn" style="display:none" title="Trace Possible Source" onclick="toggleTraceMode()">
     <img class="icon-img" src="icons/search.png" alt="Trace">
   </div>
+  <a id="windfinderBtn" class="windfinder-btn" href="https://www.windfinder.com/#13/45.2294/19.8276/2026-06-25T00:00Z/spot" target="_blank" rel="noopener" title="Windfinder">
+    <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAACwklEQVR4AWIYseAiK6DbcoCZHIjieNLp2cZMz7Zt27Zt2wwP4dm2bbPT3d5n2zbedb5o03Sb9eEl/+gl79d5LGlDET7tcrChUE1CETlPOQwij3e67sUVmhRmQJEjaSKDMxWoUcc1r0ZVxijgMAY10U+ng+XipDRF+DIDqiU5O/0GhAdQk1erZeSrdHAK2L1s3aIUkeMMYk5U6QO5YcP8DofT/EIjyhEfBtEVwu8dDhcRGUE5nKSCaUpC5LBD4RJPtlNNmLYoIrMcWG98Wwvi0WaA+QzwpIvdcLdi9UpTRL6bgyR//AaBM1do+jwKkcr2zXeRahVFjsh6ac6MiIKU75KWLwdGj+ZshxeqUUWBe+nBDeUbA7PspGQNPwmzGf6rAKlFORykB2fyGzMXmGUEhWjtAGobvHBVJe04wJIuj7/7FJjFXbunNQFvrYZ7la5VXOQINQ0kV2kF4XsPQ6pohMzQcEh6+R68uo8AWWgFuVlZkJuTA54dh2gsIXLfKjhbmRSR56ZBfPpPhOz4BFBbTkoqxF68xXxmJ4Aict269YrwRdMARtwiD5CbmQkJ959B0OKNeS83VmoG3j3HQMyJS0ALVtdZQviqxXCJI2vUAbz7jofQzfvzgGpf+K6DwMx36DS9LXjRIjg7lyKHsxSBpfKfuBCYZcfFg3vjHrZnwKNYnbIiR0KsgTPRQjUg1eAGzDLDIzXXMVvdFtSdPLQYrNKv2h0hzc0LmOWkprJmVJfgsS5cQsI0y4HakorVhtCN+yDlhwHSfQPY1Jhm4K1u6imHYyyB2C4i66ReOO1MOBM1dwskXujifHieAsw13msHpDdBkcyaWNFRiRM2UVRlipHH3QwFhBpetWrl14QbeNLNgq9PYsFFpYslRI5Tnmxnv1YiL/SR81dpwO6F7X+zCN9lwdmIUBacI1soIjNUwf9P+w1d6+FOXuVcggAAAABJRU5ErkJggg==" alt="Windfinder" style="width:22px;height:22px;object-fit:contain;">
+  </a>
 </div>
 
 <button type="button" class="report-fab-btn" id="reportFabBtn" title="Report bad air" aria-label="Report bad air" onclick="reportFabTap()">
@@ -1346,38 +1367,8 @@ let pinMode       = false;
 let manualCoords  = null;
 let manualMarker  = null;
 
-const WindfinderControl = L.Control.extend({
-  options: { position: 'bottomright' },
-onAdd: function(map) {
-    const container = L.DomUtil.create('a', 'leaflet-bar leaflet-control leaflet-control-custom');
-    
-    // Set up the link
-    container.href = 'https://www.windfinder.com/#13/45.2294/19.8276/2026-06-25T00:00Z/spot';
-    container.target = '_blank';
-    
-    // Add the Logo Image
-    // Using a reliable transparent PNG icon
-    container.innerHTML = `<img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAACwklEQVR4AWIYseAiK6DbcoCZHIjieNLp2cZMz7Zt27Zt2wwP4dm2bbPT3d5n2zbedb5o03Sb9eEl/+gl79d5LGlDET7tcrChUE1CETlPOQwij3e67sUVmhRmQJEjaSKDMxWoUcc1r0ZVxijgMAY10U+ng+XipDRF+DIDqiU5O/0GhAdQk1erZeSrdHAK2L1s3aIUkeMMYk5U6QO5YcP8DofT/EIjyhEfBtEVwu8dDhcRGUE5nKSCaUpC5LBD4RJPtlNNmLYoIrMcWG98Wwvi0WaA+QzwpIvdcLdi9UpTRL6bgyR//AaBM1do+jwKkcr2zXeRahVFjsh6ac6MiIKU75KWLwdGj+ZshxeqUUWBe+nBDeUbA7PspGQNPwmzGf6rAKlFORykB2fyGzMXmGUEhWjtAGobvHBVJe04wJIuj7/7FJjFXbunNQFvrYZ7la5VXOQINQ0kV2kF4XsPQ6pohMzQcEh6+R68uo8CWWgFuVlZkJuTA54dh2gsIXLfKjhbmRSR56ZBfPpPhOz4BFBbTkoqxF68xXxmJ4Aict269YrwRdMARtwiD5CbmQkJ959B0OKNeS83VmoG3j3HQMyJS0ALVtdZQviqxXCJI2vUAbz7jofQzfvzgGpf+K6DwMx36DS9LXjRIjg7lyKHsxSBpfKfuBCYZcfFg3vjHrZnwKNYnbIiR0KsgTPRQjUg1eAGzDLDIzXXMVvdFtSdPLQYrNKv2h0hzc0LmOWkprJmVJfgsS5cQsI0y4HakorVhtCN+yDlhwHSfQPY1Jhm4K1u6imHYyyB2C4i66ReOO1MOBM1dwskXujifHieAsw13msHpDdBkcyaWNFRiRM2UVRlipHH3QwFhBpetWrl14QbeNLNgq9PYsFFpYslRI5Tnmxnv1YiL/SR81dpwO6F7X+zCN9lwdmIUBacI1soIjNUwf9P+w1d6+FOXuVcggAAAABJRU5ErkJggg==" 
-                             style="width: 28px; height: 28px; display: block; object-fit: contain;">`;
-    
-    // Styles
-    container.style.backgroundColor = 'rgba(20,20,20,0.88)';
-    container.style.width = '44px';
-    container.style.height = '44px';
-    container.style.display = 'flex';
-    container.style.alignItems = 'center';
-    container.style.justifyContent = 'center';
-    container.style.borderRadius = '8px';
-    container.style.border = '1px solid #3a3a3a';
-    container.style.cursor = 'pointer';
-
-    L.DomEvent.disableClickPropagation(container);
-    return container;
-}
-});
-
-// Add it to your map instance
-map.addControl(new WindfinderControl());
+// Windfinder button now lives directly in #bottomRightStack (see HTML) as a
+// plain circular link, styled to match the pin/trace buttons in that stack.
 
 /* ═══════════════════════════════════════════════════
    GPS MODAL
@@ -1509,29 +1500,12 @@ initGps();
 
 /* ═══════════════════════════════════════════════════
    CONTROLS (Manual Pin & Tracer)
+   These buttons live directly in #bottomRightStack in the HTML (fixed,
+   right-side circular column, same as TraceTheBreak) rather than being
+   wrapped as Leaflet controls — no need for disableClickPropagation since
+   they're siblings of the map container, not descendants of it.
 ═══════════════════════════════════════════════════ */
-const PinControl = L.Control.extend({
-  options:{ position:'bottomleft' },
-  onAdd(){
-    const btn = document.getElementById('pinMapBtn');
-    // Stop the click from traveling through the button to the map canvas
-    L.DomEvent.disableClickPropagation(btn);
-    return btn;
-  }
-});
-new PinControl().addTo(map);
 document.getElementById('pinMapBtn').style.display = 'flex';
-
-const TraceControl = L.Control.extend({
-  options:{ position:'bottomleft' },
-  onAdd(){
-    const btn = document.getElementById('traceSourceBtn');
-    // CRITICAL FIX: Stop trace toggle click from dropping a point onto the canvas below!
-    L.DomEvent.disableClickPropagation(btn);
-    return btn;
-  }
-});
-new TraceControl().addTo(map);
 document.getElementById('traceSourceBtn').style.display = 'flex';
 
 function togglePinMode() {
