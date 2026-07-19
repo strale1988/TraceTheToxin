@@ -80,11 +80,11 @@ html[data-theme="light"]{
   --map-tile-filter: none;
 }
 .leaflet-control-container .leaflet-bottom.leaflet-right{
-  top:50% !important;
-  bottom:auto !important;
+  top:auto !important;
+  bottom:calc(96px + env(safe-area-inset-bottom, 0px)) !important;
   right:12px !important;
   margin:0 !important;
-  transform:translateY(calc(-50% + 54px));
+  transform:none;
 }
 .leaflet-control-container .leaflet-bottom.leaflet-left{
   bottom:calc(4px + env(safe-area-inset-bottom, 0px)) !important;
@@ -450,8 +450,8 @@ span.flatpickr-weekday {
   display:flex; flex-direction:column; align-items:center; gap:10px;
   position:fixed; right:12px; z-index:420;
 }
-#traceSourceBtn{ position:fixed; top:50%; right:12px; transform:translateY(-50%); }
-#pinMapBtn{ position:fixed; top:50%; right:12px; transform:translateY(calc(-50% - 54px)); }
+#traceSourceBtn{ position:fixed; bottom:calc(150px + env(safe-area-inset-bottom, 0px)); right:12px; }
+#pinMapBtn{ position:fixed; bottom:calc(204px + env(safe-area-inset-bottom, 0px)); right:12px; }
 .pin-map-btn{
   background:var(--floating-bg);
   border:1px solid var(--floating-border);
@@ -465,7 +465,7 @@ span.flatpickr-weekday {
   -webkit-tap-highlight-color:transparent;
   touch-action:manipulation;
 }
-.pin-map-btn:active{ transform:translateY(calc(-50% - 54px)) scale(.9); }
+.pin-map-btn:active{ transform:scale(.9); }
 .pin-map-btn.active{ background:#f5a623; border-color:#f5a623; }
 .pin-map-btn .icon-img{ filter:var(--icon-tint-filter); }
 .pin-map-btn.active .icon-img{ filter:none; }
@@ -483,7 +483,7 @@ span.flatpickr-weekday {
   -webkit-tap-highlight-color:transparent;
   touch-action:manipulation;
 }
-.trace-source-btn:active{ transform:translateY(-50%) scale(.9); }
+.trace-source-btn:active{ transform:scale(.9); }
 .trace-source-btn.active{ background:var(--danger); border-color:var(--danger); }
 .trace-source-btn .icon-img{ filter:var(--icon-tint-filter); }
 .trace-source-btn.active .icon-img{ filter:none; }
@@ -501,7 +501,7 @@ span.flatpickr-weekday {
   position:fixed;
   left:50%;
   transform:translateX(-50%);
-  bottom:calc(104px + env(safe-area-inset-bottom, 0px));
+  bottom:calc(56px + env(safe-area-inset-bottom, 0px));
   z-index:420;
   display:flex; align-items:center; justify-content:center;
   cursor:pointer;
