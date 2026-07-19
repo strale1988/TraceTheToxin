@@ -20,7 +20,10 @@
       try {
         var mode = localStorage.getItem('ttt_theme_mode') || 'dark';
         var systemDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-        var resolved = mode === 'auto' ? (systemDark ? 'dark' : 'light') : mode;
+        var resolved;
+        if (mode === 'auto') resolved = systemDark ? 'dark' : 'light';
+        else if (mode === 'smart') { var h = new Date().getHours(); resolved = (h >= 7 && h < 19) ? 'light' : 'dark'; }
+        else resolved = mode;
         document.documentElement.dataset.theme = resolved;
       } catch (e) {}
     })();
@@ -76,6 +79,16 @@ html[data-theme="light"]{
   --floating-shadow: rgba(0,0,0,.18);
   --map-tile-filter: none;
 }
+.leaflet-control-container .leaflet-bottom.leaflet-right{
+  bottom:calc(104px + env(safe-area-inset-bottom, 0px)) !important;
+  right:12px !important;
+  margin:0 !important;
+}
+.leaflet-control-container .leaflet-bottom.leaflet-left{
+  bottom:calc(104px + env(safe-area-inset-bottom, 0px)) !important;
+  left:8px !important;
+  margin:0 !important;
+}
 .leaflet-tile-pane{ filter:var(--map-tile-filter); }
 
 body{
@@ -83,14 +96,22 @@ body{
   background:var(--bg-app);
   color:var(--text-primary);
   height: 100svh;
-  display:flex;
-  flex-direction:column;
+  overflow:hidden;
 }
 
 header{
-  padding:10px 12px;
-  background:var(--bg-surface);
-  border-bottom:1px solid var(--border-color);
+  position:fixed;
+  top:calc(10px + env(safe-area-inset-top, 0px));
+  left:10px;
+  right:10px;
+  z-index:500;
+  padding:10px 14px;
+  background:var(--floating-bg);
+  backdrop-filter:blur(8px);
+  -webkit-backdrop-filter:blur(8px);
+  border:1px solid var(--floating-border);
+  border-radius:20px;
+  box-shadow:0 4px 18px var(--floating-shadow);
 }
 
 .header-top{
@@ -131,10 +152,9 @@ header p{ font-size:var(--fs-11); opacity:.7; margin-top:2px; }
 .help-icon-btn .icon-img{ filter:var(--icon-tint-filter); }
 
 #map {
-  flex: 1;
-  height: 0;      
-  min-height: 0;  
-  position: relative;
+  position: fixed;
+  inset: 0;
+  z-index: 0;
   overflow: hidden;
 }
 
@@ -405,13 +425,31 @@ span.flatpickr-weekday {
 }
 
 /* ═══════════════════════════════════════════════════
+   BOTTOM LEGEND BAR (rounded top corners, docked bottom)
+═══════════════════════════════════════════════════ */
+#legendBar{
+  position:fixed; left:0; right:0; bottom:0; z-index:400;
+  background:var(--bg-surface);
+  border-top:1px solid var(--border-color);
+  border-radius:18px 18px 0 0;
+  box-shadow:0 -4px 16px var(--floating-shadow);
+  padding:10px 16px calc(10px + env(safe-area-inset-bottom, 0px));
+  display:flex; flex-direction:column; gap:6px;
+}
+.legend-row{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.legend-item{ display:flex; align-items:center; gap:4px; }
+.legend-dot{ width:8px; height:8px; border-radius:50%; flex-shrink:0; display:inline-block; }
+.legend-row .leg{ color:var(--text-secondary); font-size:var(--fs-10); }
+
+/* ═══════════════════════════════════════════════════
    CIRCULAR FLOATING BUTTONS (right side)
 ═══════════════════════════════════════════════════ */
 .bottomright-stack{
   display:flex; flex-direction:column; align-items:center; gap:10px;
   position:fixed; right:12px; z-index:420;
-  bottom:calc(100px + env(safe-area-inset-bottom, 0px));
 }
+#traceSourceBtn{ bottom:calc(158px + env(safe-area-inset-bottom, 0px)); position:fixed; right:12px; }
+#pinMapBtn{ bottom:calc(212px + env(safe-area-inset-bottom, 0px)); position:fixed; right:12px; }
 .pin-map-btn{
   background:var(--floating-bg);
   border:1px solid var(--floating-border);
@@ -461,7 +499,7 @@ span.flatpickr-weekday {
   position:fixed;
   left:50%;
   transform:translateX(-50%);
-  bottom:calc(18px + env(safe-area-inset-bottom, 0px));
+  bottom:calc(104px + env(safe-area-inset-bottom, 0px));
   z-index:420;
   display:flex; align-items:center; justify-content:center;
   cursor:pointer;
@@ -630,64 +668,27 @@ span.flatpickr-weekday {
   <div class="splash-text" id="splashText">Loading map…</div>
 </div>
 
-<div id="mapLegend" style="
-  position:fixed;
-  left:8px;
-  bottom:calc(148px + env(safe-area-inset-bottom, 0px));
-  z-index:410;
-  background:rgba(18,18,18,.88);
-  backdrop-filter:blur(4px);
-  -webkit-backdrop-filter:blur(4px);
-  border-radius:10px;
-  padding:5px 10px;
-  display:flex;
-  align-items:center;
-  gap:6px;
-  flex-wrap:nowrap;
-  pointer-events:none;
-  border:1px solid rgba(255,255,255,.09);
-  box-shadow:0 2px 10px rgba(0,0,0,.45);
-  margin-bottom:4px;
-">
-  <span class="legend-item"><span class="legend-dot" style="background:#a32222"></span><span class="leg" data-en="&lt;1h"  data-sr="&lt;1h"  style="color:#ddd;font-size:10px;">&lt;1h</span></span>
-  <span class="legend-item"><span class="legend-dot" style="background:#a33822"></span><span class="leg" data-en="1–2h"  data-sr="1–2h"   style="color:#ddd;font-size:10px;">1–2h</span></span>
-  <span class="legend-item"><span class="legend-dot" style="background:#a34d22"></span><span class="leg" data-en="2–6h"  data-sr="2–6h"   style="color:#ddd;font-size:10px;">2–6h</span></span>
-  <span class="legend-item"><span class="legend-dot" style="background:#a36322"></span><span class="leg" data-en="6–12h" data-sr="6–12h"  style="color:#ddd;font-size:10px;">6–12h</span></span>
-  <span class="legend-item"><span class="legend-dot" style="background:#a37822"></span><span class="leg" data-en="12–24h" data-sr="12–24h" style="color:#ddd;font-size:10px;">12–24h</span></span>
-  <span class="legend-item"><span class="legend-dot" style="background:#9f8a5f"></span><span class="leg" data-en="24-48h" data-sr="24-48h" style="color:#ddd;font-size:10px;">24-48h</span></span>
-  <span class="legend-item"><span class="legend-dot" style="background:#333333"></span><span class="leg" data-en="48h+" data-sr="48h+" style="color:#ddd;font-size:10px;">48h+</span></span>
-
-</div>
-
-<div id="catLegend" style="
-  position:fixed;
-  left:8px;
-  right:84px;
-  bottom:calc(90px + env(safe-area-inset-bottom, 0px));
-  z-index:410;
-  background:rgba(18,18,18,.88);
-  backdrop-filter:blur(4px);
-  -webkit-backdrop-filter:blur(4px);
-  border-radius:10px;
-  padding:5px 10px;
-  display:flex;
-  align-items:center;
-  gap:6px;
-  flex-wrap:wrap;
-  pointer-events:none;
-  border:1px solid rgba(255,255,255,.09);
-  box-shadow:0 2px 10px rgba(0,0,0,.45);
-  margin-bottom:4px;
-">
-  <span class="legend-item"><span class="legend-dot" style="background:#c41e27"></span><span class="leg" data-en="Smoke" data-sr="Dim" style="color:#ddd;font-size:10px;">Dim</span></span>
-  <span class="legend-item"><span class="legend-dot" style="background:#8b4513"></span><span class="leg" data-en="Sewage" data-sr="Kanalizacija" style="color:#ddd;font-size:10px;">Kanalizacija</span></span>
-  <span class="legend-item"><span class="legend-dot" style="background:#d4c600"></span><span class="leg" data-en="Sulfur" data-sr="Sumpor" style="color:#ddd;font-size:10px;">Sumpor</span></span>
-  <span class="legend-item"><span class="legend-dot" style="background:#cc3399"></span><span class="leg" data-en="Burnt plastic" data-sr="Spaljena plastika" style="color:#ddd;font-size:10px;">Spaljena plastika</span></span>
-  <span class="legend-item"><span class="legend-dot" style="background:#008ab8"></span><span class="leg" data-en="Chemicals" data-sr="Hemikalije" style="color:#ddd;font-size:10px;">Hemikalije</span></span>
-  <span class="legend-item"><span class="legend-dot" style="background:#2a682a"></span><span class="leg" data-en="Waste" data-sr="Otpad" style="color:#ddd;font-size:10px;">Otpad</span></span>
-  <span class="legend-item"><span class="legend-dot" style="background:#3ec46d"></span><span class="leg" data-en="Clean Air" data-sr="Čist vazduh" style="color:#ddd;font-size:10px;">Čist vazduh</span></span>
-  <span class="legend-item"><span class="legend-dot" style="background:#8342a1"></span><span class="leg" data-en="Unknown" data-sr="Nepoznato" style="color:#ddd;font-size:10px;">Nepoznato</span></span>
-  <span class="legend-item"><span class="legend-dot" style="background:#474747"></span><span class="leg" data-en="Other" data-sr="Ostalo" style="color:#ddd;font-size:10px;">Ostalo</span></span>
+<div id="legendBar">
+  <div class="legend-row" id="ageLegendRow">
+    <span class="legend-item"><span class="legend-dot" style="background:#a32222"></span><span class="leg" data-en="&lt;1h"  data-sr="&lt;1h">&lt;1h</span></span>
+    <span class="legend-item"><span class="legend-dot" style="background:#a33822"></span><span class="leg" data-en="1–2h"  data-sr="1–2h">1–2h</span></span>
+    <span class="legend-item"><span class="legend-dot" style="background:#a34d22"></span><span class="leg" data-en="2–6h"  data-sr="2–6h">2–6h</span></span>
+    <span class="legend-item"><span class="legend-dot" style="background:#a36322"></span><span class="leg" data-en="6–12h" data-sr="6–12h">6–12h</span></span>
+    <span class="legend-item"><span class="legend-dot" style="background:#a37822"></span><span class="leg" data-en="12–24h" data-sr="12–24h">12–24h</span></span>
+    <span class="legend-item"><span class="legend-dot" style="background:#9f8a5f"></span><span class="leg" data-en="24-48h" data-sr="24-48h">24-48h</span></span>
+    <span class="legend-item"><span class="legend-dot" style="background:#333333"></span><span class="leg" data-en="48h+" data-sr="48h+">48h+</span></span>
+  </div>
+  <div class="legend-row" id="catLegendRow">
+    <span class="legend-item"><span class="legend-dot" style="background:#c41e27"></span><span class="leg" data-en="Smoke" data-sr="Dim">Dim</span></span>
+    <span class="legend-item"><span class="legend-dot" style="background:#8b4513"></span><span class="leg" data-en="Sewage" data-sr="Kanalizacija">Kanalizacija</span></span>
+    <span class="legend-item"><span class="legend-dot" style="background:#d4c600"></span><span class="leg" data-en="Sulfur" data-sr="Sumpor">Sumpor</span></span>
+    <span class="legend-item"><span class="legend-dot" style="background:#cc3399"></span><span class="leg" data-en="Burnt plastic" data-sr="Spaljena plastika">Spaljena plastika</span></span>
+    <span class="legend-item"><span class="legend-dot" style="background:#008ab8"></span><span class="leg" data-en="Chemicals" data-sr="Hemikalije">Hemikalije</span></span>
+    <span class="legend-item"><span class="legend-dot" style="background:#2a682a"></span><span class="leg" data-en="Waste" data-sr="Otpad">Otpad</span></span>
+    <span class="legend-item"><span class="legend-dot" style="background:#3ec46d"></span><span class="leg" data-en="Clean Air" data-sr="Čist vazduh">Čist vazduh</span></span>
+    <span class="legend-item"><span class="legend-dot" style="background:#8342a1"></span><span class="leg" data-en="Unknown" data-sr="Nepoznato">Nepoznato</span></span>
+    <span class="legend-item"><span class="legend-dot" style="background:#474747"></span><span class="leg" data-en="Other" data-sr="Ostalo">Ostalo</span></span>
+  </div>
 </div>
 
 <div id="bottomRightStack" class="bottomright-stack">
@@ -747,8 +748,9 @@ span.flatpickr-weekday {
         <button type="button" class="theme-segment-btn" onclick="setThemeMode('light')" id="themeBtnLight">Light</button>
         <button type="button" class="theme-segment-btn active" onclick="setThemeMode('dark')" id="themeBtnDark">Dark</button>
         <button type="button" class="theme-segment-btn" onclick="setThemeMode('auto')" id="themeBtnAuto">Auto</button>
+        <button type="button" class="theme-segment-btn" onclick="setThemeMode('smart')" id="themeBtnSmart">Smart</button>
       </div>
-      <p class="detail-export-hint" id="themeAutoHint">Auto follows your device's light/dark setting.</p>
+      <p class="detail-export-hint" id="themeAutoHint">Auto follows your device's light/dark setting. Smart adapts to ambient light where available, otherwise local time.</p>
     </div>
 
     <div class="detail-section" style="padding:0;overflow:hidden;">
@@ -1010,28 +1012,73 @@ function checkWizSubmitReady() {
 }
 
 /* ═══════════════════════════════════════════════════
-   THEME (Light / Dark / Auto)
+   THEME (Light / Dark / Auto / Smart)
 ═══════════════════════════════════════════════════ */
+let ambientSensor = null;
+let smartRecalcInterval = null;
+let lastAmbientLux = null;
+
+// Rough day/night boundary used when no ambient light sensor is available.
+// Not sunrise/sunset-accurate, but a reasonable local-time fallback.
+function timeOfDayIsLight() {
+  const h = new Date().getHours();
+  return h >= 7 && h < 19;
+}
+
 function resolveThemeMode(mode) {
   if (mode === 'auto') {
     const systemDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
     return systemDark ? 'dark' : 'light';
   }
+  if (mode === 'smart') {
+    if (lastAmbientLux != null) return lastAmbientLux < 15 ? 'dark' : 'light';
+    return timeOfDayIsLight() ? 'light' : 'dark';
+  }
   return mode;
 }
+
+function startSmartSensing() {
+  stopSmartSensing();
+  if ('AmbientLightSensor' in window) {
+    try {
+      ambientSensor = new AmbientLightSensor();
+      ambientSensor.addEventListener('reading', () => {
+        lastAmbientLux = ambientSensor.illuminance;
+        if (getSavedThemeMode() === 'smart') applyThemeMode('smart');
+      });
+      ambientSensor.addEventListener('error', () => { lastAmbientLux = null; });
+      ambientSensor.start();
+    } catch (e) { lastAmbientLux = null; } // permission denied / unsupported — falls back to time-of-day
+  }
+  // Time-of-day fallback keeps re-checking regardless, so "Smart" still
+  // flips at dawn/dusk even without sensor access.
+  smartRecalcInterval = setInterval(() => {
+    if (getSavedThemeMode() === 'smart') applyThemeMode('smart');
+  }, 5 * 60 * 1000);
+}
+function stopSmartSensing() {
+  if (ambientSensor) { try { ambientSensor.stop(); } catch (e) {} ambientSensor = null; }
+  if (smartRecalcInterval) { clearInterval(smartRecalcInterval); smartRecalcInterval = null; }
+  lastAmbientLux = null;
+}
+function getSavedThemeMode() {
+  try { return localStorage.getItem('ttt_theme_mode') || 'dark'; } catch (e) { return 'dark'; }
+}
 function initTheme() {
-  const mode = localStorage.getItem('ttt_theme_mode') || 'dark';
+  const mode = getSavedThemeMode();
   applyThemeMode(mode);
+  if (mode === 'smart') startSmartSensing();
 }
 function applyThemeMode(mode) {
   document.documentElement.dataset.theme = resolveThemeMode(mode);
-  ['Light','Dark','Auto'].forEach(m => {
+  ['Light','Dark','Auto','Smart'].forEach(m => {
     const btn = document.getElementById('themeBtn' + m);
     if (btn) btn.classList.toggle('active', m.toLowerCase() === mode);
   });
 }
 function setThemeMode(mode) {
   try { localStorage.setItem('ttt_theme_mode', mode); } catch (e) {}
+  if (mode === 'smart') startSmartSensing(); else stopSmartSensing();
   applyThemeMode(mode);
 }
 
@@ -1141,10 +1188,11 @@ const T = {
   langAutoHint:      { en:"We'll set the language based on your device/browser settings.", sr:'Jezik ćemo podesiti na osnovu podešavanja vašeg uređaja/pregledača.' },
   langBtnAutoLabel:  { en:'Auto',                        sr:'Auto' },
   themeSectionTitle: { en:'Theme',                       sr:'Tema' },
-  themeAutoHint:     { en:"Auto follows your device's light/dark setting.", sr:'Auto prati podešavanje svetle/tamne teme vašeg uređaja.' },
+  themeAutoHint:     { en:"Auto follows your device's light/dark setting. Smart adapts to ambient light where available, otherwise local time.", sr:'Auto prati podešavanje svetle/tamne teme vašeg uređaja. Pametna se prilagođava osvetljenju okoline gde je dostupno, inače lokalnom vremenu.' },
   themeBtnLight:     { en:'Light',                       sr:'Svetla' },
   themeBtnDark:      { en:'Dark',                        sr:'Tamna' },
-  themeBtnAuto:      { en:'Auto',                        sr:'Auto' }
+  themeBtnAuto:      { en:'Auto',                        sr:'Auto' },
+  themeBtnSmart:     { en:'Smart',                       sr:'Pametna' }
 };
 
 function t(k){ return T[k]?.[lang] ?? k; }
@@ -1190,6 +1238,7 @@ function applyLang(){
   if (el('themeBtnLight'))      el('themeBtnLight').textContent = t('themeBtnLight');
   if (el('themeBtnDark'))       el('themeBtnDark').textContent = t('themeBtnDark');
   if (el('themeBtnAuto'))       el('themeBtnAuto').textContent = t('themeBtnAuto');
+  if (el('themeBtnSmart'))      el('themeBtnSmart').textContent = t('themeBtnSmart');
 
   // Only re-render the active wizard step if the wizard is currently open,
   // since its inputs (category tiles, comment field, etc.) are rebuilt
@@ -1277,6 +1326,7 @@ function initCalendarFilter(optionalDefaultDates) {
    MAP
 ═══════════════════════════════════════════════════ */
 const map = L.map('map').setView([45.25,19.85],11);
+map.attributionControl.setPosition('bottomleft');
 map.createPane('conePane');
 map.getPane('conePane').style.zIndex = 390; // below splinePane
 map.getPane('conePane').style.pointerEvents = 'none';
@@ -1311,14 +1361,15 @@ onAdd: function(map) {
                              style="width: 28px; height: 28px; display: block; object-fit: contain;">`;
     
     // Styles
-    container.style.backgroundColor = 'rgba(20,20,20,0.88)';
+    container.style.backgroundColor = 'var(--floating-bg)';
     container.style.width = '44px';
     container.style.height = '44px';
     container.style.display = 'flex';
     container.style.alignItems = 'center';
     container.style.justifyContent = 'center';
-    container.style.borderRadius = '8px';
-    container.style.border = '1px solid #3a3a3a';
+    container.style.borderRadius = '50%';
+    container.style.border = '1px solid var(--floating-border)';
+    container.style.boxShadow = '0 2px 8px var(--floating-shadow)';
     container.style.cursor = 'pointer';
 
     L.DomEvent.disableClickPropagation(container);
