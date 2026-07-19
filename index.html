@@ -663,7 +663,7 @@ span.flatpickr-weekday {
   <div class="splash-spinner-wrap">
     <span class="splash-halo"></span>
     <span class="splash-halo splash-halo-2"></span>
-    <img src="image/TraceTheToxin.png" alt="TraceTheToxin" class="splash-logo">
+    <img src="image/TraceTheToxin.png" alt="TraceTheToxin" class="splash-logo" onerror="this.style.display='none'">
   </div>
   <div class="splash-text" id="splashText">Loading map…</div>
 </div>
@@ -1327,6 +1327,18 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
   className: 'map-tiles-grayscale'
 }).addTo(map);
 
+// Dismiss the splash screen once the map has finished its initial render.
+// Also set a hard fallback timeout so a slow/broken tile load never leaves
+// the user stuck behind the splash screen indefinitely.
+function hideSplashScreen() {
+  const el = document.getElementById('splashScreen');
+  if (!el) return;
+  el.classList.add('splash-hidden');
+  setTimeout(() => { el.style.display = 'none'; }, 400); // match CSS opacity transition
+}
+map.whenReady(hideSplashScreen);
+setTimeout(hideSplashScreen, 4000);
+
 let userCoords    = null;
 let userMarker    = null;
 let reportMarkers = [];
@@ -1414,7 +1426,7 @@ function enableManualPinMode() {
       })
     }).addTo(map);
   }
-  checkFormReady();
+  checkWizSubmitReady();
 }
 
 // Obfuscate a GPS fix by offsetting it a random distance (up to radiusMeters)
@@ -1453,7 +1465,7 @@ function startWatching() {
       } else {
         userMarker.setLatLng([userCoords.lat, userCoords.lon]);
       }
-      checkFormReady();
+      checkWizSubmitReady();
       evaluateActiveNearbyClusters();
     },
     err => {
@@ -1541,7 +1553,7 @@ function togglePinMode() {
     manualCoords = null; 
     loadPinsByWindow();
   }
-  checkFormReady();
+  checkWizSubmitReady();
 }
 
 function toggleTraceMode() {
@@ -1576,7 +1588,7 @@ function toggleTraceMode() {
     
     loadPinsByWindow(); // Re-render default historical background trails and pins
   }
-  checkFormReady(); // Maintain UI integrity
+  checkWizSubmitReady(); // Maintain UI integrity
 }
 
 map.on('click', async function(e) {
@@ -1600,7 +1612,7 @@ map.on('click', async function(e) {
       }).addTo(map);
     }
 
-    checkFormReady();
+    checkWizSubmitReady();
     return;
   }
   
