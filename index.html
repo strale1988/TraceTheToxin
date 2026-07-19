@@ -29,8 +29,6 @@
     })();
   </script>
   <style>
-.map-tiles-grayscale { filter: grayscale(1) brightness(0.85); }
-
 *{ margin:0; padding:0; box-sizing:border-box; }
 
 button, [onclick], [role="button"]{
@@ -56,7 +54,7 @@ button, [onclick], [role="button"]{
   --floating-bg: rgba(20,20,20,.88);
   --floating-border: #3a3a3a;
   --floating-shadow: rgba(0,0,0,.55);
-  --map-tile-filter: grayscale(1) brightness(0.85);
+  --map-tile-filter: grayscale(1) invert(1) brightness(0.85) contrast(0.9);
   --radius-sm:6px; --radius-md:8px; --radius-lg:10px; --radius-xl:14px; --radius-pill:20px;
   --fs-9:9px; --fs-10:10px; --fs-11:11px; --fs-12:12px; --fs-12-5:12.5px; --fs-13:13px;
   --fs-14:14px; --fs-15:15px; --fs-16:16px; --fs-18:18px; --fs-19:19px; --fs-20:20px; --fs-22:22px;
@@ -77,7 +75,7 @@ html[data-theme="light"]{
   --floating-bg: rgba(255,255,255,.92);
   --floating-border: #e2e2e0;
   --floating-shadow: rgba(0,0,0,.18);
-  --map-tile-filter: none;
+  --map-tile-filter: grayscale(1) brightness(1.08) contrast(0.92);
 }
 .leaflet-control-container .leaflet-bottom.leaflet-right{
   top:auto !important;
@@ -1190,7 +1188,7 @@ const T = {
   helpSectionTitle:  { en:'Help',                        sr:'Pomoć' },
   settingsHelpBtn:   { en:'How to use TraceTheToxin',    sr:'Kako se koristi TraceTheToxin' },
   languageSectionTitle: { en:'Language',                 sr:'Jezik' },
-  langAutoHint:      { en:"We'll set the language based on your device/browser settings.", sr:'Jezik ćemo podesiti na osnovu podešavanja vašeg uređaja/pregledača.' },
+  langAutoHint:      { en:"We'll set the language based on your location, falling back to your device/browser settings.", sr:'Jezik ćemo podesiti na osnovu vaše lokacije, a u suprotnom prema podešavanjima vašeg uređaja/pregledača.' },
   langBtnAutoLabel:  { en:'Auto',                        sr:'Auto' },
   themeSectionTitle: { en:'Theme',                       sr:'Tema' },
   themeAutoHint:     { en:"Auto follows your device's light/dark setting. Smart adapts to ambient light where available, otherwise local time.", sr:'Auto prati podešavanje svetle/tamne teme vašeg uređaja. Pametna se prilagođava osvetljenju okoline gde je dostupno, inače lokalnom vremenu.' },
@@ -1202,10 +1200,53 @@ const T = {
 
 function t(k){ return T[k]?.[lang] ?? k; }
 
+function guessLangFromBrowser(){
+  const browserLang = (navigator.language || 'en').slice(0, 2).toLowerCase();
+  return browserLang === 'sr' ? 'sr' : 'en';
+}
+
+// Applies a language resolved by GPS/reverse-geocoding, but only if the
+// user hasn't since switched away from Auto mode (e.g. the lookup was
+// still in flight when they tapped EN/SR manually).
+function applyAutoLangResult(newLang){
+  let currentMode = 'auto';
+  try { currentMode = localStorage.getItem('ttt_lang_mode') || 'auto'; } catch (e) {}
+  if (currentMode !== 'auto' || lang === newLang) return;
+  lang = newLang;
+  applyLang();
+}
+
+function resolveLangFromCoords(lat, lon){
+  fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=3&addressdetails=1`)
+    .then(r => r.json())
+    .then(data => {
+      const cc = data && data.address && data.address.country_code;
+      if (cc) applyAutoLangResult(cc === 'rs' ? 'sr' : 'en');
+    })
+    .catch(() => { /* reverse-geocode failed — browser-language guess stands */ });
+}
+
+// Auto language: start from the browser locale immediately so the UI
+// never waits on GPS, then refine using location where we can, since
+// that's a better signal than browser locale (e.g. a device set to
+// English being used in Serbia, or vice versa).
+function detectAutoLang(){
+  lang = guessLangFromBrowser();
+
+  if (userCoords) {
+    resolveLangFromCoords(userCoords.lat, userCoords.lon);
+  } else if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      pos => resolveLangFromCoords(pos.coords.latitude, pos.coords.longitude),
+      () => { /* GPS denied/unavailable — browser-language guess stands */ },
+      { timeout: 8000 }
+    );
+  }
+}
+
 function setLang(l){
   if (l === 'auto') {
-    const browserLang = (navigator.language || 'en').slice(0, 2).toLowerCase();
-    lang = browserLang === 'sr' ? 'sr' : 'en';
+    detectAutoLang();
   } else {
     lang = l;
   }
@@ -1340,8 +1381,7 @@ map.getPane('splinePane').style.zIndex = 450;
 map.getPane('splinePane').style.pointerEvents = 'none';
 
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
-  attribution:'© OpenStreetMap',
-  className: 'map-tiles-grayscale'
+  attribution:'© OpenStreetMap'
 }).addTo(map);
 
 let userCoords    = null;
@@ -2945,8 +2985,7 @@ try {
   const savedLangMode = localStorage.getItem('ttt_lang_mode');
   if (savedLangMode) {
     if (savedLangMode === 'auto') {
-      const browserLang = (navigator.language || 'en').slice(0, 2).toLowerCase();
-      lang = browserLang === 'sr' ? 'sr' : 'en';
+      detectAutoLang();
     } else {
       lang = savedLangMode;
     }
