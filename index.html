@@ -548,6 +548,10 @@ span.flatpickr-weekday {
 .wiz-details-row label{ display:block; font-size:var(--fs-13); color:var(--text-secondary); margin:0 0 6px; }
 .wiz-details-two-col{ display:flex; gap:8px; }
 .wiz-details-two-col .wiz-details-row{ flex:1; }
+.wiz-details-three-col{ display:flex; gap:8px; }
+.wiz-details-three-col .wiz-details-row{ flex:1; min-width:0; }
+.wiz-details-three-col input{ height:44px; padding-top:0; padding-bottom:0; }
+.wiz-details-three-col input[type="number"]{ text-align:center; }
 .wind-compass-wrap{ display:flex; flex-direction:column; align-items:center; gap:8px; padding:10px 0 4px; }
 .wind-compass-dial{ display:block; touch-action:none; }
 .wind-compass-dial .compass-label-text{ fill:var(--text-secondary); font-size:15px; font-weight:var(--fw-semibold); user-select:none; }
@@ -979,7 +983,7 @@ function renderWizDetailsStep() {
   body.innerHTML = `
     <p class="wiz-step-label">${t('wizStepLabel')} 3</p>
     <h3 class="wiz-step-title">${t('wizDetailsTitle')}</h3>
-    <div class="wiz-details-two-col">
+    <div class="wiz-details-three-col">
       <div class="wiz-details-row">
         <label>${t('wizTimeLabel')}</label>
         <input type="time" id="reportTime" value="${nowRoundedToQuarterHour()}" oninput="checkWizSubmitReady()">
@@ -988,6 +992,10 @@ function renderWizDetailsStep() {
         <label>${t('windDirPH')}</label>
         <input type="number" id="manualWind" min="0" max="360" placeholder="0-360" value="270"
                oninput="onManualWindChange()" onblur="validateRange(this)">
+      </div>
+      <div class="wiz-details-row">
+        <label>${t('durationPH')}</label>
+        <input type="number" id="duration" min="1" max="24" placeholder="1-24" oninput="checkWizSubmitReady()">
       </div>
     </div>
     <div class="wiz-details-row">
@@ -1006,10 +1014,6 @@ function renderWizDetailsStep() {
         </svg>
         <span class="compass-dir-letter" id="compassDirLetter">W</span>
       </div>
-    </div>
-    <div class="wiz-details-row">
-      <label>${t('durationPH')}</label>
-      <input type="number" id="duration" min="1" max="24" placeholder="1-24" oninput="checkWizSubmitReady()">
     </div>
     <div class="wiz-details-row">
       <label>${t('commentPH')}</label>
