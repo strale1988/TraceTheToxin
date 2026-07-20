@@ -987,31 +987,31 @@ function renderWizDetailsStep() {
       <div class="wiz-details-row">
         <label>${t('wizTimeLabel')}</label>
         <input type="time" id="reportTime" value="${nowRoundedToQuarterHour()}" oninput="checkWizSubmitReady()">
+        <div class="wc-readout">
+          <input type="number" id="manualWind" min="0" max="360" placeholder="0-360"
+                 oninput="wizOnWindNumberInput(this.value)" onblur="validateRange(this)">
+          <span id="wcCardinal" class="wc-cardinal"></span>
+        </div>
       </div>
       <div class="wiz-details-row">
         <label>${t('windDirPH')}</label>
         <div class="wind-compass-wrap">
           <svg id="windCompassSvg" class="wind-compass-svg" viewBox="0 0 140 140">
             <circle cx="70" cy="70" r="62" class="wc-ring"/>
-            <line x1="70" y1="10" x2="70" y2="20" class="wc-tick-major"/>
-            <line x1="130" y1="70" x2="120" y2="70" class="wc-tick-major"/>
-            <line x1="70" y1="130" x2="70" y2="120" class="wc-tick-major"/>
-            <line x1="10" y1="70" x2="20" y2="70" class="wc-tick-major"/>
-            <text x="70" y="14" class="wc-label">N</text>
-            <text x="126" y="70" class="wc-label">E</text>
-            <text x="70" y="126" class="wc-label">S</text>
-            <text x="14" y="70" class="wc-label">W</text>
+            <line x1="70" y1="8" x2="70" y2="20" class="wc-tick-major"/>
+            <line x1="132" y1="70" x2="120" y2="70" class="wc-tick-major"/>
+            <line x1="70" y1="132" x2="70" y2="120" class="wc-tick-major"/>
+            <line x1="8" y1="70" x2="20" y2="70" class="wc-tick-major"/>
+            <text x="70" y="33" class="wc-label">${compassPointLabels().N}</text>
+            <text x="107" y="70" class="wc-label">${compassPointLabels().E}</text>
+            <text x="70" y="107" class="wc-label">${compassPointLabels().S}</text>
+            <text x="33" y="70" class="wc-label">${compassPointLabels().W}</text>
             <g id="windArrowGroup" class="wc-arrow-group">
               <line x1="70" y1="70" x2="70" y2="24" class="wc-arrow-shaft"/>
               <polygon points="70,14 61,32 79,32" class="wc-arrow-head"/>
               <circle cx="70" cy="70" r="6" class="wc-arrow-hub"/>
             </g>
           </svg>
-          <div class="wc-readout">
-            <input type="number" id="manualWind" min="0" max="360" placeholder="0-360"
-                   oninput="wizOnWindNumberInput(this.value)" onblur="validateRange(this)">
-            <span id="wcCardinal" class="wc-cardinal"></span>
-          </div>
         </div>
       </div>
     </div>
