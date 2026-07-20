@@ -548,14 +548,12 @@ span.flatpickr-weekday {
 .wiz-details-row label{ display:block; font-size:var(--fs-13); color:var(--text-secondary); margin:0 0 6px; }
 .wiz-details-two-col{ display:flex; gap:8px; }
 .wiz-details-two-col .wiz-details-row{ flex:1; }
-.wind-compass-wrap{ display:flex; flex-direction:column; align-items:center; gap:10px; padding:6px 0 2px; }
+.wind-compass-wrap{ display:flex; flex-direction:column; align-items:center; gap:8px; padding:10px 0 4px; }
 .wind-compass-dial{ display:block; touch-action:none; }
-.wind-compass-dial .compass-label-text{ fill:var(--text-secondary); font-size:13px; font-weight:var(--fw-semibold); user-select:none; }
-.wind-compass-readout{ display:flex; align-items:center; gap:8px; }
-.wind-compass-readout input[type="number"]{ width:84px; text-align:center; }
+.wind-compass-dial .compass-label-text{ fill:var(--text-secondary); font-size:15px; font-weight:var(--fw-semibold); user-select:none; }
 .compass-dir-letter{
   display:inline-flex; align-items:center; justify-content:center;
-  min-width:32px; padding:8px 10px; border-radius:var(--radius-md);
+  min-width:32px; padding:6px 12px; border-radius:var(--radius-md);
   background:var(--bg-surface-alt); color:var(--text-secondary);
   font-size:var(--fs-13); font-weight:var(--fw-semibold);
 }
@@ -981,30 +979,32 @@ function renderWizDetailsStep() {
   body.innerHTML = `
     <p class="wiz-step-label">${t('wizStepLabel')} 3</p>
     <h3 class="wiz-step-title">${t('wizDetailsTitle')}</h3>
-    <div class="wiz-details-row">
-      <label>${t('wizTimeLabel')}</label>
-      <input type="time" id="reportTime" value="${nowRoundedToQuarterHour()}" oninput="checkWizSubmitReady()">
+    <div class="wiz-details-two-col">
+      <div class="wiz-details-row">
+        <label>${t('wizTimeLabel')}</label>
+        <input type="time" id="reportTime" value="${nowRoundedToQuarterHour()}" oninput="checkWizSubmitReady()">
+      </div>
+      <div class="wiz-details-row">
+        <label>${t('windDirPH')}</label>
+        <input type="number" id="manualWind" min="0" max="360" placeholder="0-360" value="270"
+               oninput="onManualWindChange()" onblur="validateRange(this)">
+      </div>
     </div>
     <div class="wiz-details-row">
-      <label>${t('windDirPH')}</label>
       <div class="wind-compass-wrap">
-        <svg class="wind-compass-dial" id="windCompassDial" viewBox="0 0 160 160" width="160" height="160">
-          <circle cx="80" cy="80" r="72" fill="none" stroke="var(--border-color-strong)" stroke-width="1.5"/>
-          <text class="compass-label-text" x="80" y="32" text-anchor="middle" dominant-baseline="middle">N</text>
-          <text class="compass-label-text" x="128" y="80" text-anchor="middle" dominant-baseline="middle">E</text>
-          <text class="compass-label-text" x="80" y="128" text-anchor="middle" dominant-baseline="middle">S</text>
-          <text class="compass-label-text" x="32" y="80" text-anchor="middle" dominant-baseline="middle">W</text>
-          <g id="compassArrowGroup" transform="rotate(270 80 80)">
-            <line x1="80" y1="80" x2="80" y2="40" stroke="var(--accent)" stroke-width="3" stroke-linecap="round"/>
-            <polygon points="80,30 72,44 88,44" fill="var(--accent)"/>
+        <svg class="wind-compass-dial" id="windCompassDial" viewBox="0 0 200 200" width="200" height="200">
+          <circle cx="100" cy="100" r="90" fill="none" stroke="var(--border-color-strong)" stroke-width="2"/>
+          <text class="compass-label-text" x="100" y="30" text-anchor="middle" dominant-baseline="middle">N</text>
+          <text class="compass-label-text" x="170" y="100" text-anchor="middle" dominant-baseline="middle">E</text>
+          <text class="compass-label-text" x="100" y="170" text-anchor="middle" dominant-baseline="middle">S</text>
+          <text class="compass-label-text" x="30" y="100" text-anchor="middle" dominant-baseline="middle">W</text>
+          <g id="compassArrowGroup" transform="rotate(90 100 100)">
+            <line x1="100" y1="100" x2="100" y2="50" stroke="var(--accent)" stroke-width="4" stroke-linecap="round"/>
+            <polygon points="100,36 90,52 110,52" fill="var(--accent)"/>
           </g>
-          <circle cx="80" cy="80" r="4" fill="var(--accent)"/>
+          <circle cx="100" cy="100" r="5" fill="var(--accent)"/>
         </svg>
-        <div class="wind-compass-readout">
-          <input type="number" id="manualWind" min="0" max="360" placeholder="0-360" value="270"
-                 oninput="onManualWindChange()" onblur="validateRange(this)">
-          <span class="compass-dir-letter" id="compassDirLetter">W</span>
-        </div>
+        <span class="compass-dir-letter" id="compassDirLetter">W</span>
       </div>
     </div>
     <div class="wiz-details-row">
@@ -1030,15 +1030,21 @@ function renderWizDetailsStep() {
    WIND COMPASS WIDGET
    The arrow lives inside <g id="compassArrowGroup"> and is rotated with an
    SVG rotate(deg cx cy) transform, so it always pivots exactly on the
-   circle's center (80,80) — no CSS transform-origin drift, no overlap
+   circle's center (100,100) — no CSS transform-origin drift, no overlap
    between the arrow and the N/E/S/W labels.
+
+   Convention: the number field / "Smer Vetra" value is the meteorological
+   wind direction (where the wind is blowing FROM). The arrow shows where
+   the wind is blowing TO, i.e. it points 180deg opposite the stored value
+   (e.g. value 270 -> arrow visually points at 90, to the right).
 ═══════════════════════════════════════════════════ */
 const DEFAULT_WIND_DEG = 270;
 
 function updateCompassVisual(deg) {
   deg = ((deg % 360) + 360) % 360;
+  const arrowVisualAngle = (deg + 180) % 360;
   const g = document.getElementById('compassArrowGroup');
-  if (g) g.setAttribute('transform', `rotate(${deg} 80 80)`);
+  if (g) g.setAttribute('transform', `rotate(${arrowVisualAngle} 100 100)`);
   const letterEl = document.getElementById('compassDirLetter');
   if (letterEl) letterEl.textContent = degToCardinal(deg);
 }
@@ -1052,8 +1058,10 @@ function onManualWindChange() {
   checkWizSubmitReady();
 }
 
-function setWindDirection(deg) {
-  deg = Math.round(((deg % 360) + 360) % 360);
+function setWindDirection(arrowVisualAngle) {
+  // Convert the angle the user just pointed the arrow at back into the
+  // reported wind-direction value (180deg offset — see note above).
+  const deg = Math.round(((arrowVisualAngle + 180) % 360 + 360) % 360);
   const input = document.getElementById('manualWind');
   if (input) input.value = deg;
   updateCompassVisual(deg);
