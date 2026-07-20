@@ -548,19 +548,17 @@ span.flatpickr-weekday {
 .wiz-details-row label{ display:block; font-size:var(--fs-13); color:var(--text-secondary); margin:0 0 6px; }
 .wiz-details-two-col{ display:flex; gap:8px; }
 .wiz-details-two-col .wiz-details-row{ flex:1; }
-.wind-compass-wrap{ display:flex; flex-direction:column; align-items:center; gap:6px; }
-.wind-compass-svg{ width:96px; height:96px; touch-action:none; cursor:grab; -webkit-tap-highlight-color:transparent; user-select:none; }
-.wind-compass-svg:active{ cursor:grabbing; }
-.wc-ring{ fill:var(--bg-surface-alt); stroke:var(--border-color-strong); stroke-width:2; }
-.wc-tick-major{ stroke:var(--text-secondary); stroke-width:2; }
-.wc-label{ font-size:14px; fill:var(--text-secondary); text-anchor:middle; dominant-baseline:middle; font-weight:var(--fw-semibold); }
-.wc-arrow-group{ transition:transform .08s linear; transform-origin:70px 70px; }
-.wc-arrow-shaft{ stroke:var(--accent); stroke-width:6; stroke-linecap:round; }
-.wc-arrow-head{ fill:var(--accent); }
-.wc-arrow-hub{ fill:var(--accent); stroke:var(--bg-surface); stroke-width:2; }
-.wc-readout{ display:flex; align-items:center; justify-content:center; gap:6px; }
-.wc-readout input{ width:60px; text-align:center; padding:8px 4px; }
-.wc-cardinal{ font-size:var(--fs-13); color:var(--text-secondary); font-weight:var(--fw-semibold); min-width:22px; }
+.wind-compass-wrap{ display:flex; flex-direction:column; align-items:center; gap:10px; padding:6px 0 2px; }
+.wind-compass-dial{ display:block; touch-action:none; }
+.wind-compass-dial .compass-label-text{ fill:var(--text-secondary); font-size:13px; font-weight:var(--fw-semibold); user-select:none; }
+.wind-compass-readout{ display:flex; align-items:center; gap:8px; }
+.wind-compass-readout input[type="number"]{ width:84px; text-align:center; }
+.compass-dir-letter{
+  display:inline-flex; align-items:center; justify-content:center;
+  min-width:32px; padding:8px 10px; border-radius:var(--radius-md);
+  background:var(--bg-surface-alt); color:var(--text-secondary);
+  font-size:var(--fs-13); font-weight:var(--fw-semibold);
+}
 .wiz-submit-btn{
   width:100%; background:var(--danger); color:#fff; border:none;
   border-radius:var(--radius-xl); padding:16px; font-size:var(--fs-16); font-weight:var(--fw-semibold); cursor:pointer;
@@ -983,35 +981,29 @@ function renderWizDetailsStep() {
   body.innerHTML = `
     <p class="wiz-step-label">${t('wizStepLabel')} 3</p>
     <h3 class="wiz-step-title">${t('wizDetailsTitle')}</h3>
-    <div class="wiz-details-two-col">
-      <div class="wiz-details-row">
-        <label>${t('wizTimeLabel')}</label>
-        <input type="time" id="reportTime" value="${nowRoundedToQuarterHour()}" oninput="checkWizSubmitReady()">
-        <div class="wc-readout">
-          <input type="number" id="manualWind" min="0" max="360" placeholder="0-360"
-                 oninput="wizOnWindNumberInput(this.value)" onblur="validateRange(this)">
-          <span id="wcCardinal" class="wc-cardinal"></span>
-        </div>
-      </div>
-      <div class="wiz-details-row">
-        <label>${t('windDirPH')}</label>
-        <div class="wind-compass-wrap">
-          <svg id="windCompassSvg" class="wind-compass-svg" viewBox="0 0 140 140">
-            <circle cx="70" cy="70" r="62" class="wc-ring"/>
-            <line x1="70" y1="8" x2="70" y2="20" class="wc-tick-major"/>
-            <line x1="132" y1="70" x2="120" y2="70" class="wc-tick-major"/>
-            <line x1="70" y1="132" x2="70" y2="120" class="wc-tick-major"/>
-            <line x1="8" y1="70" x2="20" y2="70" class="wc-tick-major"/>
-            <text x="70" y="33" class="wc-label">${compassPointLabels().N}</text>
-            <text x="107" y="70" class="wc-label">${compassPointLabels().E}</text>
-            <text x="70" y="107" class="wc-label">${compassPointLabels().S}</text>
-            <text x="33" y="70" class="wc-label">${compassPointLabels().W}</text>
-            <g id="windArrowGroup" class="wc-arrow-group">
-              <line x1="70" y1="70" x2="70" y2="24" class="wc-arrow-shaft"/>
-              <polygon points="70,14 61,32 79,32" class="wc-arrow-head"/>
-              <circle cx="70" cy="70" r="6" class="wc-arrow-hub"/>
-            </g>
-          </svg>
+    <div class="wiz-details-row">
+      <label>${t('wizTimeLabel')}</label>
+      <input type="time" id="reportTime" value="${nowRoundedToQuarterHour()}" oninput="checkWizSubmitReady()">
+    </div>
+    <div class="wiz-details-row">
+      <label>${t('windDirPH')}</label>
+      <div class="wind-compass-wrap">
+        <svg class="wind-compass-dial" id="windCompassDial" viewBox="0 0 160 160" width="160" height="160">
+          <circle cx="80" cy="80" r="72" fill="none" stroke="var(--border-color-strong)" stroke-width="1.5"/>
+          <text class="compass-label-text" x="80" y="32" text-anchor="middle" dominant-baseline="middle">N</text>
+          <text class="compass-label-text" x="128" y="80" text-anchor="middle" dominant-baseline="middle">E</text>
+          <text class="compass-label-text" x="80" y="128" text-anchor="middle" dominant-baseline="middle">S</text>
+          <text class="compass-label-text" x="32" y="80" text-anchor="middle" dominant-baseline="middle">W</text>
+          <g id="compassArrowGroup" transform="rotate(270 80 80)">
+            <line x1="80" y1="80" x2="80" y2="40" stroke="var(--accent)" stroke-width="3" stroke-linecap="round"/>
+            <polygon points="80,30 72,44 88,44" fill="var(--accent)"/>
+          </g>
+          <circle cx="80" cy="80" r="4" fill="var(--accent)"/>
+        </svg>
+        <div class="wind-compass-readout">
+          <input type="number" id="manualWind" min="0" max="360" placeholder="0-360" value="270"
+                 oninput="onManualWindChange()" onblur="validateRange(this)">
+          <span class="compass-dir-letter" id="compassDirLetter">W</span>
         </div>
       </div>
     </div>
@@ -1029,100 +1021,68 @@ function renderWizDetailsStep() {
             onclick="reportBadAir()" disabled>
       <span id="reportBtnLabel">${wizState.category === 'Clean Air' ? t('reportBtnCleanAir') : t('reportBtn')}</span>
     </button>`;
-  initWindCompass();
+  updateCompassVisual(DEFAULT_WIND_DEG);
+  setupCompassDrag();
   checkWizSubmitReady();
 }
 
 /* ═══════════════════════════════════════════════════
-   WIND COMPASS (drag-to-set direction, reporting wizard)
-   The manualWind input always stores the standard meteorological
-   "wind FROM" degree (same value the user reads off Windfinder).
-   The arrow is drawn 180° opposite that so it visually points
-   in the direction the wind is blowing TOWARD, which is what
-   users intuitively expect to see on a compass.
+   WIND COMPASS WIDGET
+   The arrow lives inside <g id="compassArrowGroup"> and is rotated with an
+   SVG rotate(deg cx cy) transform, so it always pivots exactly on the
+   circle's center (80,80) — no CSS transform-origin drift, no overlap
+   between the arrow and the N/E/S/W labels.
 ═══════════════════════════════════════════════════ */
-let windCompassDragging = false;
+const DEFAULT_WIND_DEG = 270;
 
-// Sets the wind direction (meteorological "from" degrees, 0-360), updates the
-// number input, rotates the arrow, and refreshes the cardinal-direction label.
-function setWindDirection(fromDeg, opts = {}) {
-  fromDeg = ((fromDeg % 360) + 360) % 360;
-  const windEl = document.getElementById('manualWind');
-  if (windEl && !opts.skipInputUpdate) windEl.value = Math.round(fromDeg);
-  const arrowGroup = document.getElementById('windArrowGroup');
-  if (arrowGroup) {
-    const pointToDeg = (fromDeg + 180) % 360;
-    arrowGroup.setAttribute('transform', `rotate(${pointToDeg} 70 70)`);
+function updateCompassVisual(deg) {
+  deg = ((deg % 360) + 360) % 360;
+  const g = document.getElementById('compassArrowGroup');
+  if (g) g.setAttribute('transform', `rotate(${deg} 80 80)`);
+  const letterEl = document.getElementById('compassDirLetter');
+  if (letterEl) letterEl.textContent = degToCardinal(deg);
+}
+
+function onManualWindChange() {
+  const input = document.getElementById('manualWind');
+  const raw = input ? input.value : '';
+  if (raw !== '' && !isNaN(parseFloat(raw))) {
+    updateCompassVisual(parseFloat(raw));
   }
-  const cardEl = document.getElementById('wcCardinal');
-  if (cardEl) cardEl.textContent = degToCardinal(fromDeg);
   checkWizSubmitReady();
 }
 
-// Called when the user types directly into the number field instead of dragging.
-function wizOnWindNumberInput(v) {
-  const n = parseFloat(v);
-  const cardEl = document.getElementById('wcCardinal');
-  if (!isNaN(n) && n >= 0 && n <= 360) {
-    setWindDirection(n, { skipInputUpdate: true });
-  } else {
-    if (cardEl) cardEl.textContent = '';
-    checkWizSubmitReady();
-  }
+function setWindDirection(deg) {
+  deg = Math.round(((deg % 360) + 360) % 360);
+  const input = document.getElementById('manualWind');
+  if (input) input.value = deg;
+  updateCompassVisual(deg);
+  checkWizSubmitReady();
 }
 
-// Converts a pointer/touch event's screen position into a compass bearing
-// (0-360, clockwise from north) relative to the compass widget's center.
-function windCompassBearingFromEvent(evt, svg) {
-  const rect = svg.getBoundingClientRect();
-  const clientX = evt.touches ? evt.touches[0].clientX : evt.clientX;
-  const clientY = evt.touches ? evt.touches[0].clientY : evt.clientY;
-  const cx = rect.left + rect.width / 2;
-  const cy = rect.top + rect.height / 2;
-  const dx = clientX - cx;
-  const dy = clientY - cy;
-  let bearing = Math.atan2(dx, -dy) * 180 / Math.PI;
-  if (bearing < 0) bearing += 360;
-  return bearing;
-}
-
-// Wires up drag/tap interaction on the compass SVG for the currently-rendered
-// wizard details step. Safe to call even if the compass isn't in the DOM.
-function initWindCompass() {
-  const svg = document.getElementById('windCompassSvg');
+function setupCompassDrag() {
+  const svg = document.getElementById('windCompassDial');
   if (!svg) return;
 
-  const handleDrag = (e) => {
-    const bearing = windCompassBearingFromEvent(e, svg); // direction arrow points TO
-    const fromDeg = (bearing + 180) % 360;                // stored "from" convention
-    setWindDirection(fromDeg);
-  };
-  const onDown = (e) => {
-    windCompassDragging = true;
-    if (e.pointerId != null && svg.setPointerCapture) {
-      try { svg.setPointerCapture(e.pointerId); } catch (err) {}
-    }
-    handleDrag(e);
-    e.preventDefault();
-  };
-  const onMove = (e) => {
-    if (!windCompassDragging) return;
-    handleDrag(e);
-    e.preventDefault();
-  };
-  const onUp = () => { windCompassDragging = false; };
-
-  svg.addEventListener('pointerdown', onDown);
-  svg.addEventListener('pointermove', onMove);
-  svg.addEventListener('pointerup', onUp);
-  svg.addEventListener('pointercancel', onUp);
-
-  // Reflect whatever's already in the number input (usually empty on a fresh step).
-  const windEl = document.getElementById('manualWind');
-  const existing = windEl ? windEl.value : '';
-  if (existing !== '') {
-    setWindDirection(parseFloat(existing), { skipInputUpdate: true });
+  function angleFromEvent(e) {
+    const rect = svg.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const dx = e.clientX - cx;
+    const dy = e.clientY - cy;
+    // 0deg = up (N), clockwise positive — matches compass bearing convention.
+    const deg = Math.atan2(dx, -dy) * 180 / Math.PI;
+    return (deg + 360) % 360;
   }
+
+  svg.onpointerdown = function(e) {
+    svg.setPointerCapture(e.pointerId);
+    setWindDirection(angleFromEvent(e));
+  };
+  svg.onpointermove = function(e) {
+    if (!svg.hasPointerCapture(e.pointerId)) return;
+    setWindDirection(angleFromEvent(e));
+  };
 }
 
 function checkWizSubmitReady() {
