@@ -451,8 +451,8 @@ span.flatpickr-weekday {
   display:flex; flex-direction:column; align-items:center; gap:10px;
   position:fixed; right:12px; z-index:420;
 }
-#traceSourceBtn{ position:fixed; bottom:calc(var(--fab-bottom, 56px) + 94px); right:12px; }
-#pinMapBtn{ position:fixed; bottom:calc(var(--fab-bottom, 56px) + 148px); right:12px; }
+#traceSourceBtn{ position:fixed; bottom:calc(150px + env(safe-area-inset-bottom, 0px)); right:12px; }
+#pinMapBtn{ position:fixed; bottom:calc(204px + env(safe-area-inset-bottom, 0px)); right:12px; }
 .pin-map-btn{
   background:var(--floating-bg);
   border:1px solid var(--floating-border);
@@ -502,7 +502,7 @@ span.flatpickr-weekday {
   position:fixed;
   left:50%;
   transform:translateX(-50%);
-  bottom:var(--fab-bottom, calc(56px + env(safe-area-inset-bottom, 0px)));
+  bottom:calc(56px + env(safe-area-inset-bottom, 0px));
   z-index:420;
   display:flex; align-items:center; justify-content:center;
   cursor:pointer;
@@ -548,6 +548,19 @@ span.flatpickr-weekday {
 .wiz-details-row label{ display:block; font-size:var(--fs-13); color:var(--text-secondary); margin:0 0 6px; }
 .wiz-details-two-col{ display:flex; gap:8px; }
 .wiz-details-two-col .wiz-details-row{ flex:1; }
+.wind-compass-wrap{ display:flex; flex-direction:column; align-items:center; gap:6px; }
+.wind-compass-svg{ width:96px; height:96px; touch-action:none; cursor:grab; -webkit-tap-highlight-color:transparent; user-select:none; }
+.wind-compass-svg:active{ cursor:grabbing; }
+.wc-ring{ fill:var(--bg-surface-alt); stroke:var(--border-color-strong); stroke-width:2; }
+.wc-tick-major{ stroke:var(--text-secondary); stroke-width:2; }
+.wc-label{ font-size:14px; fill:var(--text-secondary); text-anchor:middle; dominant-baseline:middle; font-weight:var(--fw-semibold); }
+.wc-arrow-group{ transition:transform .08s linear; transform-origin:70px 70px; }
+.wc-arrow-shaft{ stroke:var(--accent); stroke-width:6; stroke-linecap:round; }
+.wc-arrow-head{ fill:var(--accent); }
+.wc-arrow-hub{ fill:var(--accent); stroke:var(--bg-surface); stroke-width:2; }
+.wc-readout{ display:flex; align-items:center; justify-content:center; gap:6px; }
+.wc-readout input{ width:60px; text-align:center; padding:8px 4px; }
+.wc-cardinal{ font-size:var(--fs-13); color:var(--text-secondary); font-weight:var(--fw-semibold); min-width:22px; }
 .wiz-submit-btn{
   width:100%; background:var(--danger); color:#fff; border:none;
   border-radius:var(--radius-xl); padding:16px; font-size:var(--fs-16); font-weight:var(--fw-semibold); cursor:pointer;
@@ -556,7 +569,7 @@ span.flatpickr-weekday {
 .wiz-intensity-value{
   font-size:40px; font-weight:var(--fw-heavy); text-align:center; margin:8px 0 4px;
 }
-.wiz-intensity-label{ text-align:center; color:var(--text-secondary); font-size:var(--fs-13); line-height:1.3; min-height:calc(var(--fs-13) * 1.3); margin-bottom:18px; }
+.wiz-intensity-label{ text-align:center; color:var(--text-secondary); font-size:var(--fs-13); margin-bottom:18px; }
 .wiz-intensity-slider{
   width:100%; -webkit-appearance:none; appearance:none;
   height:8px; border-radius:4px; background:var(--bg-surface-alt); outline:none;
@@ -569,54 +582,6 @@ span.flatpickr-weekday {
   width:26px; height:26px; border-radius:50%; border:none;
   background:var(--danger); cursor:pointer;
 }
-.wiz-compass-row{ display:flex; flex-direction:column; align-items:center; }
-.compass-wrap{ display:flex; flex-direction:column; align-items:center; gap:8px; margin:2px 0 4px; }
-.compass-dial{
-  position:relative; width:168px; height:168px; border-radius:50%;
-  background:var(--bg-surface-alt); border:1px solid var(--border-color-strong);
-  touch-action:none; cursor:grab; user-select:none; -webkit-user-select:none;
-  flex-shrink:0;
-}
-.compass-dial:active{ cursor:grabbing; }
-.compass-dial::before{
-  content:''; position:absolute; inset:14px; border-radius:50%;
-  border:1px dashed var(--border-color); pointer-events:none;
-}
-.compass-center-dot{
-  position:absolute; top:50%; left:50%; width:8px; height:8px; margin:-4px;
-  border-radius:50%; background:var(--text-secondary); pointer-events:none;
-}
-.compass-needle{
-  position:absolute; top:50%; left:50%; width:4px; height:70px;
-  margin-left:-2px; margin-top:-70px;
-  transform-origin:2px 70px; border-radius:3px;
-  background:linear-gradient(to top, var(--accent), var(--danger));
-  transform:rotate(0deg); pointer-events:none; opacity:0; transition:opacity .15s ease;
-}
-.compass-needle.set{ opacity:1; }
-.compass-needle::after{
-  content:''; position:absolute; top:-6px; left:50%; width:12px; height:12px;
-  margin-left:-6px; border-radius:50%; background:var(--danger);
-  box-shadow:0 1px 4px rgba(0,0,0,.4);
-}
-.compass-label-btn{
-  position:absolute; width:30px; height:30px; margin:-15px;
-  display:flex; align-items:center; justify-content:center;
-  border:none; border-radius:50%; background:transparent;
-  color:var(--text-secondary); font-size:var(--fs-11); font-weight:var(--fw-semibold);
-  cursor:pointer; -webkit-tap-highlight-color:transparent; touch-action:manipulation;
-}
-.compass-label-btn.active{ color:var(--accent-contrast); background:var(--accent); }
-.compass-label-btn[data-dir="N"]{ top:4px; left:50%; }
-.compass-label-btn[data-dir="NE"]{ top:27px; left:141px; }
-.compass-label-btn[data-dir="E"]{ top:50%; left:164px; }
-.compass-label-btn[data-dir="SE"]{ top:141px; left:141px; }
-.compass-label-btn[data-dir="S"]{ top:164px; left:50%; }
-.compass-label-btn[data-dir="SW"]{ top:141px; left:27px; }
-.compass-label-btn[data-dir="W"]{ top:50%; left:4px; }
-.compass-label-btn[data-dir="NW"]{ top:27px; left:27px; }
-.compass-value-label{ font-size:var(--fs-13); color:var(--text-secondary); min-height:18px; }
-.compass-value-label .compass-deg{ color:var(--text-primary); font-weight:var(--fw-semibold); }
 .wiz-cooldown-notice{
   background:var(--bg-surface-alt); border-left:3px solid var(--danger);
   border-radius:6px; padding:12px 14px; font-size:var(--fs-13); color:var(--text-secondary); margin-top:12px;
@@ -698,6 +663,9 @@ span.flatpickr-weekday {
       <p id="subtitle">Community Air Reporting Network</p>
     </div>
     <div class="right-controls">
+      <button class="help-icon-btn" id="helpTopBtn" title="Help / Pomoć" onclick="showHelpModal()">
+        <img class="icon-img" src="icons/help.png" alt="Help">
+      </button>
       <button class="help-icon-btn" id="settingsBtn" title="Settings / Podešavanja" onclick="showSettingsModal()">
         <img class="icon-img" src="icons/settings.png" alt="Settings">
       </button>
@@ -910,29 +878,11 @@ const WIZ_CATEGORY_LABELS = {
 
 let wizState = { step: 0, category: null, intensity: 5 };
 
-const COMPASS_POINTS = [
-  { dir:'N',  deg:0   }, { dir:'NE', deg:45  }, { dir:'E',  deg:90  }, { dir:'SE', deg:135 },
-  { dir:'S',  deg:180 }, { dir:'SW', deg:225 }, { dir:'W',  deg:270 }, { dir:'NW', deg:315 },
-];
-const COMPASS_DIR_LABELS = {
-  en:{ N:'N',  NE:'NE', E:'E',  SE:'SE', S:'S',  SW:'SW', W:'W',  NW:'NW' },
-  sr:{ N:'S',  NE:'SI', E:'I',  SE:'JI', S:'J',  SW:'JZ', W:'Z',  NW:'SZ' },
-};
-function compassDirLabel(dir){ return (COMPASS_DIR_LABELS[lang] || COMPASS_DIR_LABELS.en)[dir]; }
-function nearestCompassDir(deg){
-  const i = Math.round(((deg % 360) + 360) % 360 / 45) % 8;
-  return COMPASS_POINTS[i].dir;
-}
-
 function reportFabTap() {
   const remaining = getReportCooldownRemainingMs();
   if (remaining > 0) {
     const mins = Math.ceil(remaining / 60000);
     alert(t('cooldownActive').replace('{n}', mins));
-    return;
-  }
-  if (!userCoords && !manualCoords) {
-    showGpsModalForced();
     return;
   }
   openReportWizard();
@@ -1033,27 +983,41 @@ function renderWizDetailsStep() {
   body.innerHTML = `
     <p class="wiz-step-label">${t('wizStepLabel')} 3</p>
     <h3 class="wiz-step-title">${t('wizDetailsTitle')}</h3>
-    <div class="wiz-details-row wiz-compass-row">
-      <label>${t('windDirPH')}</label>
-      <div class="compass-wrap">
-        <div class="compass-dial" id="compassDial">
-          <div class="compass-needle" id="compassNeedle"></div>
-          <div class="compass-center-dot"></div>
-          ${COMPASS_POINTS.map(p => `<button type="button" class="compass-label-btn" data-dir="${p.dir}" onclick="setWindDir(${p.deg})">${compassDirLabel(p.dir)}</button>`).join('')}
-        </div>
-        <div class="compass-value-label" id="compassValueLabel">${t('compassHint')}</div>
-      </div>
-      <input type="hidden" id="manualWind" value="">
-    </div>
     <div class="wiz-details-two-col">
       <div class="wiz-details-row">
         <label>${t('wizTimeLabel')}</label>
         <input type="time" id="reportTime" value="${nowRoundedToQuarterHour()}" oninput="checkWizSubmitReady()">
       </div>
       <div class="wiz-details-row">
-        <label>${t('durationPH')}</label>
-        <input type="number" id="duration" min="1" max="24" placeholder="${t('durationPlaceholder')}" oninput="checkWizSubmitReady()">
+        <label>${t('windDirPH')}</label>
+        <div class="wind-compass-wrap">
+          <svg id="windCompassSvg" class="wind-compass-svg" viewBox="0 0 140 140">
+            <circle cx="70" cy="70" r="62" class="wc-ring"/>
+            <line x1="70" y1="10" x2="70" y2="20" class="wc-tick-major"/>
+            <line x1="130" y1="70" x2="120" y2="70" class="wc-tick-major"/>
+            <line x1="70" y1="130" x2="70" y2="120" class="wc-tick-major"/>
+            <line x1="10" y1="70" x2="20" y2="70" class="wc-tick-major"/>
+            <text x="70" y="14" class="wc-label">N</text>
+            <text x="126" y="70" class="wc-label">E</text>
+            <text x="70" y="126" class="wc-label">S</text>
+            <text x="14" y="70" class="wc-label">W</text>
+            <g id="windArrowGroup" class="wc-arrow-group">
+              <line x1="70" y1="70" x2="70" y2="24" class="wc-arrow-shaft"/>
+              <polygon points="70,14 61,32 79,32" class="wc-arrow-head"/>
+              <circle cx="70" cy="70" r="6" class="wc-arrow-hub"/>
+            </g>
+          </svg>
+          <div class="wc-readout">
+            <input type="number" id="manualWind" min="0" max="360" placeholder="0-360"
+                   oninput="wizOnWindNumberInput(this.value)" onblur="validateRange(this)">
+            <span id="wcCardinal" class="wc-cardinal"></span>
+          </div>
+        </div>
       </div>
+    </div>
+    <div class="wiz-details-row">
+      <label>${t('durationPH')}</label>
+      <input type="number" id="duration" min="1" max="24" placeholder="1-24" oninput="checkWizSubmitReady()">
     </div>
     <div class="wiz-details-row">
       <label>${t('commentPH')}</label>
@@ -1065,8 +1029,100 @@ function renderWizDetailsStep() {
             onclick="reportBadAir()" disabled>
       <span id="reportBtnLabel">${wizState.category === 'Clean Air' ? t('reportBtnCleanAir') : t('reportBtn')}</span>
     </button>`;
-  initCompassDrag();
+  initWindCompass();
   checkWizSubmitReady();
+}
+
+/* ═══════════════════════════════════════════════════
+   WIND COMPASS (drag-to-set direction, reporting wizard)
+   The manualWind input always stores the standard meteorological
+   "wind FROM" degree (same value the user reads off Windfinder).
+   The arrow is drawn 180° opposite that so it visually points
+   in the direction the wind is blowing TOWARD, which is what
+   users intuitively expect to see on a compass.
+═══════════════════════════════════════════════════ */
+let windCompassDragging = false;
+
+// Sets the wind direction (meteorological "from" degrees, 0-360), updates the
+// number input, rotates the arrow, and refreshes the cardinal-direction label.
+function setWindDirection(fromDeg, opts = {}) {
+  fromDeg = ((fromDeg % 360) + 360) % 360;
+  const windEl = document.getElementById('manualWind');
+  if (windEl && !opts.skipInputUpdate) windEl.value = Math.round(fromDeg);
+  const arrowGroup = document.getElementById('windArrowGroup');
+  if (arrowGroup) {
+    const pointToDeg = (fromDeg + 180) % 360;
+    arrowGroup.setAttribute('transform', `rotate(${pointToDeg} 70 70)`);
+  }
+  const cardEl = document.getElementById('wcCardinal');
+  if (cardEl) cardEl.textContent = degToCardinal(fromDeg);
+  checkWizSubmitReady();
+}
+
+// Called when the user types directly into the number field instead of dragging.
+function wizOnWindNumberInput(v) {
+  const n = parseFloat(v);
+  const cardEl = document.getElementById('wcCardinal');
+  if (!isNaN(n) && n >= 0 && n <= 360) {
+    setWindDirection(n, { skipInputUpdate: true });
+  } else {
+    if (cardEl) cardEl.textContent = '';
+    checkWizSubmitReady();
+  }
+}
+
+// Converts a pointer/touch event's screen position into a compass bearing
+// (0-360, clockwise from north) relative to the compass widget's center.
+function windCompassBearingFromEvent(evt, svg) {
+  const rect = svg.getBoundingClientRect();
+  const clientX = evt.touches ? evt.touches[0].clientX : evt.clientX;
+  const clientY = evt.touches ? evt.touches[0].clientY : evt.clientY;
+  const cx = rect.left + rect.width / 2;
+  const cy = rect.top + rect.height / 2;
+  const dx = clientX - cx;
+  const dy = clientY - cy;
+  let bearing = Math.atan2(dx, -dy) * 180 / Math.PI;
+  if (bearing < 0) bearing += 360;
+  return bearing;
+}
+
+// Wires up drag/tap interaction on the compass SVG for the currently-rendered
+// wizard details step. Safe to call even if the compass isn't in the DOM.
+function initWindCompass() {
+  const svg = document.getElementById('windCompassSvg');
+  if (!svg) return;
+
+  const handleDrag = (e) => {
+    const bearing = windCompassBearingFromEvent(e, svg); // direction arrow points TO
+    const fromDeg = (bearing + 180) % 360;                // stored "from" convention
+    setWindDirection(fromDeg);
+  };
+  const onDown = (e) => {
+    windCompassDragging = true;
+    if (e.pointerId != null && svg.setPointerCapture) {
+      try { svg.setPointerCapture(e.pointerId); } catch (err) {}
+    }
+    handleDrag(e);
+    e.preventDefault();
+  };
+  const onMove = (e) => {
+    if (!windCompassDragging) return;
+    handleDrag(e);
+    e.preventDefault();
+  };
+  const onUp = () => { windCompassDragging = false; };
+
+  svg.addEventListener('pointerdown', onDown);
+  svg.addEventListener('pointermove', onMove);
+  svg.addEventListener('pointerup', onUp);
+  svg.addEventListener('pointercancel', onUp);
+
+  // Reflect whatever's already in the number input (usually empty on a fresh step).
+  const windEl = document.getElementById('manualWind');
+  const existing = windEl ? windEl.value : '';
+  if (existing !== '') {
+    setWindDirection(parseFloat(existing), { skipInputUpdate: true });
+  }
 }
 
 function checkWizSubmitReady() {
@@ -1083,57 +1139,6 @@ function checkWizSubmitReady() {
   btn.disabled = !(time && isWindValid && hasLoc);
   const hintEl = document.getElementById('wizLocationHint');
   if (hintEl) hintEl.textContent = hasLoc ? '' : t('wizNoLocationHint');
-}
-
-/* ── Wind direction compass ── */
-function setWindDir(deg) {
-  deg = Math.round(((deg % 360) + 360) % 360);
-  const windEl = document.getElementById('manualWind');
-  if (windEl) windEl.value = deg;
-
-  const needle = document.getElementById('compassNeedle');
-  if (needle) {
-    needle.style.transform = `rotate(${deg}deg)`;
-    needle.classList.add('set');
-  }
-  document.querySelectorAll('.compass-label-btn').forEach(b => {
-    b.classList.toggle('active', b.getAttribute('data-dir') === nearestCompassDir(deg));
-  });
-  const valueLabel = document.getElementById('compassValueLabel');
-  if (valueLabel) {
-    valueLabel.innerHTML = `${compassDirLabel(nearestCompassDir(deg))} · <span class="compass-deg">${deg}°</span>`;
-  }
-  checkWizSubmitReady();
-}
-
-function angleFromCompassCenter(cx, cy, x, y) {
-  const dx = x - cx, dy = y - cy;
-  let deg = Math.atan2(dx, -dy) * 180 / Math.PI;
-  if (deg < 0) deg += 360;
-  return deg;
-}
-
-function initCompassDrag() {
-  const dial = document.getElementById('compassDial');
-  if (!dial) return;
-  let dragging = false;
-
-  function moveTo(clientX, clientY) {
-    const r = dial.getBoundingClientRect();
-    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
-    setWindDir(angleFromCompassCenter(cx, cy, clientX, clientY));
-  }
-
-  dial.addEventListener('pointerdown', e => {
-    // Let taps on a direction label button use their own onclick handler.
-    if (e.target.closest('.compass-label-btn')) return;
-    dragging = true;
-    try { dial.setPointerCapture(e.pointerId); } catch (err) {}
-    moveTo(e.clientX, e.clientY);
-  });
-  dial.addEventListener('pointermove', e => { if (dragging) moveTo(e.clientX, e.clientY); });
-  dial.addEventListener('pointerup',     () => { dragging = false; });
-  dial.addEventListener('pointercancel', () => { dragging = false; });
 }
 
 /* ═══════════════════════════════════════════════════
@@ -1284,20 +1289,18 @@ const T = {
   calendarPH:   { en:'Select date range...',            sr:'Izaberi vremenski opseg...' },
   helpTitle:    { en:'How to use TraceTheToxin',         sr:'Kako se koristi TraceTheToxin' },
   helpClose:    { en:'Close',                            sr:'Zatvori' },
-  helpStep1:    { en:'1. Set Your Location:',            sr:'1. Odredite vašu lokaciju:' },
-  helpStep1Body:{ 
-    en:'Ensure your device GPS is turned on, or tap the manual pin button <img src="icons/pin.png" alt="Pin" style="width:18px;height:18px;vertical-align:middle;"> to drop a point anywhere on the map. Once a location is set, the + report button becomes active.', 
-    sr:'Proverite da li je GPS uključen, ili pritisnite dugme za ručnu lokaciju <img src="icons/pin.png" alt="Pin" style="width:18px;height:18px;vertical-align:middle;"> da postavite tačku bilo gde na mapi. Kada je lokacija određena, dugme + za prijavu postaje aktivno.' },
-  helpStep2:    { en:'2. Report Bad Air:',               sr:'2. Prijava lošeg vazduha:' },
-  helpStep2Body:{ en:'Tap the + button, then choose the smell type and how intense it is.', sr:'Pritisnite dugme +, zatim izaberite vrstu mirisa i njegov intenzitet.' },
-  helpStep3:    { en:'3. Add the Details:',              sr:'3. Dodajte detalje:' },
-  helpStep3Body:{ en:'Set the time you noticed it, pick the wind direction on the compass, and optionally add the duration and a note.', sr:'Podesite vreme kada ste primetili miris, izaberite smer vetra na kompasu, i po želji dodajte trajanje i napomenu.' },
+  helpStep1:    { en:'1. Report Bad Air:',               sr:'1. Prijava lošeg vazduha:' },
+  helpStep1Body:{ en:'Select the smell type and its intensity from the dropdown options.', sr:'Izaberite vrstu mirisa i njegov intenzitet iz padajućih menija.' },
+  helpStep2:    { en:'2. Set Your Location:',            sr:'2. Odredite vašu lokaciju:' },
+  helpStep2Body:{ 
+    en:'Ensure your device GPS is turned on, or tap the manual pin button <img src="icons/pin.png" alt="Pin" style="width:18px;height:18px;vertical-align:middle;"> to manually drop a point anywhere on the map grid.', 
+    sr:'Proverite da li je GPS uključen, ili pritisnite dugme za ručnu lokaciju <img src="icons/pin.png" alt="Pin" style="width:18px;height:18px;vertical-align:middle;"> da sami postavite tačku bilo gde na mapi.' },
+  helpStep3:    { en:'3. Enter Wind Direction:',         sr:'3. Unesite smer vetra:' },
+  helpStep3Body:{ en:'Click the Windfinder icon in the bottom right corner. On their website map, click directly on your current location, read the wind direction degree value (0-360°), and type it back into this application.', sr:'Kliknite na ikonicu Windfinder u donjem desnom uglu. Na mapi na njihovom sajtu kliknite na vašu lokaciju, pročitajte vrednost smera vetra u stepenima (0-360°) i upišite je u polje u ovoj aplikaciji.' },
   helpStep4:    { en:'4. Submit:',                       sr:'4. Pošalji:' },
   helpStep4Body:{ en:'Verify the recorded time reflects when you noticed the odor, and tap the "REPORT BAD AIR" button.', sr:'Proverite da li izabrano vreme odgovara trenutku kada ste primetili miris, a zatim pritisnite dugme "PRIJAVI LOŠ VAZDUH".' },
-  windDirPH:    { en:'Wind Direction', sr:'Smer Vetra' },
-  compassHint:  { en:'Tap or drag to set', sr:'Dodirnite ili prevucite' },
+  windDirPH:    { en:'Wind Dir (0-360)', sr:'Smer Vetra (0-360)' },
   durationPH:   { en:'Duration (1-24h)', sr:'Trajanje (1-24h)' },
-  durationPlaceholder: { en:'1-24 (Optional)', sr:'1-24 (Opciono)' },
 
   wizStepLabel:      { en:'Step',                        sr:'Korak' },
   wizCategoryTitle:  { en:"What's the smell?",           sr:'Kakav je miris?' },
@@ -1346,30 +1349,14 @@ function resolveLangFromCoords(lat, lon){
     .then(data => {
       const cc = data && data.address && data.address.country_code;
       if (cc) applyAutoLangResult(cc === 'rs' ? 'sr' : 'en');
-      else resolveLangFromIP();
     })
-    .catch(() => { resolveLangFromIP(); });
-}
-
-// Fallback when GPS is denied/unavailable: use network/IP-based
-// location (works even without location permission) as a better
-// signal than the raw browser locale.
-function resolveLangFromIP(){
-  fetch('https://ipapi.co/json/')
-    .then(r => r.json())
-    .then(data => {
-      const cc = data && data.country_code && data.country_code.toLowerCase();
-      if (cc) applyAutoLangResult(cc === 'rs' ? 'sr' : 'en');
-    })
-    .catch(() => { /* IP geolocation failed — browser-language guess stands */ });
+    .catch(() => { /* reverse-geocode failed — browser-language guess stands */ });
 }
 
 // Auto language: start from the browser locale immediately so the UI
 // never waits on GPS, then refine using location where we can, since
 // that's a better signal than browser locale (e.g. a device set to
-// English being used in Serbia, or vice versa). GPS is tried first;
-// if it's denied, unavailable, or times out, we fall back to IP-based
-// geolocation before finally resting on the browser-language guess.
+// English being used in Serbia, or vice versa).
 function detectAutoLang(){
   lang = guessLangFromBrowser();
 
@@ -1378,11 +1365,9 @@ function detectAutoLang(){
   } else if (navigator.geolocation) {
     navigator.geolocation.getCurrentPosition(
       pos => resolveLangFromCoords(pos.coords.latitude, pos.coords.longitude),
-      () => { resolveLangFromIP(); },
+      () => { /* GPS denied/unavailable — browser-language guess stands */ },
       { timeout: 8000 }
     );
-  } else {
-    resolveLangFromIP();
   }
 }
 
@@ -1437,7 +1422,6 @@ function applyLang(){
   document.querySelectorAll('.leg').forEach(el=>{
     el.textContent = el.dataset[lang] || el.dataset.en;
   });
-  syncLegendHeight();
 
   const gm = document.getElementById('gpsModal');
   if(gm && gm.style.display!=='none') updateGpsModalText();
@@ -1534,6 +1518,40 @@ let pinMode       = false;
 let manualCoords  = null;
 let manualMarker  = null;
 
+const WindfinderControl = L.Control.extend({
+  options: { position: 'bottomright' },
+onAdd: function(map) {
+    const container = L.DomUtil.create('a', 'leaflet-bar leaflet-control leaflet-control-custom');
+    
+    // Set up the link
+    container.href = 'https://www.windfinder.com/#13/45.2294/19.8276/2026-06-25T00:00Z/spot';
+    container.target = '_blank';
+    
+    // Add the Logo Image
+    // Using a reliable transparent PNG icon
+    container.innerHTML = `<img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAACwklEQVR4AWIYseAiK6DbcoCZHIjieNLp2cZMz7Zt27Zt2wwP4dm2bbPT3d5n2zbedb5o03Sb9eEl/+gl79d5LGlDET7tcrChUE1CETlPOQwij3e67sUVmhRmQJEjaSKDMxWoUcc1r0ZVxijgMAY10U+ng+XipDRF+DIDqiU5O/0GhAdQk1erZeSrdHAK2L1s3aIUkeMMYk5U6QO5YcP8DofT/EIjyhEfBtEVwu8dDhcRGUE5nKSCaUpC5LBD4RJPtlNNmLYoIrMcWG98Wwvi0WaA+QzwpIvdcLdi9UpTRL6bgyR//AaBM1do+jwKkcr2zXeRahVFjsh6ac6MiIKU75KWLwdGj+ZshxeqUUWBe+nBDeUbA7PspGQNPwmzGf6rAKlFORykB2fyGzMXmGUEhWjtAGobvHBVJe04wJIuj7/7FJjFXbunNQFvrYZ7la5VXOQINQ0kV2kF4XsPQ6pohMzQcEh6+R68uo8CWWgFuVlZkJuTA54dh2gsIXLfKjhbmRSR56ZBfPpPhOz4BFBbTkoqxF68xXxmJ4Aict269YrwRdMARtwiD5CbmQkJ959B0OKNeS83VmoG3j3HQMyJS0ALVtdZQviqxXCJI2vUAbz7jofQzfvzgGpf+K6DwMx36DS9LXjRIjg7lyKHsxSBpfKfuBCYZcfFg3vjHrZnwKNYnbIiR0KsgTPRQjUg1eAGzDLDIzXXMVvdFtSdPLQYrNKv2h0hzc0LmOWkprJmVJfgsS5cQsI0y4HakorVhtCN+yDlhwHSfQPY1Jhm4K1u6imHYyyB2C4i66ReOO1MOBM1dwskXujifHieAsw13msHpDdBkcyaWNFRiRM2UVRlipHH3QwFhBpetWrl14QbeNLNgq9PYsFFpYslRI5Tnmxnv1YiL/SR81dpwO6F7X+zCN9lwdmIUBacI1soIjNUwf9P+w1d6+FOXuVcggAAAABJRU5ErkJggg==" 
+                             style="width: 28px; height: 28px; display: block; object-fit: contain;">`;
+    
+    // Styles
+    container.style.backgroundColor = 'var(--floating-bg)';
+    container.style.width = '44px';
+    container.style.height = '44px';
+    container.style.display = 'flex';
+    container.style.alignItems = 'center';
+    container.style.justifyContent = 'center';
+    container.style.borderRadius = '50%';
+    container.style.border = '1px solid var(--floating-border)';
+    container.style.boxShadow = '0 2px 8px var(--floating-shadow)';
+    container.style.cursor = 'pointer';
+
+    L.DomEvent.disableClickPropagation(container);
+    return container;
+}
+});
+
+// Add it to your map instance
+map.addControl(new WindfinderControl());
+
 /* ═══════════════════════════════════════════════════
    GPS MODAL
 ═══════════════════════════════════════════════════ */
@@ -1545,24 +1563,17 @@ function updateGpsModalText(){
   if(el('gpsModalBtn'))   el('gpsModalBtn').textContent    = t('gpsBtn');
 }
 
-// Only auto-pop the "GPS not enabled" notice once per page load in the
-// background (see the setInterval(startWatching, ...) below). The report
-// button, however, always re-checks and always re-shows the notice —
-// see showGpsModalForced() / reportFabTap().
+// Only auto-pop the "GPS not enabled" notice once per page load. After
+// that we keep silently retrying GPS in the background (see the
+// setInterval(startWatching, ...) below) without interrupting the user
+// again and again.
 let gpsModalShownThisLoad = false;
 
 function showGpsModal(){
-  if (gpsModalShownThisLoad) return;
-  gpsModalShownThisLoad = true;
-  showGpsModalForced();
-}
-
-// Shows the "set your location" notice unconditionally, regardless of
-// whether it's already been auto-shown once this page load. Used when
-// the user deliberately taps the + report button without a location set.
-function showGpsModalForced(){
   const modal = document.getElementById('gpsModal');
   if(!modal) return;
+  if (gpsModalShownThisLoad) return;
+  gpsModalShownThisLoad = true;
   updateGpsModalText();
   modal.style.display = 'flex';
   modal.offsetHeight;
@@ -2226,7 +2237,7 @@ async function backfillWindSpeed(reportId, avgSpeed) {
 }
 
 // Overwrites wind_direction with the Open-Meteo historical circular-mean average.
-// manual_wind_direction (user-reported via the compass) is never touched.
+// manual_wind_direction (user-reported from Windfinder) is never touched.
 async function backfillWindDirection(reportId, avgDirection) {
   const result = await sb
     .from("air_reports")
@@ -2308,7 +2319,7 @@ async function renderHistoricSplineTrailForReport(report) {
 
     // Find the single hourly reading closest to the report time.
     // This is what Open-Meteo says the wind was at that moment —
-    // a fair comparison to the direction the user picked on the compass.
+    // a fair comparison to what the user read on Windfinder.
     let closestStep = null;
     let closestDiff = Infinity;
     for (let i = 0; i < hourly.time.length; i++) {
@@ -2976,7 +2987,7 @@ async function reportBadAir(){
   const [hours, minutes] = timeVal.split(':');
   reportDate.setHours(hours, minutes, 0, 0);
 
-  // Parse manual wind direction — this is the user-reported value from the compass,
+  // Parse manual wind direction — this is the user-reported value from Windfinder,
   // stored permanently in manual_wind_direction and used as the initial wind_direction
   // until the spline engine backfills it with Open-Meteo historical data.
   const manualWindNum = manualWind !== "" ? parseFloat(manualWind) : null;
@@ -3091,26 +3102,6 @@ function downloadCSV() {
   a.click();
   document.body.removeChild(a);
 }
-
-/* ═══════════════════════════════════════════════════
-   LEGEND HEIGHT SYNC — keeps the + report button (and the
-   pin/trace buttons stacked above it) riding just above the
-   legend bar, even when the legend text wraps onto an extra
-   row on narrow phone screens or in a longer language.
-═══════════════════════════════════════════════════ */
-function syncLegendHeight(){
-  const bar = document.getElementById('legendBar');
-  if (!bar) return;
-  document.documentElement.style.setProperty('--fab-bottom', (bar.offsetHeight + 12) + 'px');
-}
-if ('ResizeObserver' in window) {
-  const legendBarEl = document.getElementById('legendBar');
-  if (legendBarEl) new ResizeObserver(syncLegendHeight).observe(legendBarEl);
-} else {
-  window.addEventListener('resize', syncLegendHeight);
-}
-window.addEventListener('orientationchange', syncLegendHeight);
-syncLegendHeight();
 
 /* ═══════════════════════════════════════════════════
    ORCHESTRATION ARCHITECTURE
