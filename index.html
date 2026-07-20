@@ -451,8 +451,8 @@ span.flatpickr-weekday {
   display:flex; flex-direction:column; align-items:center; gap:10px;
   position:fixed; right:12px; z-index:420;
 }
-#traceSourceBtn{ position:fixed; bottom:calc(150px + env(safe-area-inset-bottom, 0px)); right:12px; }
-#pinMapBtn{ position:fixed; bottom:calc(204px + env(safe-area-inset-bottom, 0px)); right:12px; }
+#traceSourceBtn{ position:fixed; bottom:calc(var(--fab-bottom, 56px) + 94px); right:12px; }
+#pinMapBtn{ position:fixed; bottom:calc(var(--fab-bottom, 56px) + 148px); right:12px; }
 .pin-map-btn{
   background:var(--floating-bg);
   border:1px solid var(--floating-border);
@@ -502,7 +502,7 @@ span.flatpickr-weekday {
   position:fixed;
   left:50%;
   transform:translateX(-50%);
-  bottom:calc(56px + env(safe-area-inset-bottom, 0px));
+  bottom:var(--fab-bottom, calc(56px + env(safe-area-inset-bottom, 0px)));
   z-index:420;
   display:flex; align-items:center; justify-content:center;
   cursor:pointer;
@@ -1029,12 +1029,6 @@ function renderWizDetailsStep() {
   body.innerHTML = `
     <p class="wiz-step-label">${t('wizStepLabel')} 3</p>
     <h3 class="wiz-step-title">${t('wizDetailsTitle')}</h3>
-    <div class="wiz-details-two-col">
-      <div class="wiz-details-row">
-        <label>${t('wizTimeLabel')}</label>
-        <input type="time" id="reportTime" value="${nowRoundedToQuarterHour()}" oninput="checkWizSubmitReady()">
-      </div>
-    </div>
     <div class="wiz-details-row wiz-compass-row">
       <label>${t('windDirPH')}</label>
       <div class="compass-wrap">
@@ -1047,9 +1041,15 @@ function renderWizDetailsStep() {
       </div>
       <input type="hidden" id="manualWind" value="">
     </div>
-    <div class="wiz-details-row">
-      <label>${t('durationPH')}</label>
-      <input type="number" id="duration" min="1" max="24" placeholder="${t('durationPlaceholder')}" oninput="checkWizSubmitReady()">
+    <div class="wiz-details-two-col">
+      <div class="wiz-details-row">
+        <label>${t('wizTimeLabel')}</label>
+        <input type="time" id="reportTime" value="${nowRoundedToQuarterHour()}" oninput="checkWizSubmitReady()">
+      </div>
+      <div class="wiz-details-row">
+        <label>${t('durationPH')}</label>
+        <input type="number" id="duration" min="1" max="24" placeholder="${t('durationPlaceholder')}" oninput="checkWizSubmitReady()">
+      </div>
     </div>
     <div class="wiz-details-row">
       <label>${t('commentPH')}</label>
@@ -1433,6 +1433,7 @@ function applyLang(){
   document.querySelectorAll('.leg').forEach(el=>{
     el.textContent = el.dataset[lang] || el.dataset.en;
   });
+  syncLegendHeight();
 
   const gm = document.getElementById('gpsModal');
   if(gm && gm.style.display!=='none') updateGpsModalText();
@@ -3079,6 +3080,26 @@ function downloadCSV() {
   a.click();
   document.body.removeChild(a);
 }
+
+/* ═══════════════════════════════════════════════════
+   LEGEND HEIGHT SYNC — keeps the + report button (and the
+   pin/trace buttons stacked above it) riding just above the
+   legend bar, even when the legend text wraps onto an extra
+   row on narrow phone screens or in a longer language.
+═══════════════════════════════════════════════════ */
+function syncLegendHeight(){
+  const bar = document.getElementById('legendBar');
+  if (!bar) return;
+  document.documentElement.style.setProperty('--fab-bottom', (bar.offsetHeight + 12) + 'px');
+}
+if ('ResizeObserver' in window) {
+  const legendBarEl = document.getElementById('legendBar');
+  if (legendBarEl) new ResizeObserver(syncLegendHeight).observe(legendBarEl);
+} else {
+  window.addEventListener('resize', syncLegendHeight);
+}
+window.addEventListener('orientationchange', syncLegendHeight);
+syncLegendHeight();
 
 /* ═══════════════════════════════════════════════════
    ORCHESTRATION ARCHITECTURE
