@@ -931,6 +931,10 @@ function reportFabTap() {
     alert(t('cooldownActive').replace('{n}', mins));
     return;
   }
+  if (!userCoords && !manualCoords) {
+    showGpsModalForced();
+    return;
+  }
   openReportWizard();
 }
 
@@ -1541,17 +1545,24 @@ function updateGpsModalText(){
   if(el('gpsModalBtn'))   el('gpsModalBtn').textContent    = t('gpsBtn');
 }
 
-// Only auto-pop the "GPS not enabled" notice once per page load. After
-// that we keep silently retrying GPS in the background (see the
-// setInterval(startWatching, ...) below) without interrupting the user
-// again and again.
+// Only auto-pop the "GPS not enabled" notice once per page load in the
+// background (see the setInterval(startWatching, ...) below). The report
+// button, however, always re-checks and always re-shows the notice —
+// see showGpsModalForced() / reportFabTap().
 let gpsModalShownThisLoad = false;
 
 function showGpsModal(){
-  const modal = document.getElementById('gpsModal');
-  if(!modal) return;
   if (gpsModalShownThisLoad) return;
   gpsModalShownThisLoad = true;
+  showGpsModalForced();
+}
+
+// Shows the "set your location" notice unconditionally, regardless of
+// whether it's already been auto-shown once this page load. Used when
+// the user deliberately taps the + report button without a location set.
+function showGpsModalForced(){
+  const modal = document.getElementById('gpsModal');
+  if(!modal) return;
   updateGpsModalText();
   modal.style.display = 'flex';
   modal.offsetHeight;
