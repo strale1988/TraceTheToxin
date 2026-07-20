@@ -548,6 +548,19 @@ span.flatpickr-weekday {
 .wiz-details-row label{ display:block; font-size:var(--fs-13); color:var(--text-secondary); margin:0 0 6px; }
 .wiz-details-two-col{ display:flex; gap:8px; }
 .wiz-details-two-col .wiz-details-row{ flex:1; }
+.wiz-details-three-col{ display:flex; gap:8px; }
+.wiz-details-three-col .wiz-details-row{ flex:1; min-width:0; }
+.wiz-details-three-col input{ height:44px; padding-top:0; padding-bottom:0; }
+.wiz-details-three-col input[type="number"]{ text-align:center; }
+.wind-compass-wrap{ display:flex; flex-direction:column; align-items:center; gap:8px; padding:10px 0 4px; }
+.wind-compass-dial{ display:block; touch-action:none; }
+.wind-compass-dial .compass-label-text{ fill:var(--text-secondary); font-size:15px; font-weight:var(--fw-semibold); user-select:none; }
+.compass-dir-letter{
+  display:inline-flex; align-items:center; justify-content:center;
+  min-width:32px; padding:6px 12px; border-radius:var(--radius-md);
+  background:var(--bg-surface-alt); color:var(--text-secondary);
+  font-size:var(--fs-13); font-weight:var(--fw-semibold);
+}
 .wiz-submit-btn{
   width:100%; background:var(--danger); color:#fff; border:none;
   border-radius:var(--radius-xl); padding:16px; font-size:var(--fs-16); font-weight:var(--fw-semibold); cursor:pointer;
@@ -556,8 +569,7 @@ span.flatpickr-weekday {
 .wiz-intensity-value{
   font-size:40px; font-weight:var(--fw-heavy); text-align:center; margin:8px 0 4px;
 }
-.wiz-intensity-label{ text-align:center; color:var(--text-secondary); font-size:var(--fs-13); margin-bottom:18px; min-height:1.4em; line-height:1.4em; }
-.wiz-intensity-label.is-empty{ visibility:hidden; }
+.wiz-intensity-label{ text-align:center; color:var(--text-secondary); font-size:var(--fs-13); margin-bottom:18px; }
 .wiz-intensity-slider{
   width:100%; -webkit-appearance:none; appearance:none;
   height:8px; border-radius:4px; background:var(--bg-surface-alt); outline:none;
@@ -651,6 +663,9 @@ span.flatpickr-weekday {
       <p id="subtitle">Community Air Reporting Network</p>
     </div>
     <div class="right-controls">
+      <button class="help-icon-btn" id="helpTopBtn" title="Help / Pomoć" onclick="showHelpModal()">
+        <img class="icon-img" src="icons/help.png" alt="Help">
+      </button>
       <button class="help-icon-btn" id="settingsBtn" title="Settings / Podešavanja" onclick="showSettingsModal()">
         <img class="icon-img" src="icons/settings.png" alt="Settings">
       </button>
@@ -826,7 +841,7 @@ function nowRoundedToQuarterHour() {
 /* ═══════════════════════════════════════════════════
    SPAM PROTECTION — max 1 report per device per hour
 ═══════════════════════════════════════════════════ */
-const REPORT_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes
+const REPORT_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour
 const REPORT_COOLDOWN_KEY = 'ttt_last_report_ts';
 
 function getReportCooldownRemainingMs() {
@@ -936,7 +951,7 @@ function renderWizIntensityStep() {
     <p class="wiz-step-label">${t('wizStepLabel')} 2</p>
     <h3 class="wiz-step-title">${t('wizIntensityTitle')}</h3>
     <div class="wiz-intensity-value" id="wizIntensityValue" style="color:${categoryColor(wizState.category)};">${wizState.intensity}</div>
-    <div class="wiz-intensity-label${intensityWord(wizState.intensity) ? '' : ' is-empty'}" id="wizIntensityWord">${intensityWord(wizState.intensity) || '\u00A0'}</div>
+    <div class="wiz-intensity-label" id="wizIntensityWord">${intensityWord(wizState.intensity)}</div>
     <input type="range" min="1" max="10" step="1" class="wiz-intensity-slider" id="wizIntensitySlider"
            value="${wizState.intensity}" oninput="wizOnIntensityInput(this.value)">
     <div class="wiz-details-row" style="margin-top:24px;">
@@ -955,10 +970,7 @@ function intensityWord(n) {
 function wizOnIntensityInput(v) {
   wizState.intensity = parseInt(v, 10);
   document.getElementById('wizIntensityValue').textContent = wizState.intensity;
-  const word = intensityWord(wizState.intensity);
-  const wordEl = document.getElementById('wizIntensityWord');
-  wordEl.textContent = word || '\u00A0';
-  wordEl.classList.toggle('is-empty', !word);
+  document.getElementById('wizIntensityWord').textContent = intensityWord(wizState.intensity);
 }
 
 function wizGoToDetails() {
@@ -971,20 +983,37 @@ function renderWizDetailsStep() {
   body.innerHTML = `
     <p class="wiz-step-label">${t('wizStepLabel')} 3</p>
     <h3 class="wiz-step-title">${t('wizDetailsTitle')}</h3>
-    <div class="wiz-details-two-col">
+    <div class="wiz-details-three-col">
       <div class="wiz-details-row">
         <label>${t('wizTimeLabel')}</label>
         <input type="time" id="reportTime" value="${nowRoundedToQuarterHour()}" oninput="checkWizSubmitReady()">
       </div>
       <div class="wiz-details-row">
         <label>${t('windDirPH')}</label>
-        <input type="number" id="manualWind" min="0" max="360" placeholder="0-360"
-               oninput="checkWizSubmitReady()" onblur="validateRange(this)">
+        <input type="number" id="manualWind" min="0" max="360" placeholder="0-360" value="270"
+               oninput="onManualWindChange()" onblur="validateRange(this)">
+      </div>
+      <div class="wiz-details-row">
+        <label>${t('durationPH')}</label>
+        <input type="number" id="duration" min="1" max="24" placeholder="1-24" oninput="checkWizSubmitReady()">
       </div>
     </div>
     <div class="wiz-details-row">
-      <label>${t('durationPH')}</label>
-      <input type="number" id="duration" min="1" max="24" placeholder="1-24" oninput="checkWizSubmitReady()">
+      <div class="wind-compass-wrap">
+        <svg class="wind-compass-dial" id="windCompassDial" viewBox="0 0 200 200" width="200" height="200">
+          <circle cx="100" cy="100" r="90" fill="none" stroke="var(--border-color-strong)" stroke-width="2"/>
+          <text class="compass-label-text" x="100" y="30" text-anchor="middle" dominant-baseline="middle">N</text>
+          <text class="compass-label-text" x="170" y="100" text-anchor="middle" dominant-baseline="middle">E</text>
+          <text class="compass-label-text" x="100" y="170" text-anchor="middle" dominant-baseline="middle">S</text>
+          <text class="compass-label-text" x="30" y="100" text-anchor="middle" dominant-baseline="middle">W</text>
+          <g id="compassArrowGroup" transform="rotate(90 100 100)">
+            <line x1="100" y1="100" x2="100" y2="50" stroke="var(--accent)" stroke-width="4" stroke-linecap="round"/>
+            <polygon points="100,36 90,52 110,52" fill="var(--accent)"/>
+          </g>
+          <circle cx="100" cy="100" r="5" fill="var(--accent)"/>
+        </svg>
+        <span class="compass-dir-letter" id="compassDirLetter">W</span>
+      </div>
     </div>
     <div class="wiz-details-row">
       <label>${t('commentPH')}</label>
@@ -996,7 +1025,76 @@ function renderWizDetailsStep() {
             onclick="reportBadAir()" disabled>
       <span id="reportBtnLabel">${wizState.category === 'Clean Air' ? t('reportBtnCleanAir') : t('reportBtn')}</span>
     </button>`;
+  updateCompassVisual(DEFAULT_WIND_DEG);
+  setupCompassDrag();
   checkWizSubmitReady();
+}
+
+/* ═══════════════════════════════════════════════════
+   WIND COMPASS WIDGET
+   The arrow lives inside <g id="compassArrowGroup"> and is rotated with an
+   SVG rotate(deg cx cy) transform, so it always pivots exactly on the
+   circle's center (100,100) — no CSS transform-origin drift, no overlap
+   between the arrow and the N/E/S/W labels.
+
+   Convention: the number field / "Smer Vetra" value is the meteorological
+   wind direction (where the wind is blowing FROM). The arrow shows where
+   the wind is blowing TO, i.e. it points 180deg opposite the stored value
+   (e.g. value 270 -> arrow visually points at 90, to the right).
+═══════════════════════════════════════════════════ */
+const DEFAULT_WIND_DEG = 270;
+
+function updateCompassVisual(deg) {
+  deg = ((deg % 360) + 360) % 360;
+  const arrowVisualAngle = (deg + 180) % 360;
+  const g = document.getElementById('compassArrowGroup');
+  if (g) g.setAttribute('transform', `rotate(${arrowVisualAngle} 100 100)`);
+  const letterEl = document.getElementById('compassDirLetter');
+  if (letterEl) letterEl.textContent = degToCardinal(deg);
+}
+
+function onManualWindChange() {
+  const input = document.getElementById('manualWind');
+  const raw = input ? input.value : '';
+  if (raw !== '' && !isNaN(parseFloat(raw))) {
+    updateCompassVisual(parseFloat(raw));
+  }
+  checkWizSubmitReady();
+}
+
+function setWindDirection(arrowVisualAngle) {
+  // Convert the angle the user just pointed the arrow at back into the
+  // reported wind-direction value (180deg offset — see note above).
+  const deg = Math.round(((arrowVisualAngle + 180) % 360 + 360) % 360);
+  const input = document.getElementById('manualWind');
+  if (input) input.value = deg;
+  updateCompassVisual(deg);
+  checkWizSubmitReady();
+}
+
+function setupCompassDrag() {
+  const svg = document.getElementById('windCompassDial');
+  if (!svg) return;
+
+  function angleFromEvent(e) {
+    const rect = svg.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const dx = e.clientX - cx;
+    const dy = e.clientY - cy;
+    // 0deg = up (N), clockwise positive — matches compass bearing convention.
+    const deg = Math.atan2(dx, -dy) * 180 / Math.PI;
+    return (deg + 360) % 360;
+  }
+
+  svg.onpointerdown = function(e) {
+    svg.setPointerCapture(e.pointerId);
+    setWindDirection(angleFromEvent(e));
+  };
+  svg.onpointermove = function(e) {
+    if (!svg.hasPointerCapture(e.pointerId)) return;
+    setWindDirection(angleFromEvent(e));
+  };
 }
 
 function checkWizSubmitReady() {
@@ -1163,16 +1261,16 @@ const T = {
   calendarPH:   { en:'Select date range...',            sr:'Izaberi vremenski opseg...' },
   helpTitle:    { en:'How to use TraceTheToxin',         sr:'Kako se koristi TraceTheToxin' },
   helpClose:    { en:'Close',                            sr:'Zatvori' },
-  helpStep1:    { en:'1. Enable GPS or Add a Pin:',      sr:'1. Uključite GPS ili dodajte pin:' },
-  helpStep1Body:{ 
-    en:'Turn on your device GPS so the app can find you, or tap the pin button <img src="icons/pin.png" alt="Pin" style="width:18px;height:18px;vertical-align:middle;"> on the map to manually drop your location. A location is required before you can submit a report.', 
-    sr:'Uključite GPS na uređaju kako bi aplikacija mogla da vas pronađe, ili pritisnite dugme <img src="icons/pin.png" alt="Pin" style="width:18px;height:18px;vertical-align:middle;"> na mapi da ručno postavite vašu lokaciju. Lokacija je obavezna pre nego što možete da pošaljete prijavu.' },
-  helpStep2:    { en:'2. Check the Wind Direction:',     sr:'2. Proverite smer vetra:' },
-  helpStep2Body:{ en:'Click the Windfinder icon in the bottom right corner. On their website map, click directly on your current location, read the wind direction degree value (0-360°), and type it back into this application.', sr:'Kliknite na ikonicu Windfinder u donjem desnom uglu. Na mapi na njihovom sajtu kliknite na vašu lokaciju, pročitajte vrednost smera vetra u stepenima (0-360°) i upišite je u polje u ovoj aplikaciji.' },
-  helpStep3:    { en:'3. Report Bad Air:',               sr:'3. Prijavite loš vazduh:' },
-  helpStep3Body:{ en:'Tap the Report Bad Air button and choose the type of smell you\'re noticing.', sr:'Pritisnite dugme za prijavu lošeg vazduha i izaberite vrstu mirisa koji osećate.' },
-  helpStep4:    { en:'4. Follow the Steps and Submit:',  sr:'4. Pratite korake i pošaljite:' },
-  helpStep4Body:{ en:'Set the intensity, fill in the time, duration, and any comments, then tap the "REPORT BAD AIR" button to submit.', sr:'Podesite intenzitet, unesite vreme, trajanje i eventualni komentar, a zatim pritisnite dugme "PRIJAVI LOŠ VAZDUH" da pošaljete prijavu.' },
+  helpStep1:    { en:'1. Report Bad Air:',               sr:'1. Prijava lošeg vazduha:' },
+  helpStep1Body:{ en:'Select the smell type and its intensity from the dropdown options.', sr:'Izaberite vrstu mirisa i njegov intenzitet iz padajućih menija.' },
+  helpStep2:    { en:'2. Set Your Location:',            sr:'2. Odredite vašu lokaciju:' },
+  helpStep2Body:{ 
+    en:'Ensure your device GPS is turned on, or tap the manual pin button <img src="icons/pin.png" alt="Pin" style="width:18px;height:18px;vertical-align:middle;"> to manually drop a point anywhere on the map grid.', 
+    sr:'Proverite da li je GPS uključen, ili pritisnite dugme za ručnu lokaciju <img src="icons/pin.png" alt="Pin" style="width:18px;height:18px;vertical-align:middle;"> da sami postavite tačku bilo gde na mapi.' },
+  helpStep3:    { en:'3. Enter Wind Direction:',         sr:'3. Unesite smer vetra:' },
+  helpStep3Body:{ en:'Click the Windfinder icon in the bottom right corner. On their website map, click directly on your current location, read the wind direction degree value (0-360°), and type it back into this application.', sr:'Kliknite na ikonicu Windfinder u donjem desnom uglu. Na mapi na njihovom sajtu kliknite na vašu lokaciju, pročitajte vrednost smera vetra u stepenima (0-360°) i upišite je u polje u ovoj aplikaciji.' },
+  helpStep4:    { en:'4. Submit:',                       sr:'4. Pošalji:' },
+  helpStep4Body:{ en:'Verify the recorded time reflects when you noticed the odor, and tap the "REPORT BAD AIR" button.', sr:'Proverite da li izabrano vreme odgovara trenutku kada ste primetili miris, a zatim pritisnite dugme "PRIJAVI LOŠ VAZDUH".' },
   windDirPH:    { en:'Wind Dir (0-360)', sr:'Smer Vetra (0-360)' },
   durationPH:   { en:'Duration (1-24h)', sr:'Trajanje (1-24h)' },
 
@@ -1183,7 +1281,7 @@ const T = {
   wizContinue:       { en:'Continue',                    sr:'Nastavi' },
   wizTimeLabel:      { en:'Time noticed',                sr:'Vreme zapažanja' },
   wizNoLocationHint: { en:'Waiting for GPS — or drop a pin manually on the map.', sr:'Čekanje GPS-a — ili ručno postavite pin na mapi.' },
-  cooldownActive:    { en:'You can submit one report every 30 minutes from this device. Please try again in {n} min.', sr:'Sa ovog uređaja možete poslati jednu prijavu na svakih 30 minuta. Pokušajte ponovo za {n} min.' },
+  cooldownActive:    { en:'You can submit one report per hour from this device. Please try again in {n} min.', sr:'Sa ovog uređaja možete poslati jednu prijavu na sat vremena. Pokušajte ponovo za {n} min.' },
 
   settingsTitle:     { en:'Settings',                    sr:'Podešavanja' },
   helpSectionTitle:  { en:'Help',                        sr:'Pomoć' },
