@@ -512,6 +512,8 @@ span.flatpickr-weekday {
 }
 .report-fab-btn:active{ transform:translateX(-50%) scale(.9); }
 .report-fab-btn svg{ width:28px; height:28px; }
+.report-fab-btn:disabled{ opacity:.45; cursor:not-allowed; box-shadow:none; }
+.report-fab-btn:disabled:active{ transform:translateX(-50%); }
 
 /* ═══════════════════════════════════════════════════
    REPORT WIZARD (full-screen, step based, no dropdowns)
@@ -548,6 +550,19 @@ span.flatpickr-weekday {
 .wiz-details-row label{ display:block; font-size:var(--fs-13); color:var(--text-secondary); margin:0 0 6px; }
 .wiz-details-two-col{ display:flex; gap:8px; }
 .wiz-details-two-col .wiz-details-row{ flex:1; }
+.wiz-details-three-col{ display:flex; gap:8px; }
+.wiz-details-three-col .wiz-details-row{ flex:1; min-width:0; }
+.wiz-details-three-col input{ height:44px; padding-top:0; padding-bottom:0; }
+.wiz-details-three-col input[type="number"]{ text-align:center; }
+.wind-compass-wrap{ display:flex; flex-direction:column; align-items:center; gap:8px; padding:10px 0 4px; }
+.wind-compass-dial{ display:block; touch-action:none; }
+.wind-compass-dial .compass-label-text{ fill:var(--text-secondary); font-size:15px; font-weight:var(--fw-semibold); user-select:none; }
+.compass-dir-letter{
+  display:inline-flex; align-items:center; justify-content:center;
+  min-width:32px; padding:6px 12px; border-radius:var(--radius-md);
+  background:var(--bg-surface-alt); color:var(--text-secondary);
+  font-size:var(--fs-13); font-weight:var(--fw-semibold);
+}
 .wiz-submit-btn{
   width:100%; background:var(--danger); color:#fff; border:none;
   border-radius:var(--radius-xl); padding:16px; font-size:var(--fs-16); font-weight:var(--fw-semibold); cursor:pointer;
@@ -701,7 +716,7 @@ span.flatpickr-weekday {
   </div>
 </div>
 
-<button type="button" class="report-fab-btn" id="reportFabBtn" title="Report bad air" aria-label="Report bad air" onclick="reportFabTap()">
+<button type="button" class="report-fab-btn" id="reportFabBtn" title="Report bad air" aria-label="Report bad air" onclick="reportFabTap()" disabled>
   <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
     <line x1="12" y1="5" x2="12" y2="19"></line>
     <line x1="5" y1="12" x2="19" y2="12"></line>
@@ -864,6 +879,10 @@ const WIZ_CATEGORY_LABELS = {
 let wizState = { step: 0, category: null, intensity: 5 };
 
 function reportFabTap() {
+  if (!(userCoords || manualCoords)) {
+    showGpsModal();
+    return;
+  }
   const remaining = getReportCooldownRemainingMs();
   if (remaining > 0) {
     const mins = Math.ceil(remaining / 60000);
@@ -888,6 +907,7 @@ function closeReportWizard() {
   }
   if (manualMarker) { map.removeLayer(manualMarker); manualMarker = null; }
   manualCoords = null;
+  checkFormReady();
 }
 
 function wizGoBack() {
@@ -971,20 +991,37 @@ function renderWizDetailsStep() {
   body.innerHTML = `
     <p class="wiz-step-label">${t('wizStepLabel')} 3</p>
     <h3 class="wiz-step-title">${t('wizDetailsTitle')}</h3>
-    <div class="wiz-details-two-col">
+    <div class="wiz-details-three-col">
       <div class="wiz-details-row">
         <label>${t('wizTimeLabel')}</label>
         <input type="time" id="reportTime" value="${nowRoundedToQuarterHour()}" oninput="checkWizSubmitReady()">
       </div>
       <div class="wiz-details-row">
         <label>${t('windDirPH')}</label>
-        <input type="number" id="manualWind" min="0" max="360" placeholder="0-360"
-               oninput="checkWizSubmitReady()" onblur="validateRange(this)">
+        <input type="number" id="manualWind" min="0" max="360" placeholder="0-360" value="270"
+               oninput="onManualWindChange()" onblur="validateRange(this)">
+      </div>
+      <div class="wiz-details-row">
+        <label>${t('durationPH')}</label>
+        <input type="number" id="duration" min="1" max="24" placeholder="1-24" oninput="checkWizSubmitReady()">
       </div>
     </div>
     <div class="wiz-details-row">
-      <label>${t('durationPH')}</label>
-      <input type="number" id="duration" min="1" max="24" placeholder="1-24" oninput="checkWizSubmitReady()">
+      <div class="wind-compass-wrap">
+        <svg class="wind-compass-dial" id="windCompassDial" viewBox="0 0 200 200" width="200" height="200">
+          <circle cx="100" cy="100" r="90" fill="none" stroke="var(--border-color-strong)" stroke-width="2"/>
+          <text class="compass-label-text" x="100" y="30" text-anchor="middle" dominant-baseline="middle">N</text>
+          <text class="compass-label-text" x="170" y="100" text-anchor="middle" dominant-baseline="middle">E</text>
+          <text class="compass-label-text" x="100" y="170" text-anchor="middle" dominant-baseline="middle">S</text>
+          <text class="compass-label-text" x="30" y="100" text-anchor="middle" dominant-baseline="middle">W</text>
+          <g id="compassArrowGroup" transform="rotate(90 100 100)">
+            <line x1="100" y1="100" x2="100" y2="50" stroke="var(--accent)" stroke-width="4" stroke-linecap="round"/>
+            <polygon points="100,36 90,52 110,52" fill="var(--accent)"/>
+          </g>
+          <circle cx="100" cy="100" r="5" fill="var(--accent)"/>
+        </svg>
+        <span class="compass-dir-letter" id="compassDirLetter">W</span>
+      </div>
     </div>
     <div class="wiz-details-row">
       <label>${t('commentPH')}</label>
@@ -996,7 +1033,76 @@ function renderWizDetailsStep() {
             onclick="reportBadAir()" disabled>
       <span id="reportBtnLabel">${wizState.category === 'Clean Air' ? t('reportBtnCleanAir') : t('reportBtn')}</span>
     </button>`;
+  updateCompassVisual(DEFAULT_WIND_DEG);
+  setupCompassDrag();
   checkWizSubmitReady();
+}
+
+/* ═══════════════════════════════════════════════════
+   WIND COMPASS WIDGET
+   The arrow lives inside <g id="compassArrowGroup"> and is rotated with an
+   SVG rotate(deg cx cy) transform, so it always pivots exactly on the
+   circle's center (100,100) — no CSS transform-origin drift, no overlap
+   between the arrow and the N/E/S/W labels.
+
+   Convention: the number field / "Smer Vetra" value is the meteorological
+   wind direction (where the wind is blowing FROM). The arrow shows where
+   the wind is blowing TO, i.e. it points 180deg opposite the stored value
+   (e.g. value 270 -> arrow visually points at 90, to the right).
+═══════════════════════════════════════════════════ */
+const DEFAULT_WIND_DEG = 270;
+
+function updateCompassVisual(deg) {
+  deg = ((deg % 360) + 360) % 360;
+  const arrowVisualAngle = (deg + 180) % 360;
+  const g = document.getElementById('compassArrowGroup');
+  if (g) g.setAttribute('transform', `rotate(${arrowVisualAngle} 100 100)`);
+  const letterEl = document.getElementById('compassDirLetter');
+  if (letterEl) letterEl.textContent = degToCardinal(deg);
+}
+
+function onManualWindChange() {
+  const input = document.getElementById('manualWind');
+  const raw = input ? input.value : '';
+  if (raw !== '' && !isNaN(parseFloat(raw))) {
+    updateCompassVisual(parseFloat(raw));
+  }
+  checkWizSubmitReady();
+}
+
+function setWindDirection(arrowVisualAngle) {
+  // Convert the angle the user just pointed the arrow at back into the
+  // reported wind-direction value (180deg offset — see note above).
+  const deg = Math.round(((arrowVisualAngle + 180) % 360 + 360) % 360);
+  const input = document.getElementById('manualWind');
+  if (input) input.value = deg;
+  updateCompassVisual(deg);
+  checkWizSubmitReady();
+}
+
+function setupCompassDrag() {
+  const svg = document.getElementById('windCompassDial');
+  if (!svg) return;
+
+  function angleFromEvent(e) {
+    const rect = svg.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const dx = e.clientX - cx;
+    const dy = e.clientY - cy;
+    // 0deg = up (N), clockwise positive — matches compass bearing convention.
+    const deg = Math.atan2(dx, -dy) * 180 / Math.PI;
+    return (deg + 360) % 360;
+  }
+
+  svg.onpointerdown = function(e) {
+    svg.setPointerCapture(e.pointerId);
+    setWindDirection(angleFromEvent(e));
+  };
+  svg.onpointermove = function(e) {
+    if (!svg.hasPointerCapture(e.pointerId)) return;
+    setWindDirection(angleFromEvent(e));
+  };
 }
 
 function checkWizSubmitReady() {
@@ -1479,6 +1585,21 @@ function enableManualPinMode() {
     }).addTo(map);
   }
   checkFormReady();
+}
+
+// Keeps the big red "+" report button disabled until the user has a
+// location — either a live GPS fix or a manually-dropped pin. Called
+// whenever userCoords / manualCoords change (GPS fix, pin drop, pin
+// clear). Also nudges the open wizard's own submit-readiness check,
+// which is a harmless no-op if the wizard isn't open.
+function checkFormReady() {
+  const hasLoc = !!(userCoords || manualCoords);
+  const fabBtn = document.getElementById('reportFabBtn');
+  if (fabBtn) {
+    fabBtn.disabled = !hasLoc;
+    fabBtn.title = hasLoc ? 'Report bad air' : t('wizNoLocationHint');
+  }
+  if (typeof checkWizSubmitReady === 'function') checkWizSubmitReady();
 }
 
 // Obfuscate a GPS fix by offsetting it a random distance (up to radiusMeters)
@@ -2039,12 +2160,34 @@ async function loadAirQualityStations() {
     (latest || []).forEach(r => { readingByStation[r.station_id] = r; });
 
     (stations || []).forEach(station => {
-      const reading = readingByStation[station.id] || null;
+      const initialReading = readingByStation[station.id] || null;
       const marker = L.marker([station.lat, station.lon], {
-        icon: makeStationIcon(reading ? aqiColor(reading.category) : '#9e9e9e'),
+        icon: makeStationIcon(initialReading ? aqiColor(initialReading.category) : '#9e9e9e'),
         zIndexOffset: -1000, // keep beneath report pins
       }).addTo(map);
-      marker.bindPopup(buildStationPopupHtml(station, reading));
+      marker.bindPopup(buildStationPopupHtml(station, initialReading));
+
+      // Re-fetch this station's latest reading fresh, every time its popup
+      // is opened, so the numbers shown are never older than the click.
+      marker.on('popupopen', async () => {
+        try {
+          const { data, error } = await sb
+            .from('air_quality_readings')
+            .select('*')
+            .eq('station_id', station.id)
+            .order('recorded_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (error) { console.error('Station refresh error:', error); return; }
+          if (data) {
+            marker.setPopupContent(buildStationPopupHtml(station, data));
+            marker.setIcon(makeStationIcon(aqiColor(data.category)));
+          }
+        } catch (err) {
+          console.error('Station popup refresh failed:', err);
+        }
+      });
+
       stationMarkers.push(marker);
     });
   } catch (err) {
@@ -2945,6 +3088,7 @@ function resetReportingForm() {
   }
   if (manualMarker) { map.removeLayer(manualMarker); manualMarker = null; }
   manualCoords = null;
+  checkFormReady();
 }
 
 async function reportBadAir(){
@@ -3030,7 +3174,7 @@ async function reportBadAir(){
 /* ═══════════════════════════════════════════════════
    CSV EXPORT
 ═══════════════════════════════════════════════════ */
-function downloadCSV() {
+async function downloadCSV() {
   const bounds = map.getBounds();
   const filterStart = fp.selectedDates[0] ? fp.selectedDates[0].getTime() : 0;
   const filterEnd = fp.selectedDates[1] ? fp.selectedDates[1].getTime() : Infinity;
@@ -3071,6 +3215,44 @@ function downloadCSV() {
       csvField(r.comment || '')
     ].join(',') + '\n';
   });
+
+  // Append a second section with the latest reading from every government
+  // AQ station, fetched fresh at export time so the CSV is a self-contained
+  // snapshot of both community reports and official station data.
+  try {
+    const [{ data: stations, error: stErr }, { data: latest, error: rdErr }] = await Promise.all([
+      sb.from('air_quality_stations').select('*'),
+      sb.from('air_quality_latest').select('*'),
+    ]);
+    if (!stErr && stations && stations.length) {
+      const readingByStation = {};
+      (latest || []).forEach(r => { readingByStation[r.station_id] = r; });
+
+      csv += '\nAir Quality Stations (Latest Reading)\n';
+      csv += 'StationID,StationName,Network,Latitude,Longitude,Category,PM10,PM2.5,SO2,NO2,O3,RecordedAt\n';
+      stations.forEach(s => {
+        const r = readingByStation[s.id] || null;
+        csv += [
+          csvField(s.id),
+          csvField(s.name),
+          csvField(s.network || ''),
+          csvField(s.lat),
+          csvField(s.lon),
+          csvField(r ? r.category : ''),
+          csvField(r ? r.pm10 : ''),
+          csvField(r ? r.pm25 : ''),
+          csvField(r ? r.so2 : ''),
+          csvField(r ? r.no2 : ''),
+          csvField(r ? r.o3 : ''),
+          csvField(r ? r.recorded_at : '')
+        ].join(',') + '\n';
+      });
+    } else if (rdErr) {
+      console.error('Latest reading fetch failed for CSV:', rdErr);
+    }
+  } catch (err) {
+    console.error('Station data fetch failed for CSV:', err);
+  }
 
   let filename = 'TraceTheToxin.csv';
   if (fp.selectedDates.length === 2) {
