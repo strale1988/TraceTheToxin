@@ -456,6 +456,24 @@ span.flatpickr-weekday {
 }
 #traceSourceBtn{ position:fixed; bottom:calc(var(--legend-bar-h) + 94px); right:12px; }
 #pinMapBtn{ position:fixed; bottom:calc(var(--legend-bar-h) + 148px); right:12px; }
+#mapFilterBtn{ position:fixed; bottom:calc(var(--legend-bar-h) + 202px); right:12px; }
+.map-filter-btn{
+  background:var(--floating-bg);
+  border:1px solid var(--floating-border);
+  border-radius:50%;
+  width:44px; height:44px;
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer; font-size:22px;
+  box-shadow:0 2px 8px var(--floating-shadow);
+  transition:background .15s ease, transform .12s ease, box-shadow .15s ease;
+  user-select:none;
+  -webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;
+}
+.map-filter-btn:active{ transform:scale(.9); }
+.map-filter-btn.active{ background:#f5a623; border-color:#f5a623; }
+.map-filter-btn .icon-img{ filter:var(--icon-tint-filter); }
+.map-filter-btn.active .icon-img{ filter:none; }
 .pin-map-btn{
   background:var(--floating-bg);
   border:1px solid var(--floating-border);
@@ -711,6 +729,9 @@ span.flatpickr-weekday {
 </div>
 
 <div id="bottomRightStack" class="bottomright-stack">
+  <div id="mapFilterBtn" class="map-filter-btn" style="display:none" title="Filter reports shown on the map by date" onclick="openMapFilter()">
+    <img class="icon-img" src="icons/category-filter.png" alt="Filter">
+  </div>
   <div id="pinMapBtn" class="pin-map-btn" style="display:none" title="Set location manually" onclick="togglePinMode()">
     <img class="icon-img" src="icons/pin.png" alt="Pin">
   </div>
@@ -718,6 +739,7 @@ span.flatpickr-weekday {
     <img class="icon-img" src="icons/search.png" alt="Trace">
   </div>
 </div>
+<input type="text" id="mapDateRangePicker" style="display:none">
 
 <button type="button" class="report-fab-btn" id="reportFabBtn" title="Report bad air" aria-label="Report bad air" onclick="reportFabTap()" disabled>
   <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -784,6 +806,10 @@ span.flatpickr-weekday {
         <button class="export-btn" onclick="downloadCSV()"
                 style="width:auto;flex:0 0 auto;padding:11px 14px;font-size:12px;white-space:nowrap;">
           <span id="csvLabel">CSV</span>
+        </button>
+        <button class="export-btn" onclick="downloadStationCSV()"
+                style="width:auto;flex:0 0 auto;padding:11px 14px;font-size:12px;white-space:nowrap;">
+          <span id="stationCsvLabel">Stations CSV</span>
         </button>
       </div>
     </div>
@@ -1217,9 +1243,13 @@ let tracerVisualCircles = [];
 let globalActiveData = [];
 
 let fp = null; 
+// Independent flatpickr instance behind the on-map filter button — controls
+// only which report pins are rendered on the map. Kept separate from fp,
+// which now only scopes what the Settings CSV export buttons download.
+let mapFp = null;
 
 const weatherCache = {};
-const splineCache = {};
+const windTrailCache = {};
 
 // How many hours of historical wind data to pull when building the spline
 // trail (and the live backtrack). Change this one number to load a longer
@@ -1254,6 +1284,8 @@ const T = {
   reportBtn:    { en:'REPORT BAD AIR',                   sr:'PRIJAVI LOŠ VAZDUH' },
   reportBtnCleanAir: { en:'REPORT CLEAN AIR',             sr:'PRIJAVI ČIST VAZDUH' },
   csvLabel:     { en:'CSV',                              sr:'CSV' },
+  stationCsvLabel: { en:'Stations CSV',                  sr:'CSV stanica' },
+  noStations:   { en:'No station data in this view',    sr:'Nema podataka stanica u ovom prikazu' },
   commentPH:    { en:'Optional notes...',                sr:'Opciona napomena...' },
   waitGps:      { en:'Waiting for GPS...',               sr:'Čekanje GPS-a...' },
   
@@ -1391,6 +1423,11 @@ function setLang(l){
     const savedDates = fp.selectedDates;
     fp.destroy();
     initCalendarFilter(savedDates);
+  }
+  if (mapFp) {
+    const savedMapDates = mapFp.selectedDates;
+    mapFp.destroy();
+    initMapCalendarFilter(savedMapDates);
     loadPinsByWindow();
   }
 }
@@ -1400,6 +1437,7 @@ function applyLang(){
 
   if (el('subtitle'))         el('subtitle').textContent = t('subtitle');
   if (el('csvLabel'))         el('csvLabel').textContent = t('csvLabel');
+  if (el('stationCsvLabel'))  el('stationCsvLabel').textContent = t('stationCsvLabel');
   if (el('filterTitleLabel')) el('filterTitleLabel').textContent = t('timeFilter');
   if (el('dateRangePicker'))  el('dateRangePicker').placeholder = t('calendarPH');
 
@@ -1464,6 +1502,8 @@ function buildHelpModalContent() {
 /* ═══════════════════════════════════════════════════
    CALENDAR POPUP SETUP (FLATPICKR)
 ═══════════════════════════════════════════════════ */
+// Settings' date-range filter — scopes ONLY what the two CSV export buttons
+// download. Independent from the map filter below; doesn't touch rendering.
 function initCalendarFilter(optionalDefaultDates) {
   let initialDates = optionalDefaultDates;
   
@@ -1479,21 +1519,45 @@ function initCalendarFilter(optionalDefaultDates) {
     theme: "dark",
     dateFormat: "d.m.Y", 
     locale: lang === 'sr' ? flatpickr.l10ns.sr : 'default',
+    defaultDate: initialDates
+  });
+}
+
+// On-map filter, opened via the round filter button (category-filter.png
+// icon). Scopes ONLY which report pins are rendered on the map — entirely
+// independent from the Settings CSV filter above.
+function initMapCalendarFilter(optionalDefaultDates) {
+  let initialDates = optionalDefaultDates;
+
+  if (!initialDates || initialDates.length === 0) {
+    const defaultStart = new Date();
+    defaultStart.setDate(defaultStart.getDate() - 3);
+    const defaultEnd = new Date();
+    initialDates = [defaultStart, defaultEnd];
+  }
+
+  mapFp = flatpickr("#mapDateRangePicker", {
+    mode: "range",
+    theme: "dark",
+    dateFormat: "d.m.Y",
+    locale: lang === 'sr' ? flatpickr.l10ns.sr : 'default',
     defaultDate: initialDates,
+    positionElement: document.getElementById('mapFilterBtn'),
     onClose: async function(selectedDates) {
       if (selectedDates.length === 2) {
-        // Step 1: Always ensure pins and window state variables update first
         await loadPinsByWindow();
-        
-        // Step 2: If currently tracing, re-run the trace calculations using the fresh data window
+
         if (traceMode && tracerMarker) {
-          if (traceMode && tracerMarker) {
-            filterPinsBySourceTrajectory(tracerMarker.getLatLng());
-          }
+          filterPinsBySourceTrajectory(tracerMarker.getLatLng());
         }
       }
     }
   });
+}
+
+// Opens the map filter's calendar — called by the round filter button.
+function openMapFilter() {
+  if (mapFp) mapFp.open();
 }
 
 
@@ -1722,6 +1786,17 @@ initGps();
 /* ═══════════════════════════════════════════════════
    CONTROLS (Manual Pin & Tracer)
 ═══════════════════════════════════════════════════ */
+const MapFilterControl = L.Control.extend({
+  options:{ position:'bottomleft' },
+  onAdd(){
+    const btn = document.getElementById('mapFilterBtn');
+    L.DomEvent.disableClickPropagation(btn);
+    return btn;
+  }
+});
+new MapFilterControl().addTo(map);
+document.getElementById('mapFilterBtn').style.display = 'flex';
+
 const PinControl = L.Control.extend({
   options:{ position:'bottomleft' },
   onAdd(){
@@ -2256,18 +2331,8 @@ function findNearestStation(lat, lon) {
   return nearest ? { station: nearest, distanceKm: minDist } : null;
 }
 
-// Roughly estimates how many hours wind took to travel a given distance,
-// using the report's own recorded wind speed. Returns null when speed is
-// unknown or zero (can't estimate a travel time in that case).
-function estimateWindTravelHours(distanceKm, windSpeedKmh) {
-  const spd = parseFloat(windSpeedKmh);
-  if (!spd || spd <= 0 || !isFinite(spd)) return null;
-  return distanceKm / spd;
-}
-
 // Fetches the most recent station reading recorded AT OR BEFORE targetIso —
-// i.e. what the station showed however many hours ago the wind is estimated
-// to have left it.
+// i.e. what the station showed at that real historical hour.
 async function getStationReadingNear(stationId, targetIso) {
   try {
     const { data, error } = await sb
@@ -2286,28 +2351,32 @@ async function getStationReadingNear(stationId, targetIso) {
   }
 }
 
-// Combines the three pieces above: nearest station to a report, how long
-// the wind roughly took to arrive from it, and the station reading that
-// was current back when the wind actually left that station.
+// Finds the station relevant to a report's actual wind history, and the
+// reading that station had at the real hour the wind's backtracked path
+// passed closest to it — not a straight-line-nearest-station guess.
+// Falls back to plain nearest-station-at-report-time only when there isn't
+// enough wind history yet (report younger than TRAIL_MIN_HOURS).
 async function getNearestStationDataForReport(report) {
-  const nearest = findNearestStation(report.latitude, report.longitude);
-  if (!nearest) return null;
+  if (!airQualityStationsCache.length) return null;
 
-  const windSpeed = report.wind_speed;
-  const travelHours = estimateWindTravelHours(nearest.distanceKm, windSpeed);
+  const trailResult = await buildWindTrailForReport(report);
 
-  const reportTime = new Date(report.created_at);
-  const targetTime = travelHours != null
-    ? new Date(reportTime.getTime() - travelHours * 3600000)
-    : reportTime; // wind speed unknown — best guess is the report's own time
+  let match = trailResult?.rawTrail?.length
+    ? findStationAlongWindTrail(trailResult.rawTrail, airQualityStationsCache)
+    : null;
 
-  const reading = await getStationReadingNear(nearest.station.id, targetTime.toISOString());
+  if (!match) {
+    const nearest = findNearestStation(report.latitude, report.longitude);
+    if (!nearest) return null;
+    match = { station: nearest.station, distanceKm: nearest.distanceKm, atTime: report.created_at };
+  }
+
+  const reading = await getStationReadingNear(match.station.id, match.atTime);
 
   return {
-    station: nearest.station,
-    distanceKm: nearest.distanceKm,
-    travelHours,
-    targetTime,
+    station: match.station,
+    distanceKm: match.distanceKm,
+    targetTime: new Date(match.atTime),
     reading
   };
 }
@@ -2499,7 +2568,14 @@ async function backfillWindDirection(reportId, avgDirection) {
 }
 
 // Fetches TRAIL_WINDOW_HOURS of historical wind data and builds a smoothed Chaikin spline trail
-async function renderHistoricSplineTrailForReport(report) {
+// Builds the full backtracked wind trail for a report: an hour-by-hour walk
+// from the report's own location/time backward toward where the wind came
+// from. Returns { rawTrail, spline } where rawTrail carries a real `time`
+// (ISO string) per point, and spline is the Chaikin-smoothed version drawn
+// on the map. This is the single place that does the Open-Meteo fetch +
+// backtrack math — renderHistoricSplineTrailForReport (map line) and
+// getNearestStationDataForReport (station matching) both build on top of it.
+async function buildWindTrailForReport(report) {
 
   const reportTime = new Date(report.created_at);
   const reportAgeHours =
@@ -2515,10 +2591,10 @@ async function renderHistoricSplineTrailForReport(report) {
   // data become available every hour, so the trail should keep growing.
   const isSettled = reportAgeHours >= TRAIL_SETTLED_GATE_HOURS;
 
-  // Only return the cached spline once it's the final, full-window version.
+  // Only return the cached trail once it's the final, full-window version.
   // Growing trails are recomputed each call so newly-available hours show up.
-  if (isSettled && splineCache[report.id]) {
-    return splineCache[report.id];
+  if (isSettled && windTrailCache[report.id]) {
+    return windTrailCache[report.id];
   }
 
   try {
@@ -2560,7 +2636,7 @@ async function renderHistoricSplineTrailForReport(report) {
         continue;
       }
 
-      steps.push({ spd, dir, pres });
+      steps.push({ spd, dir, pres, ts });
 
     }
 
@@ -2607,20 +2683,29 @@ async function renderHistoricSplineTrailForReport(report) {
       }
     }
 
-steps.reverse(); // walk backwards from report time toward the source
-const rawTrail = buildRawVectorTrail(
-  report.latitude,
-  report.longitude,
-  steps
-);
+    steps.reverse(); // walk backwards from report time toward the source
+    const rawTrail = buildRawVectorTrail(
+      report.latitude,
+      report.longitude,
+      steps
+    );
+
+    // rawTrail[0] is the report's own point/time; rawTrail[i] (i>=1) comes
+    // from steps[i-1] (post-reverse), so it inherits that step's real hour.
+    rawTrail[0].time = reportTime.toISOString();
+    for (let i = 1; i < rawTrail.length; i++) {
+      rawTrail[i].time = new Date(steps[i - 1].ts).toISOString();
+    }
 
     const spline = smoothPathChaikin(rawTrail, 2);
 
+    const result = { rawTrail, spline };
+
     if (isSettled) {
-      splineCache[report.id] = spline;
+      windTrailCache[report.id] = result;
     }
 
-    return spline;
+    return result;
 
   } catch (err) {
 
@@ -2633,6 +2718,32 @@ const rawTrail = buildRawVectorTrail(
 
   }
 
+}
+
+// Thin wrapper kept for the map-rendering call sites: same trail-building
+// logic as buildWindTrailForReport, just returning the drawable spline.
+async function renderHistoricSplineTrailForReport(report) {
+  const result = await buildWindTrailForReport(report);
+  return result ? result.spline : null;
+}
+
+// Walks every point of an already-backtracked wind trail and finds which
+// station it passes closest to, using the REAL historical hour that point
+// represents. This is what "nearest station" should mean for a report: not
+// whichever station is nearest the report's own coordinates, but whichever
+// station the wind's actual traced-back path came closest to along the way.
+function findStationAlongWindTrail(rawTrail, stations) {
+  if (!rawTrail?.length || !stations?.length) return null;
+  let best = null;
+  for (const point of rawTrail) {
+    for (const s of stations) {
+      const d = getHaversineDistance(point.lat, point.lon, s.lat, s.lon);
+      if (!best || d < best.distanceKm) {
+        best = { station: s, distanceKm: d, atTime: point.time };
+      }
+    }
+  }
+  return best;
 }
 
 async function startBacktrack(lat, lon, createdAt) {
@@ -2940,7 +3051,7 @@ function translateCategory(category) {
 
 // Renders the "nearest station" block of a report popup for each state:
 // still loading (undefined), no station found (null), or resolved data.
-function buildReportStationSectionHtml(stationInfo) {
+function buildReportStationSectionHtml(stationInfo, reportCreatedAt) {
   if (stationInfo === undefined) {
     return `<div style="font-size:9px;color:#bbb;font-style:italic;margin-top:2px;">${t('stationDataLoading')}</div>`;
   }
@@ -2948,7 +3059,10 @@ function buildReportStationSectionHtml(stationInfo) {
     return `<div style="font-size:9px;color:#bbb;font-style:italic;margin-top:2px;">${t('stationNoneNearby')}</div>`;
   }
 
-  const { station, distanceKm, travelHours, reading } = stationInfo;
+  const { station, distanceKm, targetTime, reading } = stationInfo;
+  const hoursBefore = reportCreatedAt
+    ? (new Date(reportCreatedAt).getTime() - targetTime.getTime()) / 3600000
+    : null;
   const pollutant = (label, val) => `
     <div style="display:flex;justify-content:space-between;align-items:center;">
       <span style="font-size:9px;color:#888;text-transform:uppercase;">${label}</span>
@@ -2961,7 +3075,7 @@ function buildReportStationSectionHtml(stationInfo) {
       <span style="font-size:10px;color:#555;font-weight:600;">
         ${station.name} <span style="color:#999;font-weight:400;">(${distanceKm.toFixed(1)} km ${t('nearestStationDist')})</span>
       </span>
-      ${travelHours != null ? `<span style="font-size:9px;color:#999;">${t('windTravelTime')}: ~${travelHours.toFixed(1)}h</span>` : ''}
+      ${hoursBefore != null && hoursBefore > 0.05 ? `<span style="font-size:9px;color:#999;">${t('windTravelTime')}: ~${hoursBefore.toFixed(1)}h</span>` : ''}
       ${reading ? `
         <span style="font-size:9px;color:#999;">${t('stationDataAsOf')} ${formatStationTime(reading.recorded_at)}</span>
         ${pollutant('PM10', reading.pm10)}
@@ -3052,7 +3166,7 @@ function renderPin(report, index = 0){
 
   // Initial popup shows a loading state for the nearest-station block;
   // it's filled in once the lookup resolves, on first open.
-  marker.bindPopup(buildReportPopupHtml(report, buildReportStationSectionHtml(undefined)));
+  marker.bindPopup(buildReportPopupHtml(report, buildReportStationSectionHtml(undefined, report.created_at)));
 
   marker.on('popupopen', () => {
     startBacktrack(report.latitude, report.longitude, new Date().toISOString());
@@ -3069,10 +3183,10 @@ function renderPin(report, index = 0){
     // station markers themselves — the numbers shown are never older than
     // the click that revealed them.
     getNearestStationDataForReport(report).then(stationInfo => {
-      marker.setPopupContent(buildReportPopupHtml(report, buildReportStationSectionHtml(stationInfo)));
+      marker.setPopupContent(buildReportPopupHtml(report, buildReportStationSectionHtml(stationInfo, report.created_at)));
     }).catch(err => {
       console.error('Nearest station lookup failed for report', report.id, err);
-      marker.setPopupContent(buildReportPopupHtml(report, buildReportStationSectionHtml(null)));
+      marker.setPopupContent(buildReportPopupHtml(report, buildReportStationSectionHtml(null, report.created_at)));
     });
   });
   marker.on('popupclose', () => {
@@ -3105,11 +3219,11 @@ async function loadPinsByWindow() {
       lastSyncTimestamp = data[0].created_at;
   }
 
-  if (!fp || !fp.selectedDates || fp.selectedDates.length < 2) return;
+  if (!mapFp || !mapFp.selectedDates || mapFp.selectedDates.length < 2) return;
 
-  const filterStart = new Date(fp.selectedDates[0]);
+  const filterStart = new Date(mapFp.selectedDates[0]);
   filterStart.setHours(0, 0, 0, 0);
-  const filterEnd = new Date(fp.selectedDates[1]);
+  const filterEnd = new Date(mapFp.selectedDates[1]);
   filterEnd.setHours(23, 59, 59, 999);
 
   let n = 0;
@@ -3361,6 +3475,38 @@ async function reportBadAir(){
 /* ═══════════════════════════════════════════════════
    CSV EXPORT
 ═══════════════════════════════════════════════════ */
+// Escapes a value for safe CSV output: wraps in quotes (and doubles
+// internal quotes) whenever the value contains a comma, quote, or newline.
+function csvField(val) {
+  const s = (val === null || val === undefined) ? '' : String(val);
+  if (/[",\n\r]/.test(s)) {
+    return `"${s.replace(/"/g, '""')}"`;
+  }
+  return s;
+}
+
+// Builds a CSV filename suffixed with the given date range (or no suffix
+// if the range isn't a full 2-date selection), and triggers the browser
+// download. Shared by both CSV export buttons.
+function triggerCsvDownload(csv, baseName, selectedDates) {
+  let filename = `${baseName}.csv`;
+  if (selectedDates && selectedDates.length === 2) {
+    const pad = (n) => String(n).padStart(2, '0');
+    const d1 = selectedDates[0];
+    const d2 = selectedDates[1];
+    const startStr = `${pad(d1.getDate())}${pad(d1.getMonth() + 1)}${d1.getFullYear()}`;
+    const endStr = `${pad(d2.getDate())}${pad(d2.getMonth() + 1)}${d2.getFullYear()}`;
+    filename = `${baseName}_${startStr}_${endStr}.csv`;
+  }
+
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
 async function downloadCSV() {
   const bounds = map.getBounds();
   const filterStart = fp.selectedDates[0] ? fp.selectedDates[0].getTime() : 0;
@@ -3375,16 +3521,6 @@ async function downloadCSV() {
 
   if(!visible.length){ alert(t('noReports')); return; }
 
-  // Escapes a value for safe CSV output: wraps in quotes (and doubles
-  // internal quotes) whenever the value contains a comma, quote, or newline.
-  const csvField = (val) => {
-    const s = (val === null || val === undefined) ? '' : String(val);
-    if (/[",\n\r]/.test(s)) {
-      return `"${s.replace(/"/g, '""')}"`;
-    }
-    return s;
-  };
-
   // Make sure we have a station list to measure distances from — reuse the
   // already-loaded cache when possible, otherwise fetch fresh.
   let stationsForExport = airQualityStationsCache;
@@ -3398,24 +3534,32 @@ async function downloadCSV() {
     }
   }
 
-  // For each report: find its nearest station, estimate how long the wind
-  // took to travel that distance (using the report's own wind speed), and
-  // work out the target timestamp we want that station's reading FROM —
-  // i.e. what it showed however many hours ago the wind left it.
-  const perReport = visible.map(r => {
-    let nearest = null, minDist = Infinity;
-    for (const s of stationsForExport) {
-      const d = getHaversineDistance(r.latitude, r.longitude, s.lat, s.lon);
-      if (d < minDist) { minDist = d; nearest = s; }
+  // For each report, find the station its actual (backtracked) wind history
+  // passed closest to, and the real hour that happened — same logic as the
+  // report popup, so the CSV and the UI never disagree. Falls back to plain
+  // nearest-station-at-report-time only when there's no wind history yet.
+  const perReport = await Promise.all(visible.map(async (r) => {
+    const trailResult = await buildWindTrailForReport(r);
+    let match = trailResult?.rawTrail?.length
+      ? findStationAlongWindTrail(trailResult.rawTrail, stationsForExport)
+      : null;
+
+    if (!match) {
+      let nearest = null, minDist = Infinity;
+      for (const s of stationsForExport) {
+        const d = getHaversineDistance(r.latitude, r.longitude, s.lat, s.lon);
+        if (d < minDist) { minDist = d; nearest = s; }
+      }
+      match = nearest ? { station: nearest, distanceKm: minDist, atTime: r.created_at } : null;
     }
-    const distanceKm = nearest ? minDist : null;
-    const travelHours = nearest ? estimateWindTravelHours(minDist, r.wind_speed) : null;
-    const reportTime = new Date(r.created_at);
-    const targetTime = travelHours != null
-      ? new Date(reportTime.getTime() - travelHours * 3600000)
-      : reportTime;
-    return { report: r, station: nearest, distanceKm, travelHours, targetTime };
-  });
+
+    return {
+      report: r,
+      station: match?.station ?? null,
+      distanceKm: match?.distanceKm ?? null,
+      targetTime: match ? new Date(match.atTime) : new Date(r.created_at)
+    };
+  }));
 
   // Batch-fetch every referenced station's readings across the full span of
   // target times in one query, rather than one round trip per report.
@@ -3460,10 +3604,11 @@ async function downloadCSV() {
 
   let csv = `Report Generated/Downloaded On: ${new Date().toLocaleString()}\n\n`;
   csv += 'ID,Date,Latitude,Longitude,Category,Intensity,WindSpeed,WindDirection,SeaLevelPressure,Comment,' +
-         'NearestStation,StationDistanceKm,WindTravelHours,StationDataAsOf,StationPM10,StationPM2.5,StationSO2,StationNO2,StationO3\n';
+         'NearestStation,StationDistanceKm,StationDataTime,HoursBeforeReport,StationPM10,StationPM2.5,StationSO2,StationNO2,StationO3\n';
 
-  perReport.forEach(({ report: r, station, distanceKm, travelHours, targetTime }) => {
+  perReport.forEach(({ report: r, station, distanceKm, targetTime }) => {
     const reading = station ? pickReadingAtOrBefore(readingsByStation[station.id], targetTime) : null;
+    const hoursBefore = station ? (new Date(r.created_at).getTime() - targetTime.getTime()) / 3600000 : null;
     csv += [
       csvField(r.id),
       csvField(r.created_at),
@@ -3477,8 +3622,8 @@ async function downloadCSV() {
       csvField(r.comment || ''),
       csvField(station ? station.name : ''),
       csvField(distanceKm != null ? distanceKm.toFixed(2) : ''),
-      csvField(travelHours != null ? travelHours.toFixed(2) : ''),
-      csvField(reading ? reading.recorded_at : ''),
+      csvField(targetTime ? targetTime.toISOString() : ''),
+      csvField(hoursBefore != null ? hoursBefore.toFixed(2) : ''),
       csvField(reading ? reading.pm10 : ''),
       csvField(reading ? reading.pm25 : ''),
       csvField(reading ? reading.so2 : ''),
@@ -3487,22 +3632,77 @@ async function downloadCSV() {
     ].join(',') + '\n';
   });
 
-  let filename = 'TraceTheToxin.csv';
-  if (fp.selectedDates.length === 2) {
-    const pad = (n) => String(n).padStart(2, '0');
-    const d1 = fp.selectedDates[0];
-    const d2 = fp.selectedDates[1];
-    const startStr = `${pad(d1.getDate())}${pad(d1.getMonth() + 1)}${d1.getFullYear()}`;
-    const endStr = `${pad(d2.getDate())}${pad(d2.getMonth() + 1)}${d2.getFullYear()}`;
-    filename = `TraceTheToxin_${startStr}_${endStr}.csv`;
+  triggerCsvDownload(csv, 'TraceTheToxin', fp.selectedDates);
+}
+
+// Exports raw station readings for whatever stations are currently visible
+// in the map viewport, filtered by the SAME Settings date range as the
+// report CSV above — but entirely independent from the on-map filter
+// button, which only controls what's rendered, not what gets exported.
+async function downloadStationCSV() {
+  const bounds = map.getBounds();
+  const filterStart = fp.selectedDates[0] ? new Date(fp.selectedDates[0]) : null;
+  if (filterStart) filterStart.setHours(0, 0, 0, 0);
+  const filterEnd = fp.selectedDates[1] ? new Date(fp.selectedDates[1]) : null;
+  if (filterEnd) filterEnd.setHours(23, 59, 59, 999);
+
+  let stationsForExport = airQualityStationsCache;
+  if (!stationsForExport.length) {
+    try {
+      const { data, error } = await sb.from('air_quality_stations').select('*');
+      if (!error) stationsForExport = data || [];
+      else console.error('Station fetch failed for station CSV:', error);
+    } catch (err) {
+      console.error('Station fetch error for station CSV:', err);
+    }
   }
 
-  const a = document.createElement('a');
-  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
+  const visibleStations = stationsForExport.filter(s => bounds.contains(L.latLng(s.lat, s.lon)));
+
+  if (!visibleStations.length) { alert(t('noStations')); return; }
+
+  const stationIds = visibleStations.map(s => s.id);
+  const stationById = {};
+  visibleStations.forEach(s => { stationById[s.id] = s; });
+
+  let query = sb
+    .from('air_quality_readings')
+    .select('*')
+    .in('station_id', stationIds)
+    .order('recorded_at', { ascending: true });
+  if (filterStart) query = query.gte('recorded_at', filterStart.toISOString());
+  if (filterEnd) query = query.lte('recorded_at', filterEnd.toISOString());
+
+  const { data: readings, error } = await query;
+  if (error) {
+    console.error('Station readings fetch failed for CSV:', error);
+    alert(t('noStations'));
+    return;
+  }
+
+  if (!readings || !readings.length) { alert(t('noStations')); return; }
+
+  let csv = `Report Generated/Downloaded On: ${new Date().toLocaleString()}\n\n`;
+  csv += 'StationID,StationName,Latitude,Longitude,RecordedAt,PM10,PM2.5,SO2,NO2,O3,Category\n';
+
+  readings.forEach(r => {
+    const station = stationById[r.station_id];
+    csv += [
+      csvField(r.station_id),
+      csvField(station ? station.name : ''),
+      csvField(station ? station.lat : ''),
+      csvField(station ? station.lon : ''),
+      csvField(r.recorded_at),
+      csvField(r.pm10),
+      csvField(r.pm25),
+      csvField(r.so2),
+      csvField(r.no2),
+      csvField(r.o3),
+      csvField(r.category)
+    ].join(',') + '\n';
+  });
+
+  triggerCsvDownload(csv, 'TraceTheToxin_Stations', fp.selectedDates);
 }
 
 /* ═══════════════════════════════════════════════════
@@ -3528,6 +3728,7 @@ document.querySelectorAll('#langSegment .theme-segment-btn').forEach(b=>{
 });
 
 initCalendarFilter();
+initMapCalendarFilter();
 applyLang(); 
 
 // Auto-show the "How to Use" help popup at most once a day per device.
