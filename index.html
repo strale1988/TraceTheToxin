@@ -76,10 +76,13 @@ html[data-theme="light"]{
   --floating-border: #e2e2e0;
   --floating-shadow: rgba(0,0,0,.18);
   --map-tile-filter: grayscale(1) brightness(1.08) contrast(0.92);
+  /* Live-measured height of #legendBar (see syncLegendBarHeight()) so every
+     floating map control can anchor itself above it, however tall it gets. */
+  --legend-bar-h: 100px;
 }
 .leaflet-control-container .leaflet-bottom.leaflet-right{
   top:auto !important;
-  bottom:calc(96px + env(safe-area-inset-bottom, 0px)) !important;
+  bottom:calc(var(--legend-bar-h) + 40px) !important;
   right:12px !important;
   margin:0 !important;
   transform:none;
@@ -88,7 +91,7 @@ html[data-theme="light"]{
   margin:0 !important;
 }
 .leaflet-control-container .leaflet-bottom.leaflet-left{
-  bottom:calc(4px + env(safe-area-inset-bottom, 0px)) !important;
+  bottom:calc(var(--legend-bar-h) + 4px) !important;
   left:10px !important;
   margin:0 !important;
 }
@@ -451,8 +454,8 @@ span.flatpickr-weekday {
   display:flex; flex-direction:column; align-items:center; gap:10px;
   position:fixed; right:12px; z-index:420;
 }
-#traceSourceBtn{ position:fixed; bottom:calc(150px + env(safe-area-inset-bottom, 0px)); right:12px; }
-#pinMapBtn{ position:fixed; bottom:calc(204px + env(safe-area-inset-bottom, 0px)); right:12px; }
+#traceSourceBtn{ position:fixed; bottom:calc(var(--legend-bar-h) + 94px); right:12px; }
+#pinMapBtn{ position:fixed; bottom:calc(var(--legend-bar-h) + 148px); right:12px; }
 .pin-map-btn{
   background:var(--floating-bg);
   border:1px solid var(--floating-border);
@@ -502,7 +505,7 @@ span.flatpickr-weekday {
   position:fixed;
   left:50%;
   transform:translateX(-50%);
-  bottom:calc(56px + env(safe-area-inset-bottom, 0px));
+  bottom:calc(var(--legend-bar-h) + 8px);
   z-index:420;
   display:flex; align-items:center; justify-content:center;
   cursor:pointer;
@@ -1223,7 +1226,7 @@ const splineCache = {};
 // or shorter trail — everything below derives from it, including the
 // "settled data" gate (window + 1h buffer) that decides when a report is
 // old enough for Open-Meteo's data to be considered final.
-const TRAIL_WINDOW_HOURS = 6;
+const TRAIL_WINDOW_HOURS = 12;
 const TRAIL_SETTLED_GATE_HOURS = TRAIL_WINDOW_HOURS + 1;
 
 /* ═══════════════════════════════════════════════════
@@ -1479,6 +1482,27 @@ function initCalendarFilter(optionalDefaultDates) {
 }
 
 
+
+/* ═══════════════════════════════════════════════════
+   LEGEND / BUTTON BAR — LIVE HEIGHT SYNC
+   #legendBar wraps onto more lines at narrower widths, larger zoom levels,
+   or when switching to longer Serbian strings — so its rendered height is
+   never a fixed number. Every floating control that needs to sit above it
+   (report FAB, pin/trace buttons, Windfinder control, attribution) reads
+   --legend-bar-h instead of a hardcoded pixel guess, and this keeps that
+   variable in sync with the bar's actual, current, on-screen height.
+═══════════════════════════════════════════════════ */
+function syncLegendBarHeight() {
+  const bar = document.getElementById('legendBar');
+  if (!bar) return;
+  document.documentElement.style.setProperty('--legend-bar-h', bar.offsetHeight + 'px');
+}
+window.addEventListener('resize', syncLegendBarHeight);
+window.addEventListener('orientationchange', syncLegendBarHeight);
+if (window.ResizeObserver) {
+  new ResizeObserver(syncLegendBarHeight).observe(document.getElementById('legendBar'));
+}
+syncLegendBarHeight();
 
 /* ═══════════════════════════════════════════════════
    MAP
