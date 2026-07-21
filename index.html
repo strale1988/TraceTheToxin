@@ -1229,6 +1229,14 @@ const splineCache = {};
 const TRAIL_WINDOW_HOURS = 12;
 const TRAIL_SETTLED_GATE_HOURS = TRAIL_WINDOW_HOURS + 1;
 
+// Minimum age before we even attempt to build a spline for a report.
+// Open-Meteo's forecast hourly data can lag ~1h behind real time, so a
+// report younger than this simply has nothing to draw a trail from yet.
+// Once a report clears this, we build a trail from whatever hours ARE
+// available (see availableHours below) and it keeps growing, hour by
+// hour, up to the full TRAIL_WINDOW_HOURS.
+const TRAIL_MIN_HOURS = 1;
+
 /* ═══════════════════════════════════════════════════
    SUPABASE
 ═══════════════════════════════════════════════════ */
@@ -1261,6 +1269,13 @@ const T = {
   aqUpdated:      { en: 'Updated',             sr: 'Ažurirano' },
   aqNoData:       { en: 'No recent data',      sr: 'Nema skorašnjih podataka' },
   aqApprox:       { en: 'Approximate location',sr: 'Približna lokacija' },
+
+  nearestStation:     { en: 'Nearest Station',           sr: 'Najbliža Stanica' },
+  nearestStationDist: { en: 'away',                      sr: 'udaljena' },
+  windTravelTime:      { en: 'Wind travel time',           sr: 'Vreme putovanja vetra' },
+  stationDataAsOf:     { en: 'Station data as of',         sr: 'Podaci stanice od' },
+  stationDataLoading:  { en: 'Loading station data...',    sr: 'Učitavanje podataka stanice...' },
+  stationNoneNearby:   { en: 'No stations nearby',         sr: 'Nema stanica u blizini' },
 
   
   hours:         { en: 'h',                         sr: 'h' },
@@ -1995,7 +2010,9 @@ function getHaversineDistance(lat1, lon1, lat2, lon2) {
 // Must match the cache key format used in fetchHistoricWind exactly.
 function isWindCached(report) {
   const reportTime = new Date(report.created_at);
-  const startTime = new Date(reportTime.getTime() - TRAIL_WINDOW_HOURS * 3600000);
+  const reportAgeHours = (Date.now() - reportTime.getTime()) / 3600000;
+  const availableHours = Math.min(Math.max(reportAgeHours, 0), TRAIL_WINDOW_HOURS);
+  const startTime = new Date(reportTime.getTime() - availableHours * 3600000);
   const lat = parseFloat(report.latitude);
   const lon = parseFloat(report.longitude);
   const cacheKey = `${lat.toFixed(3)}_${lon.toFixed(3)}_${startTime.toISOString().slice(0,13)}`;
@@ -2124,6 +2141,10 @@ function makeStationIcon(color) {
    AIR QUALITY STATIONS (government monitoring network)
 ═══════════════════════════════════════════════════ */
 let stationMarkers = [];
+// Raw station rows (id/name/lat/lon/...), kept alongside the Leaflet
+// markers so nearest-station lookups (report popups, CSV export) don't
+// need their own separate fetch.
+let airQualityStationsCache = [];
 
 function clearStationMarkers() {
   stationMarkers.forEach(m => map.removeLayer(m));
@@ -2180,6 +2201,8 @@ async function loadAirQualityStations() {
     if (stErr) { console.error('Station load error:', stErr); return; }
     if (rdErr) console.error('Latest reading load error:', rdErr);
 
+    airQualityStationsCache = stations || [];
+
     const readingByStation = {};
     (latest || []).forEach(r => { readingByStation[r.station_id] = r; });
 
@@ -2217,6 +2240,76 @@ async function loadAirQualityStations() {
   } catch (err) {
     console.error('loadAirQualityStations error:', err);
   }
+}
+
+// Finds the nearest AQ station (straight-line) to a given point.
+// Returns { station, distanceKm } or null if no stations are loaded.
+function findNearestStation(lat, lon) {
+  if (!airQualityStationsCache.length) return null;
+  lat = parseFloat(lat);
+  lon = parseFloat(lon);
+  let nearest = null, minDist = Infinity;
+  for (const s of airQualityStationsCache) {
+    const d = getHaversineDistance(lat, lon, s.lat, s.lon);
+    if (d < minDist) { minDist = d; nearest = s; }
+  }
+  return nearest ? { station: nearest, distanceKm: minDist } : null;
+}
+
+// Roughly estimates how many hours wind took to travel a given distance,
+// using the report's own recorded wind speed. Returns null when speed is
+// unknown or zero (can't estimate a travel time in that case).
+function estimateWindTravelHours(distanceKm, windSpeedKmh) {
+  const spd = parseFloat(windSpeedKmh);
+  if (!spd || spd <= 0 || !isFinite(spd)) return null;
+  return distanceKm / spd;
+}
+
+// Fetches the most recent station reading recorded AT OR BEFORE targetIso —
+// i.e. what the station showed however many hours ago the wind is estimated
+// to have left it.
+async function getStationReadingNear(stationId, targetIso) {
+  try {
+    const { data, error } = await sb
+      .from('air_quality_readings')
+      .select('*')
+      .eq('station_id', stationId)
+      .lte('recorded_at', targetIso)
+      .order('recorded_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) { console.error('Station reading lookup failed:', error); return null; }
+    return data;
+  } catch (err) {
+    console.error('Station reading lookup error:', err);
+    return null;
+  }
+}
+
+// Combines the three pieces above: nearest station to a report, how long
+// the wind roughly took to arrive from it, and the station reading that
+// was current back when the wind actually left that station.
+async function getNearestStationDataForReport(report) {
+  const nearest = findNearestStation(report.latitude, report.longitude);
+  if (!nearest) return null;
+
+  const windSpeed = report.wind_speed;
+  const travelHours = estimateWindTravelHours(nearest.distanceKm, windSpeed);
+
+  const reportTime = new Date(report.created_at);
+  const targetTime = travelHours != null
+    ? new Date(reportTime.getTime() - travelHours * 3600000)
+    : reportTime; // wind speed unknown — best guess is the report's own time
+
+  const reading = await getStationReadingNear(nearest.station.id, targetTime.toISOString());
+
+  return {
+    station: nearest.station,
+    distanceKm: nearest.distanceKm,
+    travelHours,
+    targetTime,
+    reading
+  };
 }
 
 /* ═══════════════════════════════════════════════════
@@ -2257,10 +2350,13 @@ async function fetchHistoricWind(lat,lon,isoStart,isoEnd){
 lat = parseFloat(lat);
 lon = parseFloat(lon);
 const cacheKey = `${lat.toFixed(3)}_${lon.toFixed(3)}_${isoStart.slice(0,13)}`;
-const reportAgeHours = (Date.now() - new Date(isoStart).getTime()) / 3600000;
+// Age of the window's END (i.e. the report's own time) — NOT the window's
+// start, which is always TRAIL_WINDOW_HOURS further back and would make
+// this check fire far too late.
+const windowEndAgeHours = (Date.now() - new Date(isoEnd).getTime()) / 3600000;
 
-// Skip spline entirely for reports newer than 6 hours
-if (reportAgeHours < 6) return null;
+// Skip entirely if there's not yet even TRAIL_MIN_HOURS of settled data
+if (windowEndAgeHours < TRAIL_MIN_HOURS) return null;
 
 // For archive data (>7 days), cache permanently — it never changes
 // For recent data (6h–7d), cache is valid for the session since we only
@@ -2409,19 +2505,29 @@ async function renderHistoricSplineTrailForReport(report) {
   const reportAgeHours =
     (Date.now() - reportTime.getTime()) / 3600000;
 
-  // Don't process recent reports
-  if (reportAgeHours < TRAIL_SETTLED_GATE_HOURS) {
+  // Not even TRAIL_MIN_HOURS of data could exist yet
+  if (reportAgeHours < TRAIL_MIN_HOURS) {
     return null;
   }
 
-  // Return cached spline if available
-  if (splineCache[report.id]) {
+  // The trail is only "final" once the report has cleared the full
+  // TRAIL_WINDOW_HOURS + settle buffer — before that, more hours of wind
+  // data become available every hour, so the trail should keep growing.
+  const isSettled = reportAgeHours >= TRAIL_SETTLED_GATE_HOURS;
+
+  // Only return the cached spline once it's the final, full-window version.
+  // Growing trails are recomputed each call so newly-available hours show up.
+  if (isSettled && splineCache[report.id]) {
     return splineCache[report.id];
   }
 
   try {
 
-    const startTime = new Date(reportTime.getTime() - TRAIL_WINDOW_HOURS * 3600000);
+    // Use whatever historical window is actually available so far, capped
+    // at TRAIL_WINDOW_HOURS — a 3h-old report gets a 3h trail, which then
+    // keeps extending hour by hour until it reaches the full window.
+    const availableHours = Math.min(reportAgeHours, TRAIL_WINDOW_HOURS);
+    const startTime = new Date(reportTime.getTime() - availableHours * 3600000);
 
     const hourly = await fetchHistoricWindForReport(
       report,
@@ -2510,7 +2616,9 @@ const rawTrail = buildRawVectorTrail(
 
     const spline = smoothPathChaikin(rawTrail, 2);
 
-    splineCache[report.id] = spline;
+    if (isSettled) {
+      splineCache[report.id] = spline;
+    }
 
     return spline;
 
@@ -2830,8 +2938,45 @@ function translateCategory(category) {
   return map[category] || category;
 }
 
-function renderPin(report, index = 0){ 
-  // Helper to format dates consistently
+// Renders the "nearest station" block of a report popup for each state:
+// still loading (undefined), no station found (null), or resolved data.
+function buildReportStationSectionHtml(stationInfo) {
+  if (stationInfo === undefined) {
+    return `<div style="font-size:9px;color:#bbb;font-style:italic;margin-top:2px;">${t('stationDataLoading')}</div>`;
+  }
+  if (stationInfo === null) {
+    return `<div style="font-size:9px;color:#bbb;font-style:italic;margin-top:2px;">${t('stationNoneNearby')}</div>`;
+  }
+
+  const { station, distanceKm, travelHours, reading } = stationInfo;
+  const pollutant = (label, val) => `
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <span style="font-size:9px;color:#888;text-transform:uppercase;">${label}</span>
+      <span style="font-size:11px;font-weight:600;color:#111;">${val != null ? val + ' µg/m³' : '–'}</span>
+    </div>`;
+
+  return `
+    <div style="display:flex;flex-direction:column;gap:1px;margin-top:1px;">
+      <span style="font-size:9px;color:#bbb;text-transform:uppercase;">${t('nearestStation')}</span>
+      <span style="font-size:10px;color:#555;font-weight:600;">
+        ${station.name} <span style="color:#999;font-weight:400;">(${distanceKm.toFixed(1)} km ${t('nearestStationDist')})</span>
+      </span>
+      ${travelHours != null ? `<span style="font-size:9px;color:#999;">${t('windTravelTime')}: ~${travelHours.toFixed(1)}h</span>` : ''}
+      ${reading ? `
+        <span style="font-size:9px;color:#999;">${t('stationDataAsOf')} ${formatStationTime(reading.recorded_at)}</span>
+        ${pollutant('PM10', reading.pm10)}
+        ${pollutant('PM2.5', reading.pm25)}
+        ${pollutant('SO2', reading.so2)}
+        ${pollutant('NO2', reading.no2)}
+        ${pollutant('O3', reading.o3)}
+      ` : `<span style="font-size:10px;color:#999;">${t('aqNoData')}</span>`}
+    </div>`;
+}
+
+// Builds the full report popup. stationSectionHtml is passed in separately
+// since it's resolved asynchronously (nearest-station lookup + a Supabase
+// query), while the rest of the popup can render immediately.
+function buildReportPopupHtml(report, stationSectionHtml) {
   const formatDate = (dateStr) => {
     if (!dateStr) return null;
     const d = new Date(dateStr);
@@ -2840,12 +2985,10 @@ function renderPin(report, index = 0){
   };
 
   const formattedDate = formatDate(report.created_at);
-  
-  const color = ageColor(report.created_at);
   const catCol = categoryColor(report.category);
   const card  = degToCardinal(report.wind_direction);
 
-const popupHtml = `<div class="popup-inner" style="padding:0;min-width:160px;max-width:200px;font-family:sans-serif;">
+  return `<div class="popup-inner" style="padding:0;min-width:160px;max-width:200px;font-family:sans-serif;">
   <div style="background:${catCol};padding:4px 8px;border-radius:6px 6px 0 0;display:flex;flex-direction:column;align-items:flex-start;gap:1px;">
     <span style="font-size:11px;font-weight:700;color:white;">
       ${translateCategory(report.category)}
@@ -2884,6 +3027,9 @@ const popupHtml = `<div class="popup-inner" style="padding:0;min-width:160px;max
       </span>
     </div>
 
+    <div style="height:1px;background:#eee;margin:2px 0;"></div>
+    ${stationSectionHtml}
+
     ${report.comment ? `
     <div style="height:1px;background:#eee;margin:2px 0;"></div>
     <div style="font-size:10px;color:#555;font-style:italic;line-height:1.2;">
@@ -2891,7 +3037,11 @@ const popupHtml = `<div class="popup-inner" style="padding:0;min-width:160px;max
     </div>` : ''}
   </div>
 </div>`;
-  
+}
+
+function renderPin(report, index = 0){
+  const color = ageColor(report.created_at);
+  const catCol = categoryColor(report.category);
 
   const zIndexPriority = 10000 - index;
   const marker=L.marker([report.latitude,report.longitude],{
@@ -2900,7 +3050,10 @@ const popupHtml = `<div class="popup-inner" style="padding:0;min-width:160px;max
     zIndexOffset: zIndexPriority 
   }).addTo(map);
 
-  marker.bindPopup(popupHtml);
+  // Initial popup shows a loading state for the nearest-station block;
+  // it's filled in once the lookup resolves, on first open.
+  marker.bindPopup(buildReportPopupHtml(report, buildReportStationSectionHtml(undefined)));
+
   marker.on('popupopen', () => {
     startBacktrack(report.latitude, report.longitude, new Date().toISOString());
     const spline = splineByReport[report.id];
@@ -2911,6 +3064,16 @@ const popupHtml = `<div class="popup-inner" style="padding:0;min-width:160px;max
         el.classList.add('bg-trail-animated');
       }
     }
+
+    // Refresh nearest-station data on every open, same pattern as the AQ
+    // station markers themselves — the numbers shown are never older than
+    // the click that revealed them.
+    getNearestStationDataForReport(report).then(stationInfo => {
+      marker.setPopupContent(buildReportPopupHtml(report, buildReportStationSectionHtml(stationInfo)));
+    }).catch(err => {
+      console.error('Nearest station lookup failed for report', report.id, err);
+      marker.setPopupContent(buildReportPopupHtml(report, buildReportStationSectionHtml(null)));
+    });
   });
   marker.on('popupclose', () => {
     const spline = splineByReport[report.id];
@@ -3222,10 +3385,85 @@ async function downloadCSV() {
     return s;
   };
 
+  // Make sure we have a station list to measure distances from — reuse the
+  // already-loaded cache when possible, otherwise fetch fresh.
+  let stationsForExport = airQualityStationsCache;
+  if (!stationsForExport.length) {
+    try {
+      const { data, error } = await sb.from('air_quality_stations').select('*');
+      if (!error) stationsForExport = data || [];
+      else console.error('Station fetch failed for CSV:', error);
+    } catch (err) {
+      console.error('Station fetch error for CSV:', err);
+    }
+  }
+
+  // For each report: find its nearest station, estimate how long the wind
+  // took to travel that distance (using the report's own wind speed), and
+  // work out the target timestamp we want that station's reading FROM —
+  // i.e. what it showed however many hours ago the wind left it.
+  const perReport = visible.map(r => {
+    let nearest = null, minDist = Infinity;
+    for (const s of stationsForExport) {
+      const d = getHaversineDistance(r.latitude, r.longitude, s.lat, s.lon);
+      if (d < minDist) { minDist = d; nearest = s; }
+    }
+    const distanceKm = nearest ? minDist : null;
+    const travelHours = nearest ? estimateWindTravelHours(minDist, r.wind_speed) : null;
+    const reportTime = new Date(r.created_at);
+    const targetTime = travelHours != null
+      ? new Date(reportTime.getTime() - travelHours * 3600000)
+      : reportTime;
+    return { report: r, station: nearest, distanceKm, travelHours, targetTime };
+  });
+
+  // Batch-fetch every referenced station's readings across the full span of
+  // target times in one query, rather than one round trip per report.
+  const stationIds = [...new Set(perReport.filter(p => p.station).map(p => p.station.id))];
+  const readingsByStation = {};
+  if (stationIds.length) {
+    const targetMs = perReport.map(p => p.targetTime.getTime());
+    const rangeStart = new Date(Math.min(...targetMs) - 3600000).toISOString();
+    const rangeEnd = new Date(Math.max(...targetMs) + 3600000).toISOString();
+    try {
+      const { data, error } = await sb
+        .from('air_quality_readings')
+        .select('*')
+        .in('station_id', stationIds)
+        .gte('recorded_at', rangeStart)
+        .lte('recorded_at', rangeEnd)
+        .order('recorded_at', { ascending: true });
+      if (error) {
+        console.error('Batch station reading fetch failed for CSV:', error);
+      } else {
+        (data || []).forEach(reading => {
+          if (!readingsByStation[reading.station_id]) readingsByStation[reading.station_id] = [];
+          readingsByStation[reading.station_id].push(reading);
+        });
+      }
+    } catch (err) {
+      console.error('Batch station reading fetch error for CSV:', err);
+    }
+  }
+
+  // Picks the latest reading at or before targetTime from a station's
+  // ascending, pre-sorted reading list.
+  const pickReadingAtOrBefore = (readings, targetTime) => {
+    if (!readings || !readings.length) return null;
+    let result = null;
+    for (const reading of readings) {
+      if (new Date(reading.recorded_at).getTime() <= targetTime.getTime()) result = reading;
+      else break;
+    }
+    return result;
+  };
+
   let csv = `Report Generated/Downloaded On: ${new Date().toLocaleString()}\n\n`;
-  csv += 'ID,Date,Latitude,Longitude,Category,Intensity,WindSpeed,WindDirection,SeaLevelPressure,Comment\n';
-  // 2. Explicitly map each field from the report object 'r'
-  visible.forEach(r => {
+  csv += 'ID,Date,Latitude,Longitude,Category,Intensity,WindSpeed,WindDirection,SeaLevelPressure,Comment,' +
+         'NearestStation,StationDistanceKm,WindTravelHours,StationDataAsOf,StationPM10,StationPM2.5,StationSO2,StationNO2,StationO3\n';
+
+  perReport.forEach(({ report: r, station, distanceKm, travelHours, targetTime }) => {
+    const reading = station ? pickReadingAtOrBefore(readingsByStation[station.id], targetTime) : null;
     csv += [
       csvField(r.id),
       csvField(r.created_at),
@@ -3236,47 +3474,18 @@ async function downloadCSV() {
       csvField(r.wind_speed || 0),
       csvField(r.wind_direction || 0),
       csvField(r.sea_level_pressure || 0),
-      csvField(r.comment || '')
+      csvField(r.comment || ''),
+      csvField(station ? station.name : ''),
+      csvField(distanceKm != null ? distanceKm.toFixed(2) : ''),
+      csvField(travelHours != null ? travelHours.toFixed(2) : ''),
+      csvField(reading ? reading.recorded_at : ''),
+      csvField(reading ? reading.pm10 : ''),
+      csvField(reading ? reading.pm25 : ''),
+      csvField(reading ? reading.so2 : ''),
+      csvField(reading ? reading.no2 : ''),
+      csvField(reading ? reading.o3 : '')
     ].join(',') + '\n';
   });
-
-  // Append a second section with the latest reading from every government
-  // AQ station, fetched fresh at export time so the CSV is a self-contained
-  // snapshot of both community reports and official station data.
-  try {
-    const [{ data: stations, error: stErr }, { data: latest, error: rdErr }] = await Promise.all([
-      sb.from('air_quality_stations').select('*'),
-      sb.from('air_quality_latest').select('*'),
-    ]);
-    if (!stErr && stations && stations.length) {
-      const readingByStation = {};
-      (latest || []).forEach(r => { readingByStation[r.station_id] = r; });
-
-      csv += '\nAir Quality Stations (Latest Reading)\n';
-      csv += 'StationID,StationName,Network,Latitude,Longitude,Category,PM10,PM2.5,SO2,NO2,O3,RecordedAt\n';
-      stations.forEach(s => {
-        const r = readingByStation[s.id] || null;
-        csv += [
-          csvField(s.id),
-          csvField(s.name),
-          csvField(s.network || ''),
-          csvField(s.lat),
-          csvField(s.lon),
-          csvField(r ? r.category : ''),
-          csvField(r ? r.pm10 : ''),
-          csvField(r ? r.pm25 : ''),
-          csvField(r ? r.so2 : ''),
-          csvField(r ? r.no2 : ''),
-          csvField(r ? r.o3 : ''),
-          csvField(r ? r.recorded_at : '')
-        ].join(',') + '\n';
-      });
-    } else if (rdErr) {
-      console.error('Latest reading fetch failed for CSV:', rdErr);
-    }
-  } catch (err) {
-    console.error('Station data fetch failed for CSV:', err);
-  }
 
   let filename = 'TraceTheToxin.csv';
   if (fp.selectedDates.length === 2) {
