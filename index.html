@@ -794,6 +794,16 @@ span.flatpickr-weekday {
       <p class="detail-export-hint" id="themeAutoHint">Auto follows your device's light/dark setting. Smart adapts to ambient light where available, otherwise local time.</p>
     </div>
 
+    <div class="detail-section" id="trailHoursSettingsSection">
+      <div class="detail-section-title" id="trailHoursSectionTitle">Wind Trail Length</div>
+      <div class="theme-segment" id="trailHoursSegment">
+        <button type="button" class="theme-segment-btn" onclick="setTrailDisplayHours(3)" id="trailHoursBtn3">3h</button>
+        <button type="button" class="theme-segment-btn active" onclick="setTrailDisplayHours(6)" id="trailHoursBtn6">6h</button>
+        <button type="button" class="theme-segment-btn" onclick="setTrailDisplayHours(12)" id="trailHoursBtn12">12h</button>
+      </div>
+      <p class="detail-export-hint" id="trailHoursHint">How far back the wind trail is drawn on the map. Nearest-station matching always uses up to 12h of history regardless of this setting.</p>
+    </div>
+
     <div class="detail-section" style="padding:0;overflow:hidden;">
       <div class="filter-label-row" style="border-radius:0;">
         <span class="filter-title" id="filterTitleLabel">Time Window Filter</span>
@@ -1248,6 +1258,24 @@ let fp = null;
 // which now only scopes what the Settings CSV export buttons download.
 let mapFp = null;
 
+// How many hours of wind-trail history to DRAW on the map (default 6h) —
+// purely a rendering setting. Calculations (nearest-station matching, the
+// tracer) always use up to the full TRAIL_WINDOW_HOURS regardless of this.
+function getTrailDisplayHours() {
+  try {
+    const saved = parseInt(localStorage.getItem('ttt_trail_display_hours'), 10);
+    if (saved === 3 || saved === 6 || saved === 12) return saved;
+  } catch (e) {}
+  return 6;
+}
+function setTrailDisplayHours(hours) {
+  try { localStorage.setItem('ttt_trail_display_hours', String(hours)); } catch (e) {}
+  document.querySelectorAll('#trailHoursSegment .theme-segment-btn').forEach(b => {
+    b.classList.toggle('active', b.getAttribute('onclick') === `setTrailDisplayHours(${hours})`);
+  });
+  loadPinsByWindow();
+}
+
 const weatherCache = {};
 const windTrailCache = {};
 
@@ -1357,7 +1385,10 @@ const T = {
   themeBtnLight:     { en:'Light',                       sr:'Svetla' },
   themeBtnDark:      { en:'Dark',                        sr:'Tamna' },
   themeBtnAuto:      { en:'Auto',                        sr:'Auto' },
-  themeBtnSmart:     { en:'Smart',                       sr:'Pametna' }
+  themeBtnSmart:     { en:'Smart',                       sr:'Pametna' },
+
+  trailHoursSectionTitle: { en:'Wind Trail Length', sr:'Dužina traga vetra' },
+  trailHoursHint: { en:"How far back the wind trail is drawn on the map. Nearest-station matching always uses up to 12h of history regardless of this setting.", sr:'Koliko unazad se crta trag vetra na mapi. Poklapanje sa najbližom stanicom uvek koristi do 12h istorije bez obzira na ovo podešavanje.' },
 };
 
 function t(k){ return T[k]?.[lang] ?? k; }
@@ -1453,6 +1484,8 @@ function applyLang(){
   if (el('themeBtnDark'))       el('themeBtnDark').textContent = t('themeBtnDark');
   if (el('themeBtnAuto'))       el('themeBtnAuto').textContent = t('themeBtnAuto');
   if (el('themeBtnSmart'))      el('themeBtnSmart').textContent = t('themeBtnSmart');
+  if (el('trailHoursSectionTitle')) el('trailHoursSectionTitle').textContent = t('trailHoursSectionTitle');
+  if (el('trailHoursHint'))         el('trailHoursHint').textContent = t('trailHoursHint');
 
   // Only re-render the active wizard step if the wizard is currently open,
   // since its inputs (category tiles, comment field, etc.) are rebuilt
@@ -2901,16 +2934,32 @@ async function generateAllBackgroundTrails(reports, tracerCoords = null) {
     }
   });
 
-// PASS 2: Fetch historic splines concurrently — safe to parallelize now that
+// PASS 2: Fetch historic wind trails concurrently — safe to parallelize now that
 // archival reports (>7 days) are served from the persisted historic_wind_json
 // column instead of hitting Open-Meteo every time. Only genuinely new/uncached
 // fetches go to the network, so rate-limit pressure stays low even running in parallel.
-  const splineResults = await Promise.all(
-    sortedReports.map(report => renderHistoricSplineTrailForReport(report))
+  const trailResults = await Promise.all(
+    sortedReports.map(report => buildWindTrailForReport(report))
   );
 
+  const displayHours = getTrailDisplayHours();
+
   sortedReports.forEach((report, idx) => {
-    const smoothedTrail = splineResults[idx];
+    const trailResult = trailResults[idx];
+    if (!trailResult?.rawTrail?.length) return;
+
+    // Normal browsing only draws the last `displayHours` of the trail (much
+    // cheaper to render); the tracer needs the FULL calculated trail so the
+    // line can visibly reach the source point, even if that's further back
+    // than the display setting.
+    let smoothedTrail;
+    if (tracerCoords) {
+      smoothedTrail = trailResult.spline;
+    } else {
+      const cutoffMs = new Date(report.created_at).getTime() - displayHours * 3600000;
+      const trimmedRaw = trailResult.rawTrail.filter(p => new Date(p.time).getTime() >= cutoffMs);
+      smoothedTrail = trimmedRaw.length >= 2 ? smoothPathChaikin(trimmedRaw, 2) : trimmedRaw;
+    }
     if (!smoothedTrail || smoothedTrail.length < 2) return;
 
     const baseColor = categoryColor(report.category);
@@ -3341,16 +3390,6 @@ async function filterPinsBySourceTrajectory(tracerCoords) {
 
       if (distanceKM <= maxAllowedDistance) {
         matchFound = true;
-        const dispersionIndicator = L.circle([p1.lat, p1.lon], {
-          radius: maxAllowedDistance * 1000,
-          color: '#ff8800',
-          fillColor: 'transparent',
-          weight: 1,
-          dashArray: '5, 5',
-          opacity: 0.4,
-          interactive: false
-        }).addTo(map);
-        tracerVisualCircles.push(dispersionIndicator);
         break;
       }
     }
@@ -3729,6 +3768,9 @@ document.querySelectorAll('#langSegment .theme-segment-btn').forEach(b=>{
 
 initCalendarFilter();
 initMapCalendarFilter();
+document.querySelectorAll('#trailHoursSegment .theme-segment-btn').forEach(b => {
+  b.classList.toggle('active', b.getAttribute('onclick') === `setTrailDisplayHours(${getTrailDisplayHours()})`);
+});
 applyLang(); 
 
 // Auto-show the "How to Use" help popup at most once a day per device.
@@ -3756,6 +3798,16 @@ function hideSplashScreen() {
 
 loadPinsByWindow().finally(hideSplashScreen);
 loadAirQualityStations();
+
+// Stations are only fetched once on cold load — if this is a PWA that gets
+// backgrounded and resumed (rather than fully reloaded), that snapshot can
+// go stale for as long as the tab stays open. Re-fetch whenever the app
+// becomes visible again so reopening it always shows current data.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    loadAirQualityStations();
+  }
+});
 // Fallback in case the map/data takes unusually long or errors out silently —
 // never leave the user stuck behind the splash screen.
 setTimeout(hideSplashScreen, 6000);
