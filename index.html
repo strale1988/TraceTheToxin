@@ -2355,11 +2355,6 @@ function formatStationTime(iso) {
 
 function buildStationPopupHtml(station, reading) {
   const color = reading ? aqiColor(reading.category) : '#9e9e9e';
-  const pollutant = (label, val) => `
-    <div style="display:flex;justify-content:space-between;align-items:center;">
-      <span style="font-size:9px;color:#888;text-transform:uppercase;">${label}</span>
-      <span style="font-size:11px;font-weight:600;color:#111;">${val != null ? val + ' µg/m³' : '–'}</span>
-    </div>`;
 
   return `<div class="popup-inner" style="padding:0;min-width:160px;max-width:200px;font-family:sans-serif;">
     <div style="background:${color};padding:4px 8px;border-radius:6px 6px 0 0;display:flex;flex-direction:column;align-items:flex-start;gap:1px;">
@@ -2373,11 +2368,7 @@ function buildStationPopupHtml(station, reading) {
           <span style="font-size:9px;color:#999;">${t('aqUpdated')} ${formatStationTime(reading.recorded_at)}</span>
         </div>
         <div style="height:1px;background:#eee;margin:2px 0;"></div>
-        ${pollutant('PM10', reading.pm10)}
-        ${pollutant('PM2.5', reading.pm25)}
-        ${pollutant('SO2', reading.so2)}
-        ${pollutant('NO2', reading.no2)}
-        ${pollutant('O3', reading.o3)}
+        ${pollutantSummaryRowHtml(reading)}
       ` : `<span style="font-size:11px;color:#999;">${t('aqNoData')}</span>`}
       ${station.precision === 'city' ? `
         <div style="font-size:9px;color:#bbb;font-style:italic;margin-top:2px;">${t('aqApprox')}</div>
@@ -2471,56 +2462,9 @@ async function getStationReadingNear(stationId, targetIso) {
   }
 }
 
-// Finds the station relevant to a report's actual wind history, and the
-// reading that station had at the real hour the wind's backtracked path
-// passed closest to it — not a straight-line-nearest-station guess.
-// Falls back to plain nearest-station-at-report-time only when there isn't
-// enough wind history yet (report younger than TRAIL_MIN_HOURS).
-async function getNearestStationDataForReport(report) {
-  if (!airQualityStationsCache.length) return null;
-
-  const reportAgeHoursDbg = (Date.now() - new Date(report.created_at).getTime()) / 3600000;
-  const trailResult = await buildWindTrailForReport(report);
-
-  let match = trailResult?.rawTrail?.length
-    ? findStationAlongWindTrail(trailResult.rawTrail, airQualityStationsCache)
-    : null;
-
-  if (!match) {
-    // Debug visibility: this is the ONLY path that ignores wind direction and
-    // just picks whichever station is geographically nearest the report pin.
-    // If you're seeing this in the console for reports that are clearly more
-    // than an hour old, buildWindTrailForReport is failing silently (Open-Meteo
-    // fetch error/rate-limit, or no overlapping hourly points) — check the
-    // "wind trail unavailable" warning just above this one for the reason.
-    console.warn(
-      `[station-match] report #${report.id}: using plain-nearest fallback ` +
-      `(age ${reportAgeHoursDbg.toFixed(1)}h, trail points: ${trailResult?.rawTrail?.length || 0})`
-    );
-    const nearest = findNearestStation(report.latitude, report.longitude);
-    if (!nearest) return null;
-    match = { station: nearest.station, distanceKm: nearest.distanceKm, atTime: report.created_at, pathDistanceKm: null };
-  } else {
-    console.info(
-      `[station-match] report #${report.id}: matched "${match.station.name}" via wind trail ` +
-      `(${match.distanceKm.toFixed(1)}km at ${match.atTime})`
-    );
-  }
-
-  const reading = await getStationReadingNear(match.station.id, match.atTime);
-
-  return {
-    station: match.station,
-    distanceKm: match.distanceKm,
-    pathDistanceKm: match.pathDistanceKm,
-    targetTime: new Date(match.atTime),
-    reading
-  };
-}
-
-// Same idea as getNearestStationDataForReport, but returns every station
-// the wind trail passed within STATION_TRAIL_MATCH_RADIUS_KM of — sorted
-// most-recent-to-the-report first — instead of a single best guess.
+// Returns every station a report's wind trail passed within
+// STATION_TRAIL_MATCH_RADIUS_KM of — sorted most-recent-to-the-report
+// first — instead of a single best guess.
 // Falls back to plain nearest-station (a 1-item list) when there isn't
 // enough wind history yet (report younger than TRAIL_MIN_HOURS).
 async function getStationsAlongWindTrailForReport(report, maxDistanceKm = STATION_TRAIL_MATCH_RADIUS_KM) {
@@ -2759,7 +2703,7 @@ async function backfillWindDirection(reportId, avgDirection) {
 // (ISO string) per point, and spline is the Chaikin-smoothed version drawn
 // on the map. This is the single place that does the Open-Meteo fetch +
 // backtrack math — renderHistoricSplineTrailForReport (map line) and
-// getNearestStationDataForReport (station matching) both build on top of it.
+// getStationsAlongWindTrailForReport (station matching) both build on top of it.
 async function buildWindTrailForReport(report) {
 
   const reportTime = new Date(report.created_at);
@@ -2915,53 +2859,28 @@ async function renderHistoricSplineTrailForReport(report) {
   return result ? result.spline : null;
 }
 
-// Walks every point of an already-backtracked wind trail and finds which
-// station it passes closest to, using the REAL historical hour that point
-// represents. This is what "nearest station" should mean for a report: not
-// whichever station is nearest the report's own coordinates, but whichever
-// station the wind's actual traced-back path came closest to along the way.
-function findStationAlongWindTrail(rawTrail, stations) {
-  if (!rawTrail?.length || !stations?.length) return null;
-  // rawTrail[0] is the report's own location at zero elapsed time — including
-  // it would let a station simply near the INCIDENT win the match without
-  // the wind having "passed through" it at all, silently degrading this
-  // back to plain nearest-station-to-report. Only points with genuine
-  // backward displacement along the reconstructed path are valid matches.
-  const pastPoints = rawTrail.slice(1);
-  if (!pastPoints.length) return null;
-
-  // Cumulative distance walked along the trail itself (not straight-line
-  // to the station) from the report's own location up to each point —
-  // this is "how far the wind actually traveled" by the time it reached
-  // that point, following the real hour-by-hour path rather than a
-  // point-to-point straight line.
-  let cumulativeKm = 0;
-  const pathDistanceAtIndex = [0]; // index 0 corresponds to rawTrail[0]
-  for (let i = 1; i < rawTrail.length; i++) {
-    cumulativeKm += getHaversineDistance(
-      rawTrail[i - 1].lat, rawTrail[i - 1].lon,
-      rawTrail[i].lat, rawTrail[i].lon
-    );
-    pathDistanceAtIndex.push(cumulativeKm);
-  }
-
-  let best = null;
-  for (let i = 0; i < pastPoints.length; i++) {
-    const point = pastPoints[i];
-    const rawTrailIndex = i + 1; // pastPoints is rawTrail.slice(1)
-    for (const s of stations) {
-      const d = getHaversineDistance(point.lat, point.lon, s.lat, s.lon);
-      if (!best || d < best.distanceKm) {
-        best = {
-          station: s,
-          distanceKm: d,
-          atTime: point.time,
-          pathDistanceKm: pathDistanceAtIndex[rawTrailIndex],
-        };
-      }
-    }
-  }
-  return best;
+// Finds the single station a report's backtracked wind trail is most
+// relevant to. Thin wrapper around findAllStationsAlongWindTrail (defined
+// below) — just takes its first (most-recent-to-the-report) result.
+//
+// This used to run its own separate search: scan every (trail-point,
+// station) pair and keep whichever single pair had the smallest straight-
+// line distance, with no distance cap at all. Two problems with that:
+//   1. It picked the globally closest PAIR, not the closest approach PER
+//      STATION — so a station passed extremely close very early in the
+//      12h trail could beat out a different station passed much more
+//      recently but a bit further away, even though the more recent one
+//      is almost always the more useful match.
+//   2. No maxDistanceKm meant it always returned *some* station, even one
+//      50+ km from anywhere the trail actually went, mislabeling it as
+//      "the wind passed through it" when really nothing qualified.
+// findAllStationsAlongWindTrail already fixes both (per-station closest
+// approach, sorted most-recent-first, capped at maxDistanceKm) — so this
+// is now just its top result, guaranteeing the CSV export and the popup
+// can never disagree about which station "the" match is.
+function findStationAlongWindTrail(rawTrail, stations, maxDistanceKm = STATION_TRAIL_MATCH_RADIUS_KM) {
+  const matches = findAllStationsAlongWindTrail(rawTrail, stations, maxDistanceKm);
+  return matches.length ? matches[0] : null;
 }
 
 // Like findStationAlongWindTrail, but returns EVERY station the trail's
@@ -3055,7 +2974,7 @@ async function handleSplineClick(reportId, latlng) {
       <div style="font-weight:700;font-size:10px;color:#333;text-transform:uppercase;">${t('avgUpwindData')}</div>
       <div style="font-size:9px;color:#888;line-height:1.3;">${stationNames}</div>
       <div style="height:1px;background:#eee;margin:2px 0;"></div>
-      ${pollutantRowsHtml(readings.some(r => r) ? avgReading : null)}
+      ${pollutantSummaryRowHtml(readings.some(r => r) ? avgReading : null)}
     </div>
   `);
 }
@@ -3295,16 +3214,29 @@ async function generateAllBackgroundTrails(reports, tracerCoords = null) {
       dashArray: '4, 7',
       lineCap: 'round',
       lineJoin: 'round',
-      // Deliberately NOT using the 'bg-trail-teal' class here — that class
-      // sets pointer-events:none (fine for the decorative cone shapes, but
-      // we want this line clickable so people can tap along it for the
-      // upwind-average feature below).
       className: `spline-report-${report.id}`,
-      interactive: true,
+      interactive: false,
       pane: 'splinePane'
     }).addTo(map);
     bgTrailLayers.push(dottedSpline);
     splineByReport[report.id] = dottedSpline;
+
+    // Invisible, much wider line drawn along the exact same points, purely
+    // to make the spline easier to tap — the visible 2px dashed line above
+    // is a thin target on mobile, so clicks are actually handled by this
+    // one instead (kept non-interactive on the visible line itself, so a
+    // tap can't land on the wrong layer).
+    const splineHitArea = L.polyline(splineLatLngs, {
+      color: baseColor,
+      weight: 22,
+      opacity: 0,
+      lineCap: 'round',
+      lineJoin: 'round',
+      className: `spline-hitarea-${report.id}`,
+      interactive: true,
+      pane: 'splinePane'
+    }).addTo(map);
+    bgTrailLayers.push(splineHitArea);
 
     // Cache what handleSplineClick needs: the full raw (unsmoothed) trail
     // for interpolating "where along the path did this click land", and the
@@ -3317,7 +3249,7 @@ async function generateAllBackgroundTrails(reports, tracerCoords = null) {
       trailResult.rawTrail, airQualityStationsCache, STATION_TRAIL_MATCH_RADIUS_KM
     );
 
-    dottedSpline.on('click', (e) => {
+    splineHitArea.on('click', (e) => {
       L.DomEvent.stopPropagation(e);
       handleSplineClick(report.id, e.latlng);
     });
@@ -3399,27 +3331,27 @@ function translateCategory(category) {
   return map[category] || category;
 }
 
-// Shared single-pollutant row, reused by the popup summary, the details
-// modal, and the spline-click average popup so all three stay visually
-// consistent.
-function pollutantRowHtml(label, val) {
-  const display = (val != null && !isNaN(val)) ? Number(val).toFixed(1) + ' µg/m³' : '–';
-  return `
-    <div style="display:flex;justify-content:space-between;align-items:center;">
-      <span style="font-size:9px;color:#888;text-transform:uppercase;">${label}</span>
-      <span style="font-size:11px;font-weight:600;color:#111;">${display}</span>
-    </div>`;
-}
-
-function pollutantRowsHtml(reading) {
+// Shared compact pollutant summary — all five values on ONE row (label +
+// number pairs separated by dots) instead of a stacked list, reused by the
+// station popup, the report-details modal, and the spline-click average
+// popup so all three stay visually consistent and compact.
+function pollutantSummaryRowHtml(reading, dark = false) {
   if (!reading) return `<span style="font-size:10px;color:#999;">${t('aqNoData')}</span>`;
-  return `
-    ${pollutantRowHtml('PM10', reading.pm10)}
-    ${pollutantRowHtml('PM2.5', reading.pm25)}
-    ${pollutantRowHtml('SO2', reading.so2)}
-    ${pollutantRowHtml('NO2', reading.no2)}
-    ${pollutantRowHtml('O3', reading.o3)}
-  `;
+  const labelColor = dark ? '#999' : '#888';
+  const valueColor = dark ? '#fff' : '#111';
+  const dotColor = dark ? '#555' : '#ccc';
+  const entries = [
+    ['PM10', reading.pm10],
+    ['PM2.5', reading.pm25],
+    ['SO2', reading.so2],
+    ['NO2', reading.no2],
+    ['O3', reading.o3],
+  ];
+  const parts = entries.map(([label, val]) => {
+    const display = (val != null && !isNaN(val)) ? Number(val).toFixed(1) : '–';
+    return `<span style="white-space:nowrap;"><span style="color:${labelColor};">${label}</span> <span style="font-weight:700;color:${valueColor};">${display}</span></span>`;
+  });
+  return `<div style="display:flex;flex-wrap:wrap;gap:5px 8px;font-size:10px;align-items:baseline;">${parts.join(`<span style="color:${dotColor};">·</span>`)}</div>`;
 }
 
 // Caches each report's resolved station list so the popup's "Details"
@@ -3477,7 +3409,7 @@ function buildStationDetailsListHtml(stationList, reportCreatedAt) {
         ${reading ? `
           <div style="font-size:10px;color:#888;margin-bottom:3px;">${t('stationDataAsOf')} ${formatStationTime(reading.recorded_at)}</div>
           <div style="background:#262626;border-radius:8px;padding:6px 8px;display:flex;flex-direction:column;gap:2px;">
-            ${pollutantRowsHtml(reading)}
+            ${pollutantSummaryRowHtml(reading, true)}
           </div>
         ` : `<div style="font-size:11px;color:#999;">${t('aqNoData')}</div>`}
       </div>`;
