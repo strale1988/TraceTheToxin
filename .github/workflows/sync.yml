@@ -1,0 +1,29 @@
+name: Sync air quality data
+
+on:
+  schedule:
+    # Every hour at :07 (a few minutes after the hour so upstream data has
+    # had time to land). Cron is UTC.
+    - cron: "7 * * * *"
+  workflow_dispatch: {}   # lets you trigger a run manually from the Actions tab
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Run sync
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          KOSAVA_BASE_URL: https://opendata.kosava.cloud
+          WINDOW: "30d"
+        run: python sync_air_quality.py
