@@ -55,6 +55,35 @@ SUPABASE_URL = os.environ["SUPABASE_URL"].rstrip("/")
 SUPABASE_SERVICE_ROLE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 WINDOW = os.environ.get("WINDOW", "30d")
 
+# --- TEMPORARY DIAGNOSTICS -------------------------------------------------
+# Logs only the *shape* of the credentials (length, prefix type, stray
+# whitespace) — never the actual secret value — so we can tell what's wrong
+# with the GitHub secret without ever printing anything sensitive. GitHub
+# Actions also auto-redacts anything that exactly matches a registered
+# secret, but we're not relying on that here since we never print the raw
+# value at all. Safe to delete this block once the 401 is sorted out.
+def _diagnose_credentials():
+    raw_key = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
+    raw_url = os.environ["SUPABASE_URL"]
+    stripped_key = raw_key.strip()
+    print(f"[diag] SUPABASE_URL raw={raw_url!r}")
+    print(f"[diag] SUPABASE_URL after rstrip('/')={SUPABASE_URL!r}")
+    print(f"[diag] key length={len(raw_key)}  after .strip() length={len(stripped_key)}"
+          f"  (should match — if not, there's leading/trailing whitespace or a newline)")
+    if raw_key != stripped_key:
+        print("[diag] WARNING: key has leading/trailing whitespace or newline characters!")
+    if stripped_key.startswith("eyJ"):
+        print("[diag] key looks like a legacy JWT-style key (starts with 'eyJ')")
+    elif stripped_key.startswith("sb_secret_"):
+        print("[diag] key looks like a new-format secret key (starts with 'sb_secret_')")
+    elif stripped_key.startswith("sb_publishable_"):
+        print("[diag] WARNING: this looks like a PUBLISHABLE key, not a secret/service_role key!")
+    else:
+        print(f"[diag] key prefix doesn't match any known format: {stripped_key[:3]!r}...")
+
+_diagnose_credentials()
+# --- END TEMPORARY DIAGNOSTICS ---------------------------------------------
+
 SB_HEADERS = {
     "apikey": SUPABASE_SERVICE_ROLE_KEY,
     "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
