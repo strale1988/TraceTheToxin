@@ -2392,6 +2392,7 @@ async function getStationReadingNear(stationId, targetIso) {
 async function getNearestStationDataForReport(report) {
   if (!airQualityStationsCache.length) return null;
 
+  const reportAgeHoursDbg = (Date.now() - new Date(report.created_at).getTime()) / 3600000;
   const trailResult = await buildWindTrailForReport(report);
 
   let match = trailResult?.rawTrail?.length
@@ -2399,9 +2400,24 @@ async function getNearestStationDataForReport(report) {
     : null;
 
   if (!match) {
+    // Debug visibility: this is the ONLY path that ignores wind direction and
+    // just picks whichever station is geographically nearest the report pin.
+    // If you're seeing this in the console for reports that are clearly more
+    // than an hour old, buildWindTrailForReport is failing silently (Open-Meteo
+    // fetch error/rate-limit, or no overlapping hourly points) — check the
+    // "wind trail unavailable" warning just above this one for the reason.
+    console.warn(
+      `[station-match] report #${report.id}: using plain-nearest fallback ` +
+      `(age ${reportAgeHoursDbg.toFixed(1)}h, trail points: ${trailResult?.rawTrail?.length || 0})`
+    );
     const nearest = findNearestStation(report.latitude, report.longitude);
     if (!nearest) return null;
     match = { station: nearest.station, distanceKm: nearest.distanceKm, atTime: report.created_at };
+  } else {
+    console.info(
+      `[station-match] report #${report.id}: matched "${match.station.name}" via wind trail ` +
+      `(${match.distanceKm.toFixed(1)}km at ${match.atTime})`
+    );
   }
 
   const reading = await getStationReadingNear(match.station.id, match.atTime);
@@ -2616,6 +2632,7 @@ async function buildWindTrailForReport(report) {
 
   // Not even TRAIL_MIN_HOURS of data could exist yet
   if (reportAgeHours < TRAIL_MIN_HOURS) {
+    console.warn(`[wind-trail] report #${report.id}: too new (${reportAgeHours.toFixed(2)}h old, needs ${TRAIL_MIN_HOURS}h) — no wind trail yet, will fall back to nearest-station`);
     return null;
   }
 
@@ -2645,6 +2662,7 @@ async function buildWindTrailForReport(report) {
     );
 
     if (!hourly?.time?.length) {
+      console.warn(`[wind-trail] report #${report.id}: Open-Meteo returned no hourly data (fetch failed, rate-limited, or empty) — falling back to nearest-station`);
       return null;
     }
 
@@ -2674,6 +2692,7 @@ async function buildWindTrailForReport(report) {
     }
 
     if (!steps.length) {
+      console.warn(`[wind-trail] report #${report.id}: Open-Meteo data present but none of it fell inside [${startTime.toISOString()}, ${reportTime.toISOString()}] — falling back to nearest-station`);
       return null;
     }
 
@@ -3225,7 +3244,10 @@ function renderPin(report, index = 0){
   marker.bindPopup(buildReportPopupHtml(report, buildReportStationSectionHtml(undefined, report.created_at)));
 
   marker.on('popupopen', () => {
-    startBacktrack(report.latitude, report.longitude, new Date().toISOString());
+    // startBacktrack(...) used to be called here but its result was never
+    // used anywhere (dead code) — it just fired an extra Open-Meteo request
+    // on every popup open, competing with the real wind-trail fetch below
+    // and making it more likely to get rate-limited into a silent fallback.
     const spline = splineByReport[report.id];
     if (spline) {
       const el = spline.getElement();
