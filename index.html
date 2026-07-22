@@ -1330,9 +1330,10 @@ const T = {
   aqNoData:       { en: 'No recent data',      sr: 'Nema skorašnjih podataka' },
   aqApprox:       { en: 'Approximate location',sr: 'Približna lokacija' },
 
-  nearestStation:     { en: 'Nearest Station',           sr: 'Najbliža Stanica' },
+  nearestStation:     { en: 'Nearest Station where wind has passed', sr: 'Najbliža stanica kroz koju je vetar prošao' },
   nearestStationDist: { en: 'away',                      sr: 'udaljena' },
   windTravelTime:      { en: 'Wind travel time',           sr: 'Vreme putovanja vetra' },
+  windTravelDist:      { en: 'Wind travel distance',       sr: 'Pređena razdaljina vetra' },
   stationDataAsOf:     { en: 'Station data as of',         sr: 'Podaci stanice od' },
   stationDataLoading:  { en: 'Loading station data...',    sr: 'Učitavanje podataka stanice...' },
   stationNoneNearby:   { en: 'No stations nearby',         sr: 'Nema stanica u blizini' },
@@ -2412,7 +2413,7 @@ async function getNearestStationDataForReport(report) {
     );
     const nearest = findNearestStation(report.latitude, report.longitude);
     if (!nearest) return null;
-    match = { station: nearest.station, distanceKm: nearest.distanceKm, atTime: report.created_at };
+    match = { station: nearest.station, distanceKm: nearest.distanceKm, atTime: report.created_at, pathDistanceKm: null };
   } else {
     console.info(
       `[station-match] report #${report.id}: matched "${match.station.name}" via wind trail ` +
@@ -2425,6 +2426,7 @@ async function getNearestStationDataForReport(report) {
   return {
     station: match.station,
     distanceKm: match.distanceKm,
+    pathDistanceKm: match.pathDistanceKm,
     targetTime: new Date(match.atTime),
     reading
   };
@@ -2793,12 +2795,35 @@ function findStationAlongWindTrail(rawTrail, stations) {
   // backward displacement along the reconstructed path are valid matches.
   const pastPoints = rawTrail.slice(1);
   if (!pastPoints.length) return null;
+
+  // Cumulative distance walked along the trail itself (not straight-line
+  // to the station) from the report's own location up to each point —
+  // this is "how far the wind actually traveled" by the time it reached
+  // that point, following the real hour-by-hour path rather than a
+  // point-to-point straight line.
+  let cumulativeKm = 0;
+  const pathDistanceAtIndex = [0]; // index 0 corresponds to rawTrail[0]
+  for (let i = 1; i < rawTrail.length; i++) {
+    cumulativeKm += getHaversineDistance(
+      rawTrail[i - 1].lat, rawTrail[i - 1].lon,
+      rawTrail[i].lat, rawTrail[i].lon
+    );
+    pathDistanceAtIndex.push(cumulativeKm);
+  }
+
   let best = null;
-  for (const point of pastPoints) {
+  for (let i = 0; i < pastPoints.length; i++) {
+    const point = pastPoints[i];
+    const rawTrailIndex = i + 1; // pastPoints is rawTrail.slice(1)
     for (const s of stations) {
       const d = getHaversineDistance(point.lat, point.lon, s.lat, s.lon);
       if (!best || d < best.distanceKm) {
-        best = { station: s, distanceKm: d, atTime: point.time };
+        best = {
+          station: s,
+          distanceKm: d,
+          atTime: point.time,
+          pathDistanceKm: pathDistanceAtIndex[rawTrailIndex],
+        };
       }
     }
   }
@@ -3134,7 +3159,7 @@ function buildReportStationSectionHtml(stationInfo, reportCreatedAt) {
     return `<div style="font-size:9px;color:#bbb;font-style:italic;margin-top:2px;">${t('stationNoneNearby')}</div>`;
   }
 
-  const { station, distanceKm, targetTime, reading } = stationInfo;
+  const { station, pathDistanceKm, targetTime, reading } = stationInfo;
   const hoursBefore = reportCreatedAt
     ? (new Date(reportCreatedAt).getTime() - targetTime.getTime()) / 3600000
     : null;
@@ -3147,10 +3172,9 @@ function buildReportStationSectionHtml(stationInfo, reportCreatedAt) {
   return `
     <div style="display:flex;flex-direction:column;gap:1px;margin-top:1px;">
       <span style="font-size:9px;color:#bbb;text-transform:uppercase;">${t('nearestStation')}</span>
-      <span style="font-size:10px;color:#555;font-weight:600;">
-        ${station.name} <span style="color:#999;font-weight:400;">(${distanceKm.toFixed(1)} km ${t('nearestStationDist')})</span>
-      </span>
+      <span style="font-size:10px;color:#555;font-weight:600;">${station.name}</span>
       ${hoursBefore != null && hoursBefore > 0.05 ? `<span style="font-size:9px;color:#999;">${t('windTravelTime')}: ~${hoursBefore.toFixed(1)}h</span>` : ''}
+      ${pathDistanceKm != null ? `<span style="font-size:9px;color:#999;">${t('windTravelDist')}: ~${pathDistanceKm.toFixed(1)} km</span>` : ''}
       ${reading ? `
         <span style="font-size:9px;color:#999;">${t('stationDataAsOf')} ${formatStationTime(reading.recorded_at)}</span>
         ${pollutant('PM10', reading.pm10)}
