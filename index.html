@@ -1295,6 +1295,12 @@ const TRAIL_SETTLED_GATE_HOURS = TRAIL_WINDOW_HOURS + 1;
 // hour, up to the full TRAIL_WINDOW_HOURS.
 const TRAIL_MIN_HOURS = 1;
 
+// How close (km) a station has to come to any point along a report's
+// backtracked wind trail to count as "passed through" for the popup's
+// station list. Wider = more stations show up per report; narrower = only
+// the ones the wind really brushed past.
+const STATION_TRAIL_MATCH_RADIUS_KM = 20;
+
 /* ═══════════════════════════════════════════════════
    SUPABASE
 ═══════════════════════════════════════════════════ */
@@ -1331,6 +1337,7 @@ const T = {
   aqApprox:       { en: 'Approximate location',sr: 'Približna lokacija' },
 
   nearestStation:     { en: 'Nearest Station where wind has passed', sr: 'Najbliža stanica kroz koju je vetar prošao' },
+  stationsAlongTrail: { en: 'Stations where wind has passed', sr: 'Stanice kroz koje je vetar prošao' },
   nearestStationDist: { en: 'away',                      sr: 'udaljena' },
   windTravelTime:      { en: 'Wind travel time',           sr: 'Vreme putovanja vetra' },
   windTravelDist:      { en: 'Wind travel distance',       sr: 'Pređena razdaljina vetra' },
@@ -2432,6 +2439,48 @@ async function getNearestStationDataForReport(report) {
   };
 }
 
+// Same idea as getNearestStationDataForReport, but returns every station
+// the wind trail passed within STATION_TRAIL_MATCH_RADIUS_KM of — sorted
+// most-recent-to-the-report first — instead of a single best guess.
+// Falls back to plain nearest-station (a 1-item list) when there isn't
+// enough wind history yet (report younger than TRAIL_MIN_HOURS).
+async function getStationsAlongWindTrailForReport(report, maxDistanceKm = STATION_TRAIL_MATCH_RADIUS_KM) {
+  if (!airQualityStationsCache.length) return null;
+
+  const reportAgeHoursDbg = (Date.now() - new Date(report.created_at).getTime()) / 3600000;
+  const trailResult = await buildWindTrailForReport(report);
+
+  let matches = trailResult?.rawTrail?.length
+    ? findAllStationsAlongWindTrail(trailResult.rawTrail, airQualityStationsCache, maxDistanceKm)
+    : [];
+
+  if (!matches.length) {
+    console.warn(
+      `[station-match] report #${report.id}: using plain-nearest fallback ` +
+      `(age ${reportAgeHoursDbg.toFixed(1)}h, trail points: ${trailResult?.rawTrail?.length || 0})`
+    );
+    const nearest = findNearestStation(report.latitude, report.longitude);
+    if (!nearest) return null;
+    matches = [{ station: nearest.station, distanceKm: nearest.distanceKm, atTime: report.created_at, pathDistanceKm: null }];
+  } else {
+    console.info(
+      `[station-match] report #${report.id}: matched ${matches.length} station(s) via wind trail ` +
+      matches.map(m => `"${m.station.name}" (${m.distanceKm.toFixed(1)}km at ${m.atTime})`).join(', ')
+    );
+  }
+
+  return Promise.all(matches.map(async (match) => {
+    const reading = await getStationReadingNear(match.station.id, match.atTime);
+    return {
+      station: match.station,
+      distanceKm: match.distanceKm,
+      pathDistanceKm: match.pathDistanceKm,
+      targetTime: new Date(match.atTime),
+      reading
+    };
+  }));
+}
+
 /* ═══════════════════════════════════════════════════
    BACKTRACK ENGINE
 ═══════════════════════════════════════════════════ */
@@ -2830,6 +2879,53 @@ function findStationAlongWindTrail(rawTrail, stations) {
   return best;
 }
 
+// Like findStationAlongWindTrail, but returns EVERY station the trail comes
+// within maxDistanceKm of — not just the single closest one — each matched
+// to its own best (closest) point along the path. Sorted with the station
+// closest to the report (least travel time/distance, i.e. the one the wind
+// passed MOST RECENTLY before arriving) first, and the farthest-back /
+// oldest station last — the order the wind actually encountered them,
+// reversed, so the popup reads "most recent first".
+function findAllStationsAlongWindTrail(rawTrail, stations, maxDistanceKm = STATION_TRAIL_MATCH_RADIUS_KM) {
+  if (!rawTrail?.length || !stations?.length) return [];
+  const pastPoints = rawTrail.slice(1);
+  if (!pastPoints.length) return [];
+
+  let cumulativeKm = 0;
+  const pathDistanceAtIndex = [0];
+  for (let i = 1; i < rawTrail.length; i++) {
+    cumulativeKm += getHaversineDistance(
+      rawTrail[i - 1].lat, rawTrail[i - 1].lon,
+      rawTrail[i].lat, rawTrail[i].lon
+    );
+    pathDistanceAtIndex.push(cumulativeKm);
+  }
+
+  const matches = [];
+  for (const s of stations) {
+    let best = null;
+    for (let i = 0; i < pastPoints.length; i++) {
+      const point = pastPoints[i];
+      const rawTrailIndex = i + 1;
+      const d = getHaversineDistance(point.lat, point.lon, s.lat, s.lon);
+      if (!best || d < best.distanceKm) {
+        best = {
+          station: s,
+          distanceKm: d,
+          atTime: point.time,
+          pathDistanceKm: pathDistanceAtIndex[rawTrailIndex],
+        };
+      }
+    }
+    if (best && best.distanceKm <= maxDistanceKm) matches.push(best);
+  }
+
+  // pathDistanceKm only grows as we walk further back in time, so sorting
+  // by it ascending is the same as sorting "closest to report time" first.
+  matches.sort((a, b) => a.pathDistanceKm - b.pathDistanceKm);
+  return matches;
+}
+
 async function startBacktrack(lat, lon, createdAt) {
   clearBacktrack();
   const HOURS = TRAIL_WINDOW_HOURS;
@@ -3149,40 +3245,51 @@ function translateCategory(category) {
   return map[category] || category;
 }
 
-// Renders the "nearest station" block of a report popup for each state:
-// still loading (undefined), no station found (null), or resolved data.
-function buildReportStationSectionHtml(stationInfo, reportCreatedAt) {
-  if (stationInfo === undefined) {
+// Renders the "stations along the wind trail" block of a report popup for
+// each state: still loading (undefined), none found (null/empty), or a
+// resolved list. stationList is sorted most-recent-to-the-report first
+// (see findAllStationsAlongWindTrail) — that's also the display order here,
+// so the popup reads "this station just now, this one before that, ...".
+function buildReportStationSectionHtml(stationList, reportCreatedAt) {
+  if (stationList === undefined) {
     return `<div style="font-size:9px;color:#bbb;font-style:italic;margin-top:2px;">${t('stationDataLoading')}</div>`;
   }
-  if (stationInfo === null) {
+  if (stationList === null || !stationList.length) {
     return `<div style="font-size:9px;color:#bbb;font-style:italic;margin-top:2px;">${t('stationNoneNearby')}</div>`;
   }
 
-  const { station, pathDistanceKm, targetTime, reading } = stationInfo;
-  const hoursBefore = reportCreatedAt
-    ? (new Date(reportCreatedAt).getTime() - targetTime.getTime()) / 3600000
-    : null;
   const pollutant = (label, val) => `
     <div style="display:flex;justify-content:space-between;align-items:center;">
       <span style="font-size:9px;color:#888;text-transform:uppercase;">${label}</span>
       <span style="font-size:11px;font-weight:600;color:#111;">${val != null ? val + ' µg/m³' : '–'}</span>
     </div>`;
 
+  const headerLabel = stationList.length > 1 ? t('stationsAlongTrail') : t('nearestStation');
+
+  const items = stationList.map(({ station, pathDistanceKm, targetTime, reading }, i) => {
+    const hoursBefore = reportCreatedAt
+      ? (new Date(reportCreatedAt).getTime() - targetTime.getTime()) / 3600000
+      : null;
+    return `
+      <div style="display:flex;flex-direction:column;gap:1px;${i > 0 ? 'margin-top:5px;padding-top:4px;border-top:1px dashed #eee;' : ''}">
+        <span style="font-size:10px;color:#555;font-weight:600;">${station.name}</span>
+        ${hoursBefore != null && hoursBefore > 0.05 ? `<span style="font-size:9px;color:#999;">${t('windTravelTime')}: ~${hoursBefore.toFixed(1)}h</span>` : ''}
+        ${pathDistanceKm != null ? `<span style="font-size:9px;color:#999;">${t('windTravelDist')}: ~${pathDistanceKm.toFixed(1)} km</span>` : ''}
+        ${reading ? `
+          <span style="font-size:9px;color:#999;">${t('stationDataAsOf')} ${formatStationTime(reading.recorded_at)}</span>
+          ${pollutant('PM10', reading.pm10)}
+          ${pollutant('PM2.5', reading.pm25)}
+          ${pollutant('SO2', reading.so2)}
+          ${pollutant('NO2', reading.no2)}
+          ${pollutant('O3', reading.o3)}
+        ` : `<span style="font-size:10px;color:#999;">${t('aqNoData')}</span>`}
+      </div>`;
+  }).join('');
+
   return `
     <div style="display:flex;flex-direction:column;gap:1px;margin-top:1px;">
-      <span style="font-size:9px;color:#bbb;text-transform:uppercase;">${t('nearestStation')}</span>
-      <span style="font-size:10px;color:#555;font-weight:600;">${station.name}</span>
-      ${hoursBefore != null && hoursBefore > 0.05 ? `<span style="font-size:9px;color:#999;">${t('windTravelTime')}: ~${hoursBefore.toFixed(1)}h</span>` : ''}
-      ${pathDistanceKm != null ? `<span style="font-size:9px;color:#999;">${t('windTravelDist')}: ~${pathDistanceKm.toFixed(1)} km</span>` : ''}
-      ${reading ? `
-        <span style="font-size:9px;color:#999;">${t('stationDataAsOf')} ${formatStationTime(reading.recorded_at)}</span>
-        ${pollutant('PM10', reading.pm10)}
-        ${pollutant('PM2.5', reading.pm25)}
-        ${pollutant('SO2', reading.so2)}
-        ${pollutant('NO2', reading.no2)}
-        ${pollutant('O3', reading.o3)}
-      ` : `<span style="font-size:10px;color:#999;">${t('aqNoData')}</span>`}
+      <span style="font-size:9px;color:#bbb;text-transform:uppercase;">${headerLabel}</span>
+      ${items}
     </div>`;
 }
 
@@ -3284,8 +3391,8 @@ function renderPin(report, index = 0){
     // Refresh nearest-station data on every open, same pattern as the AQ
     // station markers themselves — the numbers shown are never older than
     // the click that revealed them.
-    getNearestStationDataForReport(report).then(stationInfo => {
-      marker.setPopupContent(buildReportPopupHtml(report, buildReportStationSectionHtml(stationInfo, report.created_at)));
+    getStationsAlongWindTrailForReport(report).then(stationList => {
+      marker.setPopupContent(buildReportPopupHtml(report, buildReportStationSectionHtml(stationList, report.created_at)));
     }).catch(err => {
       console.error('Nearest station lookup failed for report', report.id, err);
       marker.setPopupContent(buildReportPopupHtml(report, buildReportStationSectionHtml(null, report.created_at)));
