@@ -2767,8 +2767,15 @@ async function renderHistoricSplineTrailForReport(report) {
 // station the wind's actual traced-back path came closest to along the way.
 function findStationAlongWindTrail(rawTrail, stations) {
   if (!rawTrail?.length || !stations?.length) return null;
+  // rawTrail[0] is the report's own location at zero elapsed time — including
+  // it would let a station simply near the INCIDENT win the match without
+  // the wind having "passed through" it at all, silently degrading this
+  // back to plain nearest-station-to-report. Only points with genuine
+  // backward displacement along the reconstructed path are valid matches.
+  const pastPoints = rawTrail.slice(1);
+  if (!pastPoints.length) return null;
   let best = null;
-  for (const point of rawTrail) {
+  for (const point of pastPoints) {
     for (const s of stations) {
       const d = getHaversineDistance(point.lat, point.lon, s.lat, s.lon);
       if (!best || d < best.distanceKm) {
