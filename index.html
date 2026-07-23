@@ -1058,29 +1058,27 @@ function renderWizDetailsStep() {
       </div>
     </div>
     <div class="wiz-details-row">
-      <div class="wind-compass-wrap">
-        <svg class="wind-compass-dial" id="windCompassDial" viewBox="0 0 200 200" width="200" height="200">
-          <circle cx="100" cy="100" r="90" fill="none" stroke="var(--border-color-strong)" stroke-width="2"/>
-          <text class="compass-label-text" x="100" y="30" text-anchor="middle" dominant-baseline="middle">N</text>
-          <text class="compass-label-text" x="170" y="100" text-anchor="middle" dominant-baseline="middle">E</text>
-          <text class="compass-label-text" x="100" y="170" text-anchor="middle" dominant-baseline="middle">S</text>
-          <text class="compass-label-text" x="30" y="100" text-anchor="middle" dominant-baseline="middle">W</text>
-          <g id="compassArrowGroup" transform="rotate(90 100 100)">
-            <line x1="100" y1="100" x2="100" y2="50" stroke="var(--accent)" stroke-width="4" stroke-linecap="round"/>
-            <polygon points="100,36 90,52 110,52" fill="var(--accent)"/>
-          </g>
-          <circle cx="100" cy="100" r="5" fill="var(--accent)"/>
-        </svg>
+      <div style="display:flex;align-items:center;justify-content:center;gap:18px;flex-wrap:wrap;">
+        <div class="wind-compass-wrap">
+          <svg class="wind-compass-dial" id="windCompassDial" viewBox="0 0 200 200" width="200" height="200">
+            <circle cx="100" cy="100" r="90" fill="none" stroke="var(--border-color-strong)" stroke-width="2"/>
+            <text class="compass-label-text" x="100" y="30" text-anchor="middle" dominant-baseline="middle">N</text>
+            <text class="compass-label-text" x="170" y="100" text-anchor="middle" dominant-baseline="middle">E</text>
+            <text class="compass-label-text" x="100" y="170" text-anchor="middle" dominant-baseline="middle">S</text>
+            <text class="compass-label-text" x="30" y="100" text-anchor="middle" dominant-baseline="middle">W</text>
+            <g id="compassArrowGroup" transform="rotate(90 100 100)">
+              <line x1="100" y1="100" x2="100" y2="50" stroke="var(--accent)" stroke-width="4" stroke-linecap="round"/>
+              <polygon points="100,36 90,52 110,52" fill="var(--accent)"/>
+            </g>
+            <circle cx="100" cy="100" r="5" fill="var(--accent)"/>
+          </svg>
+        </div>
+        <div id="windAppLinksCol" style="display:flex;flex-direction:column;align-items:flex-start;gap:8px;">
+          ${buildWindAppLinksHtml()}
+        </div>
       </div>
     </div>
     <div class="wiz-details-row" id="windAutoFillHint" style="font-size:11px;color:var(--text-secondary);display:none;"></div>
-    <div class="wiz-details-row" style="display:flex;justify-content:flex-end;padding:0;">
-      <a href="${WINDFINDER_URL}" target="_blank" rel="noopener" title="${t('windfinderCheckTitle')}"
-         style="display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--text-secondary);text-decoration:none;">
-        ${t('windfinderCheckLabel')}
-        <img src="${WINDFINDER_ICON_B64}" style="width:20px;height:20px;object-fit:contain;">
-      </a>
-    </div>
     <div class="wiz-details-row">
       <label>${t('commentPH')}</label>
       <input type="text" id="comment" placeholder="${t('commentPH')}">
@@ -1151,29 +1149,46 @@ async function autoFillWindDirection() {
   const hintEl = document.getElementById('windAutoFillHint');
   if (!activeLoc) return;
 
+  let windDirDeg = null;
+
   try {
     const { data, error } = await sb.functions.invoke('get-wind-direction', {
       body: { lat: activeLoc.lat, lon: activeLoc.lon }
     });
-    if (error || !data || data.windDirDeg == null) return;
-
-    // Only apply it if the user hasn't already started typing/dragging
-    // their own value while this was in flight.
-    const input = document.getElementById('manualWind');
-    if (!input) return;
-
-    const deg = Math.round(data.windDirDeg);
-    input.value = deg;
-    updateCompassVisual(deg);
-    checkWizSubmitReady();
-
-    if (hintEl) {
-      hintEl.textContent = t('windAutoFilledHint');
-      hintEl.style.display = 'block';
-    }
+    if (error) console.error('get-wind-direction failed, falling back to Open-Meteo:', error);
+    if (!error && data && data.windDirDeg != null) windDirDeg = data.windDirDeg;
   } catch (err) {
-    // Silent fail — the field just keeps its default and the user fills it
-    // in manually via the compass, the number field, or the Windfinder link.
+    console.error('get-wind-direction threw, falling back to Open-Meteo:', err);
+  }
+
+  // Fall back to Open-Meteo's free current-conditions forecast (the same
+  // source already used elsewhere in this app) if the edge function is
+  // unavailable or returned nothing usable, so a single backend hiccup
+  // doesn't leave the compass unfilled.
+  if (windDirDeg == null) {
+    try {
+      const fallback = await getWeatherData(activeLoc.lat, activeLoc.lon);
+      if (fallback && fallback.source !== 'Offline/Default') windDirDeg = fallback.wind_direction;
+    } catch (err) {
+      console.error('Open-Meteo fallback also failed:', err);
+    }
+  }
+
+  if (windDirDeg == null) return;
+
+  // Only apply it if the user hasn't already started typing/dragging
+  // their own value while this was in flight.
+  const input = document.getElementById('manualWind');
+  if (!input) return;
+
+  const deg = Math.round(windDirDeg);
+  input.value = deg;
+  updateCompassVisual(deg);
+  checkWizSubmitReady();
+
+  if (hintEl) {
+    hintEl.textContent = t('windAutoFilledHint');
+    hintEl.style.display = 'block';
   }
 }
 
@@ -1459,6 +1474,7 @@ const T = {
   helpStep2Body:{ en:'Wind direction is now filled in automatically for you using live wind data. If it looks wrong, you can drag the compass, type a value directly, or tap the Windfinder link to check it yourself.', sr:'Smer vetra se sada automatski popunjava na osnovu podataka uživo. Ako izgleda netačno, možete prevući kompas, uneti vrednost ručno, ili kliknuti na Windfinder link da proverite sami.' },
   windfinderCheckLabel:{ en:'Check on Windfinder', sr:'Proveri na Windfinder-u' },
   windfinderCheckTitle:{ en:'Open Windfinder in a new tab to check wind direction yourself', sr:'Otvori Windfinder u novom tabu da sami proverite smer vetra' },
+  windAppCheckTitle:{ en:'Opens in a new tab, centered on your current report location', sr:'Otvara se u novom tabu, centrirano na vašoj trenutnoj lokaciji prijave' },
   windAutoFilledHint:{ en:'Auto-filled from live wind data — change it if this doesn\u2019t look right.', sr:'Automatski popunjeno na osnovu podataka o vetru uživo \u2014 promenite ako ne izgleda tačno.' },
   helpStep3:    { en:'3. Report Bad Air:',               sr:'3. Prijavite loš vazduh:' },
   helpStep3Body:{ en:'Tap the Report Bad Air button and choose the type of smell you\'re noticing.', sr:'Pritisnite dugme za prijavu lošeg vazduha i izaberite vrstu mirisa koji osećate.' },
@@ -1741,8 +1757,54 @@ let pinMode       = false;
 let manualCoords  = null;
 let manualMarker  = null;
 
-const WINDFINDER_URL = 'https://www.windfinder.com/#13/45.2294/19.8276/2026-06-25T00:00Z/spot';
-const WINDFINDER_ICON_B64 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAACwklEQVR4AWIYseAiK6DbcoCZHIjieNLp2cZMz7Zt27Zt2wwP4dm2bbPT3d5n2zbedb5o03Sb9eEl/+gl79d5LGlDET7tcrChUE1CETlPOQwij3e67sUVmhRmQJEjaSKDMxWoUcc1r0ZVxijgMAY10U+ng+XipDRF+DIDqiU5O/0GhAdQk1erZeSrdHAK2L1s3aIUkeMMYk5U6QO5YcP8DofT/EIjyhEfBtEVwu8dDhcRGUE5nKSCaUpC5LBD4RJPtlNNmLYoIrMcWG98Wwvi0WaA+QzwpIvdcLdi9UpTRL6bgyR//AaBM1do+jwKkcr2zXeRahVFjsh6ac6MiIKU75KWLwdGj+ZshxeqUUWBe+nBDeUbA7PspGQNPwmzGf6rAKlFORykB2fyGzMXmGUEhWjtAGobvHBVJe04wJIuj7/7FJjFXbunNQFvrYZ7la5VXOQINQ0kV2kF4XsPQ6pohMzQcEh6+R68uo8CWWgFuVlZkJuTA54dh2gsIXLfKjhbmRSR56ZBfPpPhOz4BFBbTkoqxF68xXxmJ4Aict269YrwRdMARtwiD5CbmQkJ959B0OKNeS83VmoG3j3HQMyJS0ALVtdZQviqxXCJI2vUAbz7jofQzfvzgGpf+K6DwMx36DS9LXjRIjg7lyKHsxSBpfKfuBCYZcfFg3vjHrZnwKNYnbIiR0KsgTPRQjUg1eAGzDLDIzXXMVvdFtSdPLQYrNKv2h0hzc0LmOWkprJmVJfgsS5cQsI0y4HakorVhtCN+yDlhwHSfQPY1Jhm4K1u6imHYyyB2C4i66ReOO1MOBM1dwskXujifHieAsw13msHpDdBkcyaWNFRiRM2UVRlipHH3QwFhBpetWrl14QbeNLNgq9PYsFFpYslRI5Tnmxnv1YiL/SR81dpwO6F7X+zCN9lwdmIUBacI1soIjNUwf9P+w1d6+FOXuVcggAAAABJRU5ErkJggg==';
+// One shared "current report location" resolver — same precedence
+// autoFillWindDirection() uses (dropped pin beats GPS beats nothing) — so
+// every wind-app shortcut and the auto-fill call always agree on where
+// "here" means. Falls back to a fixed Novi Sad coordinate only if neither
+// GPS nor a manual pin is available yet, so the links always work.
+const WIND_APP_FALLBACK_COORDS = { lat: 45.2294, lon: 19.8276 };
+function activeWizLocation() {
+  return (pinMode && manualCoords) ? manualCoords : (userCoords || WIND_APP_FALLBACK_COORDS);
+}
+
+// Deep-links into each wind app, pre-centered on the report's location so
+// the user doesn't have to search for their spot by hand in every app.
+// Rendered as a vertical column of shortcuts to the right of the wind
+// compass. Windfinder deliberately has no icon here (kept text-only, to
+// match the other app shortcuts beside it).
+function buildWindAppLinksHtml() {
+  const { lat, lon } = activeWizLocation();
+  const latR = lat.toFixed(4), lonR = lon.toFixed(4);
+  const nowIso = new Date().toISOString().slice(0, 16) + 'Z';
+
+  const apps = [
+    {
+      label: t('windfinderCheckLabel'),
+      url: `https://www.windfinder.com/#13/${latR}/${lonR}/${nowIso}/spot`,
+    },
+    {
+      label: 'Windy',
+      url: `https://www.windy.com/?wind,${latR},${lonR},11`,
+    },
+    {
+      label: 'Meteoblue',
+      url: `https://www.meteoblue.com/en/weather/current/${latR}N${lonR}E`,
+    },
+    {
+      label: 'Wunderground',
+      url: `https://www.wunderground.com/wundermap?lat=${latR}&lon=${lonR}&zoom=12`,
+    },
+  ];
+
+  return apps.map(app => `
+    <a href="${app.url}" target="_blank" rel="noopener" title="${t('windAppCheckTitle')}"
+       style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--text-secondary);
+              text-decoration:none;padding:5px 10px;border-radius:999px;background:var(--bg-surface-alt);
+              white-space:nowrap;">
+      ${app.icon ? `<img src="${app.icon}" style="width:14px;height:14px;object-fit:contain;">` : ''}
+      ${app.label}
+    </a>`).join('');
+}
 
 /* ═══════════════════════════════════════════════════
    GPS MODAL
@@ -1807,6 +1869,17 @@ function checkFormReady() {
     fabBtn.title = hasLoc ? 'Report bad air' : t('wizNoLocationHint');
   }
   if (typeof checkWizSubmitReady === 'function') checkWizSubmitReady();
+
+  // If the details step (with the compass + wind-app shortcuts) is already
+  // open, a GPS fix or pin drop arriving afterwards shouldn't leave those
+  // stuck pointing at the fallback coordinate — refresh them in place.
+  if (typeof wizState !== 'undefined' && wizState.step === 2) {
+    const linksCol = document.getElementById('windAppLinksCol');
+    if (linksCol && typeof buildWindAppLinksHtml === 'function') {
+      linksCol.innerHTML = buildWindAppLinksHtml();
+    }
+    if (typeof autoFillWindDirection === 'function') autoFillWindDirection();
+  }
 }
 
 // Obfuscate a GPS fix by offsetting it a random distance (up to radiusMeters)
@@ -2400,7 +2473,7 @@ function formatStationTime(iso) {
 function buildStationPopupHtml(station, reading) {
   const color = reading ? aqiColor(reading.category) : '#9e9e9e';
 
-  return `<div class="popup-inner" style="padding:0;min-width:220px;max-width:320px;font-family:sans-serif;">
+  return `<div class="popup-inner" style="padding:0;min-width:220px;max-width:460px;font-family:sans-serif;">
     <div style="background:${color};padding:4px 8px;border-radius:6px 6px 0 0;display:flex;flex-direction:column;align-items:flex-start;gap:1px;">
       <span style="font-size:9px;color:rgba(255,255,255,.85);text-transform:uppercase;">${t('aqStationLabel')}</span>
       <span style="font-size:11px;font-weight:700;color:white;">${station.name}</span>
@@ -2442,7 +2515,7 @@ async function loadAirQualityStations() {
         icon: makeStationIcon(initialReading ? aqiColor(initialReading.category) : '#9e9e9e'),
         zIndexOffset: -1000, // keep beneath report pins
       }).addTo(map);
-      marker.bindPopup(buildStationPopupHtml(station, initialReading), { maxWidth: 340, minWidth: 220 });
+      marker.bindPopup(buildStationPopupHtml(station, initialReading), { maxWidth: 460, minWidth: 220 });
 
       // Re-fetch this station's latest reading fresh, every time its popup
       // is opened, so the numbers shown are never older than the click.
@@ -3396,7 +3469,7 @@ function pollutantSummaryRowHtml(reading, dark = false) {
     const display = (val != null && !isNaN(val)) ? Number(val).toFixed(1) : '–';
     return `<span style="white-space:nowrap;"><span style="color:${labelColor};">${label}</span> <span style="font-weight:700;color:${valueColor};">${display}</span></span>`;
   });
-  return `<div style="display:flex;flex-wrap:wrap;gap:5px 8px;font-size:10px;align-items:baseline;">${parts.join(`<span style="color:${dotColor};">·</span>`)}</div>`;
+  return `<div style="display:flex;flex-wrap:nowrap;gap:5px 8px;font-size:10px;align-items:baseline;overflow-x:auto;">${parts.join(`<span style="color:${dotColor};">·</span>`)}</div>`;
 }
 
 // Renders every station the report's wind trail actually passed through
@@ -3443,7 +3516,7 @@ function buildReportPopupHtml(report, stationSectionHtml) {
   const catCol = categoryColor(report.category);
   const card  = degToCardinal(report.wind_direction);
 
-  return `<div class="popup-inner" style="padding:0;min-width:220px;max-width:320px;font-family:sans-serif;">
+  return `<div class="popup-inner" style="padding:0;min-width:220px;max-width:460px;font-family:sans-serif;">
   <div style="background:${catCol};padding:4px 8px;border-radius:6px 6px 0 0;display:flex;flex-direction:column;align-items:flex-start;gap:1px;">
     <span style="font-size:11px;font-weight:700;color:white;">
       ${translateCategory(report.category)}
@@ -3468,17 +3541,18 @@ function buildReportPopupHtml(report, stationSectionHtml) {
 
     <div style="display:flex;justify-content:space-between;align-items:center;">
       <span style="font-size:9px;color:#888;text-transform:uppercase;">${t('popupDir')}</span>
-      <span style="font-size:11px;font-weight:600;color:#111;">
+      <span style="font-size:11px;font-weight:600;color:#111;white-space:nowrap;">
         ${report.manual_wind_direction != null ? report.manual_wind_direction + '°' : '–'}
+        <span style="font-size:9px;font-weight:400;color:#999;margin-left:5px;" title="${t('historical')}">
+          (${t('historical')}: ${report.wind_direction != null ? Math.round(report.wind_direction) + '°' + (card ? ` ${card}` : '') : '–'})
+        </span>
       </span>
     </div>
 
-    <div style="display:flex;flex-direction:column;gap:1px;margin-top:1px;">
-      <span style="font-size:9px;color:#bbb;text-transform:uppercase;">${t('historical')}</span>
-      <span style="font-size:10px;color:#999;white-space:nowrap;padding-left:2px;">
-        ${report.wind_direction != null ? Math.round(report.wind_direction) + '°' + (card ? ` ${card}` : '') : '–'} •
+    <div style="display:flex;justify-content:flex-end;align-items:center;margin-top:1px;">
+      <span style="font-size:10px;color:#999;white-space:nowrap;">
         ${report.wind_speed != null ? report.wind_speed + ' km/h' : '–'} •
-        ${report.sea_level_pressure != null ? Math.round(report.sea_level_pressure) + ' hPa' : '–'}
+        ${report.sea_level_pressure != null ? Number(report.sea_level_pressure).toFixed(1) + ' hPa' : '–'}
       </span>
     </div>
 
@@ -3507,7 +3581,7 @@ function renderPin(report, index = 0){
 
   // Initial popup shows a loading state for the nearest-station block;
   // it's filled in once the lookup resolves, on first open.
-  marker.bindPopup(buildReportPopupHtml(report, buildReportStationSectionHtml(undefined, report.created_at, report.id)), { maxWidth: 340, minWidth: 220 });
+  marker.bindPopup(buildReportPopupHtml(report, buildReportStationSectionHtml(undefined, report.created_at, report.id)), { maxWidth: 460, minWidth: 220 });
 
   marker.on('popupopen', () => {
     // startBacktrack(...) used to be called here but its result was never
@@ -3822,6 +3896,57 @@ function csvField(val) {
   return s;
 }
 
+// Formats a stored UTC timestamp (or Date) as this device's local date/time
+// for CSV export — spreadsheet readers expect the time they actually
+// experienced, not the raw +00:00 value Postgres/Supabase returns.
+function formatLocalDateTimeForCsv(dateVal) {
+  if (!dateVal) return '';
+  const d = (dateVal instanceof Date) ? dateVal : new Date(dateVal);
+  if (isNaN(d.getTime())) return '';
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+// Reverse-geocodes lat/lon into a short place name for the CSV's "Location"
+// column, via OSM's free Nominatim API. Cached by coordinate rounded to 3
+// decimals (~100m) so nearby reports/stations in the same export reuse one
+// lookup, and paced ~1.1s apart for actual (uncached) network calls to stay
+// within Nominatim's usage policy of roughly one request per second.
+const reverseGeocodeCache = new Map();
+async function reverseGeocodeLocation(lat, lon) {
+  const key = `${Number(lat).toFixed(3)},${Number(lon).toFixed(3)}`;
+  if (reverseGeocodeCache.has(key)) return reverseGeocodeCache.get(key);
+  try {
+    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=14&addressdetails=1`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const addr = data.address || {};
+    const place = addr.suburb || addr.neighbourhood || addr.quarter || addr.village
+      || addr.town || addr.city_district || addr.city || addr.municipality
+      || addr.county || data.display_name || '';
+    reverseGeocodeCache.set(key, place);
+    return place;
+  } catch (err) {
+    console.error('Reverse geocode failed:', err);
+    reverseGeocodeCache.set(key, '');
+    return '';
+  }
+}
+
+// Resolves the "Location" text for a whole batch of lat/lon pairs (report
+// list or station list) in original order, respecting the rate-limit pacing
+// described above. Returns a same-length array of place-name strings.
+async function reverseGeocodeAll(coordPairs) {
+  const results = [];
+  for (const { lat, lon } of coordPairs) {
+    const key = `${Number(lat).toFixed(3)},${Number(lon).toFixed(3)}`;
+    const wasCached = reverseGeocodeCache.has(key);
+    results.push(await reverseGeocodeLocation(lat, lon));
+    if (!wasCached) await new Promise(resolve => setTimeout(resolve, 1100));
+  }
+  return results;
+}
+
 // Builds a CSV filename suffixed with the given date range (or no suffix
 // if the range isn't a full 2-date selection), and triggers the browser
 // download. Shared by both CSV export buttons.
@@ -3857,6 +3982,10 @@ async function downloadCSV() {
   });
 
   if(!visible.length){ alert(t('noReports')); return; }
+
+  // Resolve a human-readable "Location" for each report from its
+  // coordinates, in the same order as `visible`.
+  const reportLocations = await reverseGeocodeAll(visible.map(r => ({ lat: r.latitude, lon: r.longitude })));
 
   // Make sure we have a station list to measure distances from — reuse the
   // already-loaded cache when possible, otherwise fetch fresh.
@@ -3940,26 +4069,31 @@ async function downloadCSV() {
   };
 
   let csv = `Report Generated/Downloaded On: ${new Date().toLocaleString()}\n\n`;
-  csv += 'ID,Date,Latitude,Longitude,Category,Intensity,WindSpeed,WindDirection,SeaLevelPressure,Comment,' +
+  csv += 'ID,Date,Location,Latitude,Longitude,Category,Intensity,WindSpeed,WindDirection,HistoryWindDirection,SeaLevelPressure,Comment,' +
          'NearestStation,StationDistanceKm,StationDataTime,HoursBeforeReport,StationPM10,StationPM2.5,StationSO2,StationNO2,StationO3\n';
 
-  perReport.forEach(({ report: r, station, distanceKm, targetTime }) => {
+  perReport.forEach(({ report: r, station, distanceKm, targetTime }, i) => {
     const reading = station ? pickReadingAtOrBefore(readingsByStation[station.id], targetTime) : null;
     const hoursBefore = station ? (new Date(r.created_at).getTime() - targetTime.getTime()) / 3600000 : null;
     csv += [
       csvField(r.id),
-      csvField(r.created_at),
-      csvField(r.latitude),
-      csvField(r.longitude),
+      csvField(formatLocalDateTimeForCsv(r.created_at)),
+      csvField(reportLocations[i] || ''),
+      csvField(r.latitude != null ? Number(r.latitude).toFixed(4) : ''),
+      csvField(r.longitude != null ? Number(r.longitude).toFixed(4) : ''),
       csvField(r.category),
       csvField(r.intensity || ''),
       csvField(r.wind_speed || 0),
-      csvField(r.wind_direction || 0),
-      csvField(r.sea_level_pressure || 0),
+      // WindDirection: the user-reported value; HistoryWindDirection: the
+      // Open-Meteo historical value for the same time/place — kept as
+      // adjacent columns so the two are easy to compare.
+      csvField(r.manual_wind_direction != null ? r.manual_wind_direction : ''),
+      csvField(r.wind_direction != null ? r.wind_direction : ''),
+      csvField(r.sea_level_pressure != null ? Number(r.sea_level_pressure).toFixed(1) : ''),
       csvField(r.comment || ''),
       csvField(station ? station.name : ''),
       csvField(distanceKm != null ? distanceKm.toFixed(2) : ''),
-      csvField(targetTime ? targetTime.toISOString() : ''),
+      csvField(targetTime ? formatLocalDateTimeForCsv(targetTime) : ''),
       csvField(hoursBefore != null ? hoursBefore.toFixed(2) : ''),
       csvField(reading ? reading.pm10 : ''),
       csvField(reading ? reading.pm25 : ''),
@@ -4002,6 +4136,13 @@ async function downloadStationCSV() {
   const stationById = {};
   visibleStations.forEach(s => { stationById[s.id] = s; });
 
+  // Resolve a "Location" name once per station (readings share the same
+  // fixed station coordinates, so the cache in reverseGeocodeAll makes this
+  // effectively free for every reading beyond the first at that station).
+  const stationLocationById = {};
+  const stationLocations = await reverseGeocodeAll(visibleStations.map(s => ({ lat: s.lat, lon: s.lon })));
+  visibleStations.forEach((s, i) => { stationLocationById[s.id] = stationLocations[i]; });
+
   let query = sb
     .from('air_quality_readings')
     .select('*')
@@ -4020,16 +4161,17 @@ async function downloadStationCSV() {
   if (!readings || !readings.length) { alert(t('noStations')); return; }
 
   let csv = `Report Generated/Downloaded On: ${new Date().toLocaleString()}\n\n`;
-  csv += 'StationID,StationName,Latitude,Longitude,RecordedAt,PM10,PM2.5,SO2,NO2,O3,Category\n';
+  csv += 'StationID,StationName,Location,Latitude,Longitude,RecordedAt,PM10,PM2.5,SO2,NO2,O3,Category\n';
 
   readings.forEach(r => {
     const station = stationById[r.station_id];
     csv += [
       csvField(r.station_id),
       csvField(station ? station.name : ''),
-      csvField(station ? station.lat : ''),
-      csvField(station ? station.lon : ''),
-      csvField(r.recorded_at),
+      csvField(station ? (stationLocationById[station.id] || '') : ''),
+      csvField(station ? Number(station.lat).toFixed(4) : ''),
+      csvField(station ? Number(station.lon).toFixed(4) : ''),
+      csvField(formatLocalDateTimeForCsv(r.recorded_at)),
       csvField(r.pm10),
       csvField(r.pm25),
       csvField(r.so2),
