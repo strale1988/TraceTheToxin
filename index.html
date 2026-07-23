@@ -12,6 +12,8 @@
   <link rel="icon" type="image/png" href="image/TraceTheToxin.png">
   <meta property="og:image" content="https://github.io"/>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"/>
 
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/themes/dark.css">
@@ -545,6 +547,30 @@ span.flatpickr-weekday {
 .trace-source-btn .icon-img{ filter:var(--icon-tint-filter); }
 
 /* ═══════════════════════════════════════════════════
+   REPORT MARKER CLUSTERING
+═══════════════════════════════════════════════════ */
+.report-cluster-icon{ background:transparent; border:none; }
+.report-cluster-badge{
+  width:100%; height:100%; border-radius:50%;
+  background:var(--accent, #0ea5b5);
+  color:#fff;
+  text-align:center;
+  font-weight:var(--fw-bold);
+  font-size:13px;
+  border:3px solid #fff;
+  box-shadow:0 2px 6px rgba(0,0,0,.35);
+}
+/* Report pins/clusters vanish for the duration of the zoom gesture, then
+   reappear already resolved into their new clustered/spiderfied layout --
+   avoids everything visibly jumping around mid-zoom. */
+#map.zooming-hide-reports .report-pin-icon,
+#map.zooming-hide-reports .report-cluster-icon,
+#map.zooming-hide-reports .marker-cluster{
+  opacity:0 !important;
+  transition:none !important;
+}
+
+/* ═══════════════════════════════════════════════════
    WIND COMPASS WIDGET (fixed corner badge)
    Shows the live wind reading fetched once at app start:
    an arrow (rotated to point where the wind is blowing
@@ -903,6 +929,28 @@ span.flatpickr-weekday {
       <p class="detail-export-hint" id="trailHoursHint">How far back the wind trail is drawn on the map. Nearest-station matching always uses up to 12h of history regardless of this setting.</p>
     </div>
 
+    <div class="detail-section" id="splineVisibilitySettingsSection">
+      <label class="settings-toggle-row" for="splineVisibilityToggle">
+        <span id="splineVisibilityLabel">Show historical wind trails</span>
+        <span class="toggle-switch">
+          <input type="checkbox" id="splineVisibilityToggle" onchange="setSplineVisibility(this.checked)">
+          <span class="toggle-switch-track"><span class="toggle-switch-thumb"></span></span>
+        </span>
+      </label>
+      <p class="detail-export-hint" id="splineVisibilityHint">Show the dashed wind-trail lines behind each pin. Off by default to keep the map uncluttered.</p>
+    </div>
+
+    <div class="detail-section" id="edgeBundlingSettingsSection">
+      <label class="settings-toggle-row" for="edgeBundlingToggle">
+        <span id="edgeBundlingLabel">Edge Bundling</span>
+        <span class="toggle-switch">
+          <input type="checkbox" id="edgeBundlingToggle" onchange="setEdgeBundling(this.checked)">
+          <span class="toggle-switch-track"><span class="toggle-switch-thumb"></span></span>
+        </span>
+      </label>
+      <p class="detail-export-hint" id="edgeBundlingHint">Curves and groups wind trails running along similar paths into unified visual "highways," reducing line crossings. Off by default.</p>
+    </div>
+
     <div class="detail-section" style="padding:0;overflow:hidden;">
       <div class="filter-label-row" style="border-radius:0;">
         <span class="filter-title" id="filterTitleLabel">Time Window Filter</span>
@@ -951,6 +999,7 @@ span.flatpickr-weekday {
 
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 <!-- Flatpickr Calendar Engine -->
 <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
@@ -1437,6 +1486,10 @@ if (window.ResizeObserver) {
 function showSettingsModal() {
   document.getElementById('settingsModal').style.display = 'block';
   syncModalHeaderHeight();
+  const splineToggle = document.getElementById('splineVisibilityToggle');
+  if (splineToggle) splineToggle.checked = splinesVisible;
+  const bundlingToggle = document.getElementById('edgeBundlingToggle');
+  if (bundlingToggle) bundlingToggle.checked = edgeBundlingEnabled;
 }
 function hideSettingsModal() {
   document.getElementById('settingsModal').style.display = 'none';
@@ -1474,6 +1527,40 @@ function setTrailDisplayHours(hours) {
   document.querySelectorAll('#trailHoursSegment .theme-segment-btn').forEach(b => {
     b.classList.toggle('active', b.getAttribute('onclick') === `setTrailDisplayHours(${hours})`);
   });
+  loadPinsByWindow();
+}
+
+// Historical wind-trail splines (the dashed lines + their tap targets) —
+// off by default, since most people just want to see the pins.
+let splinesVisible = (function () {
+  try { return localStorage.getItem('ttt_splines_visible') === 'true'; } catch (e) { return false; }
+})();
+function applySplineVisibility() {
+  const pane = map.getPane('splinePane');
+  // Trace Possible Source relies on the trail being visible to mean
+  // anything -- always show it while actively tracing, regardless of the
+  // general splines-off-by-default setting, which only governs normal
+  // browsing.
+  if (pane) pane.style.display = (splinesVisible || traceMode) ? '' : 'none';
+}
+function setSplineVisibility(visible) {
+  splinesVisible = !!visible;
+  try { localStorage.setItem('ttt_splines_visible', String(splinesVisible)); } catch (e) {}
+  applySplineVisibility();
+  const toggle = document.getElementById('splineVisibilityToggle');
+  if (toggle) toggle.checked = splinesVisible;
+}
+
+// Edge Bundling — off by default, re-draws trails on toggle since bundling
+// happens once at draw time, not as a live CSS effect.
+let edgeBundlingEnabled = (function () {
+  try { return localStorage.getItem('ttt_edge_bundling') === 'true'; } catch (e) { return false; }
+})();
+function setEdgeBundling(enabled) {
+  edgeBundlingEnabled = !!enabled;
+  try { localStorage.setItem('ttt_edge_bundling', String(edgeBundlingEnabled)); } catch (e) {}
+  const toggle = document.getElementById('edgeBundlingToggle');
+  if (toggle) toggle.checked = edgeBundlingEnabled;
   loadPinsByWindow();
 }
 
@@ -1656,6 +1743,11 @@ const T = {
 
   trailHoursSectionTitle: { en:'Wind Trail Length', sr:'Dužina traga vetra' },
   trailHoursHint: { en:"How far back the wind trail is drawn on the map. Nearest-station matching always uses up to 12h of history regardless of this setting.", sr:'Koliko unazad se crta trag vetra na mapi. Poklapanje sa najbližom stanicom uvek koristi do 12h istorije bez obzira na ovo podešavanje.' },
+
+  splineVisibilityLabel: { en:'Show historical wind trails', sr:'Prikaži istorijske tragove vetra' },
+  splineVisibilityHint:  { en:'Show the dashed wind-trail lines behind each pin. Off by default to keep the map uncluttered.', sr:'Prikaži isprekidane linije traga vetra iza svake oznake. Podrazumevano isključeno radi preglednosti mape.' },
+  edgeBundlingLabel:     { en:'Edge Bundling', sr:'Spajanje linija (Edge Bundling)' },
+  edgeBundlingHint:      { en:'Curves and groups wind trails running along similar paths into unified visual "highways," reducing line crossings. Off by default.', sr:'Zakrivljuje i grupiše tragove vetra koji idu sličnim putanjama u jedinstvene vizuelne "koridore," smanjujući ukrštanje linija. Podrazumevano isključeno.' },
 };
 
 function t(k){ return T[k]?.[lang] ?? k; }
@@ -1753,6 +1845,10 @@ function applyLang(){
   if (el('themeBtnSmart'))      el('themeBtnSmart').textContent = t('themeBtnSmart');
   if (el('trailHoursSectionTitle')) el('trailHoursSectionTitle').textContent = t('trailHoursSectionTitle');
   if (el('trailHoursHint'))         el('trailHoursHint').textContent = t('trailHoursHint');
+  if (el('splineVisibilityLabel')) el('splineVisibilityLabel').textContent = t('splineVisibilityLabel');
+  if (el('splineVisibilityHint'))  el('splineVisibilityHint').textContent = t('splineVisibilityHint');
+  if (el('edgeBundlingLabel'))     el('edgeBundlingLabel').textContent = t('edgeBundlingLabel');
+  if (el('edgeBundlingHint'))      el('edgeBundlingHint').textContent = t('edgeBundlingHint');
 
   // Only re-render the active wizard step if the wizard is currently open,
   // since its inputs (category tiles, comment field, etc.) are rebuilt
@@ -1894,10 +1990,51 @@ map.getPane('conePane').style.pointerEvents = 'none';
 map.createPane('splinePane');
 map.getPane('splinePane').style.zIndex = 450;
 map.getPane('splinePane').style.pointerEvents = 'none';
+// Sits above the default marker pane (600), so the user's own
+// location/manual-pin marker is always drawn on top of report pins,
+// clusters, and AQ station markers — never buried under them regardless
+// of how many pins pile up nearby. Not interactive itself (no popup on
+// this marker), so it's set to ignore pointer events, letting taps fall
+// through to whatever pin is actually underneath it.
+map.createPane('userLocationPane');
+map.getPane('userLocationPane').style.zIndex = 620;
+map.getPane('userLocationPane').style.pointerEvents = 'none';
 
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
   attribution:'© OpenStreetMap'
 }).addTo(map);
+
+// Report pins cluster together at lower zoom levels instead of piling up
+// into an unreadable mess, and "spiderfy" (fan out into a ring so each one
+// is individually clickable) when you tap a cluster that's already at the
+// closest zoom Leaflet will cluster at. During the zoom gesture itself the
+// pins/clusters are hidden (see zoomstart/zoomend below) so nothing jumps
+// around mid-animation -- they reappear, resolved into their new
+// clustered/spiderfied layout, once the zoom settles.
+const reportClusterGroup = L.markerClusterGroup({
+  maxClusterRadius: 60,
+  disableClusteringAtZoom: 16,
+  spiderfyOnMaxZoom: true,
+  showCoverageOnHover: false,
+  zoomToBoundsOnClick: true,
+  animate: true,
+  chunkedLoading: true,
+  iconCreateFunction: function (cluster) {
+    const count = cluster.getChildCount();
+    const size = count < 10 ? 34 : count < 50 ? 42 : 50;
+    return L.divIcon({
+      html: `<div class="report-cluster-badge" style="width:${size}px;height:${size}px;line-height:${size}px;">${count}</div>`,
+      className: 'report-cluster-icon',
+      iconSize: [size, size]
+    });
+  }
+});
+map.addLayer(reportClusterGroup);
+
+// Hide report pins/clusters for the duration of the zoom animation only —
+// GPS dot, wind compass, and historical trails are unaffected.
+map.on('zoomstart', () => document.getElementById('map').classList.add('zooming-hide-reports'));
+map.on('zoomend',   () => document.getElementById('map').classList.remove('zooming-hide-reports'));
 
 let userCoords    = null;
 let userMarker    = null;
@@ -1991,15 +2128,18 @@ function hideGpsModal(){
    GPS INIT
 ═══════════════════════════════════════════════════ */
 function enableManualPinMode() {
+  // `center` was previously referenced here without ever being defined --
+  // a ReferenceError that silently aborted this function (no pin ever
+  // placed) any time it ran, which is exactly the GPS-denied/unsupported
+  // path where a manual pin is the only fallback available. Use the map's
+  // actual current center as a sensible default drop point instead.
+  const center = map.getCenter();
   if (manualMarker) {
     manualMarker.setLatLng(center);
   } else {
     manualMarker = L.marker(center, {
-      icon: L.divIcon({
-        className: '',
-        html: `<div style="width:20px;height:20px;background:#f5a623;border-radius:50%;border:2px solid white;box-shadow:0 3px 8px rgba(0,0,0,0.4)"></div>`,
-        iconAnchor: [10, 10]
-      })
+      icon: makeUserLocationIcon(currentWindDegForMarker),
+      pane: 'userLocationPane'
     }).addTo(map);
   }
   checkFormReady();
@@ -2087,7 +2227,7 @@ function startWatching() {
       if (!userMarker) {
         userMarker = L.marker([userCoords.lat, userCoords.lon], {
           icon: makeUserLocationIcon(currentWindDegForMarker),
-          zIndexOffset: 1000
+          pane: 'userLocationPane'
         }).addTo(map);
         map.setView([userCoords.lat, userCoords.lon], 13);
       } else {
@@ -2243,11 +2383,8 @@ map.on('click', async function(e) {
       manualMarker.setLatLng(e.latlng);
     } else {
       manualMarker = L.marker(e.latlng, {
-        icon: L.divIcon({
-          className: '',
-          html: `<div style="width:20px;height:20px;background:#f5a623;border-radius:50%;border:2px solid white;box-shadow:0 3px 8px rgba(0,0,0,.4)"></div>`,
-          iconAnchor: [10,10]
-        })
+        icon: makeUserLocationIcon(currentWindDegForMarker),
+        pane: 'userLocationPane'
       }).addTo(map);
     }
 
@@ -2302,7 +2439,13 @@ async function getWeatherData(lat, lng, datetime = null) {
 
   const queryParams = isHistorical 
     ? `?latitude=${lat}&longitude=${lng}&start_date=${datetime.split('T')[0]}&end_date=${datetime.split('T')[0]}&hourly=wind_speed_10m,wind_direction_10m,pressure_msl`
-    : `?latitude=${lat}&longitude=${lng}&current=wind_speed_10m,wind_direction_10m,pressure_msl&timezone=auto&models=icon_d2`;
+    // NOTE: previously pinned `models=icon_d2` here -- same bug as the
+    // get-wind-direction edge function (see its source comments): that
+    // model only covers a Central-European domain and this app's
+    // coordinates sit right at its edge, so requests failed far more than
+    // they should have. Dropped so Open-Meteo auto-selects the best
+    // globally-available model, matching the rest of the app's calls.
+    : `?latitude=${lat}&longitude=${lng}&current=wind_speed_10m,wind_direction_10m,pressure_msl&timezone=auto`;
   const controller = new AbortController();
 
   const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
@@ -2326,7 +2469,11 @@ async function getWeatherData(lat, lng, datetime = null) {
     if (data.current) {
       ({ wind_speed_10m: windSpeed, wind_direction_10m: windDirection, pressure_msl: pressure } = data.current);
     } else if (data.hourly) {
-      const hourIndex = datetime ? new Date(datetime).getHours() : 0;
+      // hourly.time is UTC (this request has no `timezone=` param, and
+      // Open-Meteo defaults to UTC) -- must index it with the UTC hour of
+      // `datetime`, not the local hour, or this silently picks the wrong
+      // hour by exactly the browser's UTC offset.
+      const hourIndex = datetime ? new Date(datetime).getUTCHours() : 0;
       windSpeed = data.hourly.wind_speed_10m[hourIndex];
       windDirection = data.hourly.wind_direction_10m[hourIndex];
       pressure = data.hourly.pressure_msl[hourIndex];
@@ -2595,6 +2742,98 @@ function smoothPathChaikin(points, iterations = 3) {
   return current;
 }
 
+// Edge bundling (Settings toggle, off by default): pulls control points of
+// different trails together whenever they're close AND running a similar
+// direction, over a handful of cooling cycles (decreasing step size each
+// cycle) -- the standard force-directed approach to the same "merge
+// similar-direction trajectories into shared visual highways, reduce line
+// crossings" goal as Hierarchical Edge Bundling. Endpoints are never moved,
+// so every trail still starts/ends exactly where its report/trail data says
+// it should; only the interior curve shifts.
+function computeEdgeBundling(trails, opts = {}) {
+  const SUBDIVISIONS = opts.subdivisions ?? 8;   // interior points per trail
+  const CYCLES = opts.cycles ?? 4;
+  const INITIAL_STEP = opts.stepSize ?? 0.4;     // fraction of the gap closed per cycle
+  const COMPAT_KM = opts.compatibilityKm ?? 2.5; // only bundle points closer than this
+
+  // Cap how many trails we bundle against each other — this is O(E^2), and
+  // a busy map with hundreds of reports would make it noticeably slow for
+  // a purely cosmetic effect. Falls back to un-bundled beyond that.
+  const MAX_TRAILS = 120;
+  if (trails.length > MAX_TRAILS) return trails;
+
+  const N = SUBDIVISIONS + 2; // + the two endpoints
+
+  // Resample a trail to N evenly-arc-length-spaced points, so every trail
+  // has directly comparable control points to compare/pull against.
+  function resample(points, n) {
+    if (points.length < 2) return Array.from({ length: n }, () => points[0].slice());
+    const cum = [0];
+    for (let i = 1; i < points.length; i++) {
+      cum.push(cum[i - 1] + getHaversineDistance(points[i - 1][0], points[i - 1][1], points[i][0], points[i][1]));
+    }
+    const total = cum[cum.length - 1];
+    if (total === 0) return Array.from({ length: n }, () => points[0].slice());
+
+    const out = [];
+    for (let k = 0; k < n; k++) {
+      const target = total * k / (n - 1);
+      let idx = 0;
+      while (idx < cum.length - 2 && cum[idx + 1] < target) idx++;
+      const segStart = cum[idx], segEnd = cum[idx + 1] ?? segStart;
+      const segLen = segEnd - segStart || 1e-9;
+      const f = (target - segStart) / segLen;
+      const p0 = points[idx], p1 = points[idx + 1] ?? p0;
+      out.push([p0[0] + (p1[0] - p0[0]) * f, p0[1] + (p1[1] - p0[1]) * f]);
+    }
+    return out;
+  }
+
+  const pts = trails.map(t => resample(t, N));
+
+  let step = INITIAL_STEP;
+  for (let cycle = 0; cycle < CYCLES; cycle++) {
+    const forces = pts.map(t => t.map(() => [0, 0]));
+
+    for (let i = 0; i < pts.length; i++) {
+      for (let j = i + 1; j < pts.length; j++) {
+        // Cheap pre-check on midpoints before doing the full per-point pass —
+        // trails whose midpoints are far apart won't have any point pairs
+        // within the compatibility radius either.
+        const midI = pts[i][Math.floor(N / 2)], midJ = pts[j][Math.floor(N / 2)];
+        if (getHaversineDistance(midI[0], midI[1], midJ[0], midJ[1]) > COMPAT_KM * 4) continue;
+
+        for (let k = 1; k < N - 1; k++) { // never move the endpoints
+          const a = pts[i][k], b = pts[j][k];
+          const d = getHaversineDistance(a[0], a[1], b[0], b[1]);
+          if (d > COMPAT_KM || d < 1e-6) continue;
+
+          const pull = (1 - d / COMPAT_KM); // 0 at the edge of range, 1 when coincident
+          const ux = (b[0] - a[0]) / d, uy = (b[1] - a[1]) / d;
+          forces[i][k][0] += ux * pull;
+          forces[i][k][1] += uy * pull;
+          forces[j][k][0] -= ux * pull;
+          forces[j][k][1] -= uy * pull;
+        }
+      }
+    }
+
+    // Degrees-of-latitude-sized step; forces above are unit vectors scaled
+    // by "pull" (0-1), so this keeps each cycle's shift small and bounded.
+    const degStep = step * 0.01;
+    for (let i = 0; i < pts.length; i++) {
+      for (let k = 1; k < N - 1; k++) {
+        pts[i][k][0] += forces[i][k][0] * degStep;
+        pts[i][k][1] += forces[i][k][1] * degStep;
+      }
+    }
+    step *= 0.55; // cool down each cycle, like classic force-directed bundling
+  }
+
+  return pts;
+}
+
+
 function makeIcon(color, windDeg, catColor, category) {
   const rotation = (windDeg !== undefined) ? parseFloat(windDeg) : 0;
   const accent = catColor || 'white';
@@ -2632,7 +2871,7 @@ function makeIcon(color, windDeg, catColor, category) {
     </svg>`;
 
   return L.divIcon({ 
-    className: 'modern-marker-shadow', 
+    className: 'modern-marker-shadow report-pin-icon', 
     html: svg, 
     iconSize: [size, size], 
     iconAnchor: [cx, cy], 
@@ -3480,6 +3719,11 @@ async function generateAllBackgroundTrails(reports, tracerCoords = null) {
 
   const displayHours = getTrailDisplayHours();
 
+  // Phase 2a: work out each report's own (un-bundled) spline coordinates —
+  // same logic as before, just collected into an array instead of being
+  // drawn immediately, so Edge Bundling (below) has the complete set of
+  // trails to bundle against each other before anything hits the map.
+  const trailsToRender = [];
   sortedReports.forEach((report, idx) => {
     const trailResult = trailResults[idx];
     if (!trailResult?.rawTrail?.length) return;
@@ -3498,7 +3742,6 @@ async function generateAllBackgroundTrails(reports, tracerCoords = null) {
     }
     if (!smoothedTrail || smoothedTrail.length < 2) return;
 
-    const baseColor = categoryColor(report.category);
     let splineLatLngs = smoothedTrail.map(p => [p.lat, p.lon]);
 
     // If called from tracer, clip the spline a short buffer distance PAST
@@ -3542,6 +3785,28 @@ async function generateAllBackgroundTrails(reports, tracerCoords = null) {
 
       splineLatLngs = splineLatLngs.slice(0, cutIdx + 1);
     }
+
+    trailsToRender.push({ report, trailResult, splineLatLngs });
+  });
+
+  // Phase 2b: Edge Bundling (off by default, toggled in Settings). Curves
+  // each trail's *drawn* path toward nearby, similarly-oriented trails so
+  // parallel trajectories visually merge into shared "highways" instead of
+  // criss-crossing. Purely cosmetic — station-matching and click handling
+  // below still use each trail's real (un-bundled) coordinates, so bundling
+  // never affects the actual data, just how the lines look. Skipped for the
+  // tracer view, where the line needs to precisely reach the traced point.
+  if (edgeBundlingEnabled && !tracerCoords && trailsToRender.length > 1) {
+    try {
+      const bundled = computeEdgeBundling(trailsToRender.map(t => t.splineLatLngs));
+      bundled.forEach((coords, i) => { trailsToRender[i].splineLatLngs = coords; });
+    } catch (err) {
+      console.error('Edge bundling failed, falling back to un-bundled trails:', err);
+    }
+  }
+
+  trailsToRender.forEach(({ report, trailResult, splineLatLngs }) => {
+    const baseColor = categoryColor(report.category);
 
     const dottedSpline = L.polyline(splineLatLngs, {
       color: baseColor,
@@ -3590,6 +3855,10 @@ async function generateAllBackgroundTrails(reports, tracerCoords = null) {
       handleSplineClick(report.id, e.latlng);
     });
   });
+
+  // Splines default to hidden (Settings toggle, off by default) — apply
+  // that state to whatever we just drew, same as toggling it live does.
+  applySplineVisibility();
 }
 
 /* ═══════════════════════════════════════════════════
@@ -3639,7 +3908,7 @@ function evaluateActiveNearbyClusters() {
    PINS RENDER ENGINE
 ═══════════════════════════════════════════════════ */
 function clearMarkers(){
-  reportMarkers.forEach(m=>map.removeLayer(m));
+  reportClusterGroup.clearLayers();
   reportMarkers=[];
 }
 function translateCategory(category) {
@@ -3829,7 +4098,8 @@ function renderPin(report, index = 0){
     icon: makeIcon(color, report.manual_wind_direction ?? report.wind_direction, catCol, report.category),
 
     zIndexOffset: zIndexPriority 
-  }).addTo(map);
+  });
+  reportClusterGroup.addLayer(marker);
 
   // Initial popup shows a loading state for the nearest-station block;
   // it's filled in once the lookup resolves, on first open.
@@ -4091,12 +4361,21 @@ async function reportBadAir(){
   let finalSpeed = null;
   let finalPressure = 0;
   try {
-    const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lon}&current=wind_speed_10m,wind_direction_10m,pressure_msl&timezone=UTC&models=icon_d2`);
-    const w = await r.json();
-    const c = w.current;
-    if (c) {
-      finalSpeed    = c.wind_speed_10m    != null ? parseFloat(parseFloat(c.wind_speed_10m).toFixed(1))  : null;
-      finalPressure = c.pressure_msl      != null ? parseFloat(c.pressure_msl) : 0;
+    // NOTE: previously pinned `models=icon_d2` here -- same bug identified
+    // in the get-wind-direction edge function and getWeatherData: that
+    // model only covers a Central-European domain and this app's
+    // coordinates sit right at its edge, so this silently failed into the
+    // catch block (and a null wind_speed/pressure on the report) far more
+    // often than it should have. Dropped so Open-Meteo auto-selects the
+    // best globally-available model.
+    const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lon}&current=wind_speed_10m,wind_direction_10m,pressure_msl&timezone=UTC`);
+    if (r.ok) {
+      const w = await r.json();
+      const c = w.current;
+      if (c) {
+        finalSpeed    = c.wind_speed_10m    != null ? parseFloat(parseFloat(c.wind_speed_10m).toFixed(1))  : null;
+        finalPressure = c.pressure_msl      != null ? parseFloat(c.pressure_msl) : 0;
+      }
     }
   } catch (weatherErr) {
     console.warn('Weather fetch failed at report time, wind_speed will be backfilled later:', weatherErr);
@@ -4111,10 +4390,11 @@ async function reportBadAir(){
       // wind_direction: starts as the manual value; overwritten by backfillWindDirection()
       // once historical Open-Meteo data is available (>7h after report)
       wind_direction:        null,
-      // wind_speed: from live Open-Meteo at submit time; null if fetch failed,
-      // will be backfilled by renderHistoricSplineTrailForReport()
-      wind_speed:            null,
-      sea_level_pressure:    null,
+      // wind_speed: from live Open-Meteo at submit time; null if that fetch
+      // failed, in which case buildWindTrailForReport() backfills it later
+      // once historical data is available.
+      wind_speed:            finalSpeed,
+      sea_level_pressure:    finalPressure || null,
       comment,
       category,
       intensity:             parseInt(intensity),
@@ -4503,6 +4783,77 @@ document.addEventListener('visibilitychange', () => {
 // Fallback in case the map/data takes unusually long or errors out silently —
 // never leave the user stuck behind the splash screen.
 setTimeout(hideSplashScreen, 6000);
+
+/* ═══════════════════════════════════════════════════
+   PULL-TO-REFRESH
+   Body has overflow:hidden (so map gestures don't scroll the page),
+   which also suppresses the browser's native overscroll refresh. This
+   reproduces just that gesture, scoped to touches that start on the
+   header itself, so it can't be triggered by panning the map.
+═══════════════════════════════════════════════════ */
+(function setupPullToRefresh() {
+  const headerEl = document.querySelector('header');
+  const indicator = document.getElementById('pullRefreshIndicator');
+  const label = document.getElementById('pullRefreshLabel');
+  if (!headerEl || !indicator) return;
+
+  const PULL_THRESHOLD = 70;   // px of pull before release triggers a refresh
+  const MAX_PULL = 110;        // px cap so it doesn't drag forever
+  let startY = null;
+  let pulling = false;
+  let armed = false; // past the threshold, will refresh on release
+
+  if (label) label.textContent = t('pullToRefresh');
+
+  function setPull(dist, animate) {
+    indicator.classList.toggle('animate', !!animate);
+    headerEl.classList.toggle('animate', !!animate);
+    const eased = Math.min(dist, MAX_PULL);
+    headerEl.style.transform = `translateY(${eased}px)`;
+    indicator.style.transform = `translate(-50%, ${eased - 60}px)`;
+  }
+
+  headerEl.addEventListener('touchstart', (e) => {
+    if (e.touches.length !== 1) return;
+    startY = e.touches[0].clientY;
+    pulling = true;
+    armed = false;
+  }, { passive: true });
+
+  headerEl.addEventListener('touchmove', (e) => {
+    if (!pulling || startY == null) return;
+    const dy = e.touches[0].clientY - startY;
+    if (dy <= 0) { return; }
+    // Once it's clearly a downward pull, own the gesture so the page
+    // doesn't try to do anything else with it.
+    if (e.cancelable) e.preventDefault();
+    const wasArmed = armed;
+    armed = dy > PULL_THRESHOLD;
+    if (armed !== wasArmed) {
+      indicator.classList.toggle('ready', armed);
+      if (label) label.textContent = t(armed ? 'releaseToRefresh' : 'pullToRefresh');
+    }
+    setPull(dy, false);
+  }, { passive: false });
+
+  function endPull() {
+    if (!pulling) return;
+    pulling = false;
+    if (armed) {
+      indicator.classList.add('refreshing');
+      indicator.classList.remove('ready');
+      if (label) label.textContent = t('refreshing');
+      setPull(60, true); // settle at a spot that keeps the spinner visible
+      setTimeout(() => location.reload(), 300);
+    } else {
+      setPull(0, true);
+    }
+    startY = null;
+  }
+
+  headerEl.addEventListener('touchend', endPull);
+  headerEl.addEventListener('touchcancel', endPull);
+})();
 
 
 </script>
