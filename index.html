@@ -630,7 +630,7 @@ span.flatpickr-weekday {
 }
 .fullscreen-modal-close:active{ background:var(--border-color-strong); transform:scale(.9); }
 .fullscreen-modal-close .icon-img{ width:18px; height:18px; filter:var(--icon-tint-filter); }
-.fullscreen-modal-body{ flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:16px 16px calc(24px + env(safe-area-inset-bottom,0px)); display:flex; flex-direction:column; gap:16px; }
+.fullscreen-modal-body{ flex:1; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:16px 16px calc(24px + env(safe-area-inset-bottom,0px)); display:flex; flex-direction:column; gap:16px; }
 .detail-section{ background:var(--bg-surface); border:1px solid var(--border-color); border-radius:var(--radius-xl); padding:14px; }
 .detail-section-title{ font-size:var(--fs-10); font-weight:var(--fw-bold); letter-spacing:.4px; text-transform:uppercase; color:var(--text-muted); margin-bottom:10px; }
 .detail-export-hint{ font-size:var(--fs-12); color:var(--text-secondary); margin:8px 0 0; line-height:1.4; }
@@ -2356,7 +2356,7 @@ function formatStationTime(iso) {
 function buildStationPopupHtml(station, reading) {
   const color = reading ? aqiColor(reading.category) : '#9e9e9e';
 
-  return `<div class="popup-inner" style="padding:0;min-width:160px;max-width:200px;font-family:sans-serif;">
+  return `<div class="popup-inner" style="padding:0;min-width:200px;max-width:280px;font-family:sans-serif;">
     <div style="background:${color};padding:4px 8px;border-radius:6px 6px 0 0;display:flex;flex-direction:column;align-items:flex-start;gap:1px;">
       <span style="font-size:9px;color:rgba(255,255,255,.85);text-transform:uppercase;">${t('aqStationLabel')}</span>
       <span style="font-size:11px;font-weight:700;color:white;">${station.name}</span>
@@ -3386,9 +3386,9 @@ function buildReportStationSectionHtml(stationList, reportCreatedAt, reportId) {
       <span style="font-size:10px;color:#555;font-weight:600;">${top.station.name}</span>
       ${hoursBefore != null && hoursBefore > 0.05 ? `<span style="font-size:9px;color:#999;">${t('windTravelTime')}: ~${hoursBefore.toFixed(1)}h</span>` : ''}
       ${top.pathDistanceKm != null ? `<span style="font-size:9px;color:#999;">${t('windTravelDist')}: ~${top.pathDistanceKm.toFixed(1)} km</span>` : ''}
-      <button onclick="showStationDetailsModalForReport(${reportId})" style="margin-top:4px;padding:6px 8px;font-size:10px;font-weight:700;background:var(--accent);color:white;border:none;border-radius:6px;cursor:pointer;width:100%;">
-        ${moreCount > 0 ? `${t('seeAllStations')} (${stationList.length})` : t('seeStationDetails')}
-      </button>
+      ${top.reading ? `<span style="font-size:9px;color:#999;margin-top:1px;">${t('stationDataAsOf')} ${formatStationTime(top.reading.recorded_at)}</span>` : ''}
+      <div style="margin-top:2px;">${pollutantSummaryRowHtml(top.reading)}</div>
+      ${moreCount > 0 ? `<span onclick="showStationDetailsModalForReport(${reportId})" style="margin-top:3px;font-size:9px;color:var(--accent);font-weight:600;cursor:pointer;text-decoration:underline;">${t('seeAllStations')} (${stationList.length})</span>` : ''}
     </div>`;
 }
 
@@ -3444,7 +3444,7 @@ function buildReportPopupHtml(report, stationSectionHtml) {
   const catCol = categoryColor(report.category);
   const card  = degToCardinal(report.wind_direction);
 
-  return `<div class="popup-inner" style="padding:0;min-width:160px;max-width:200px;font-family:sans-serif;">
+  return `<div class="popup-inner" style="padding:0;min-width:200px;max-width:280px;font-family:sans-serif;">
   <div style="background:${catCol};padding:4px 8px;border-radius:6px 6px 0 0;display:flex;flex-direction:column;align-items:flex-start;gap:1px;">
     <span style="font-size:11px;font-weight:700;color:white;">
       ${translateCategory(report.category)}
@@ -3648,9 +3648,12 @@ async function filterPinsBySourceTrajectory(tracerCoords) {
   }).addTo(map);
   tracerVisualCircles.push(primaryRadiusCircle);
 
-  // Apply date filter
-  const filterStart = new Date(fp.selectedDates[0]); filterStart.setHours(0, 0, 0, 0);
-  const filterEnd = new Date(fp.selectedDates[1]); filterEnd.setHours(23, 59, 59, 999);
+  // Apply the on-map filter's date window (mapFp) — NOT the Settings/export
+  // filter (fp). Possible-source tracing works over whatever's currently
+  // shown on the map, same as everything else the map filter scopes.
+  if (!mapFp || !mapFp.selectedDates || mapFp.selectedDates.length < 2) return;
+  const filterStart = new Date(mapFp.selectedDates[0]); filterStart.setHours(0, 0, 0, 0);
+  const filterEnd = new Date(mapFp.selectedDates[1]); filterEnd.setHours(23, 59, 59, 999);
   const timeFilteredData = globalActiveData.filter(r => {
     const ts = new Date(r.created_at).getTime();
     return ts >= filterStart.getTime() && ts <= filterEnd.getTime();
