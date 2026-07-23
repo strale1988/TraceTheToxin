@@ -508,6 +508,39 @@ span.flatpickr-weekday {
 .trace-source-btn:active{ transform:scale(.9); }
 .trace-source-btn.active{ background:var(--danger); border-color:var(--danger); }
 .trace-source-btn .icon-img{ filter:var(--icon-tint-filter); }
+
+/* ═══════════════════════════════════════════════════
+   WIND COMPASS WIDGET (fixed corner badge)
+   Shows the live wind reading fetched once at app start:
+   an arrow (rotated to point where the wind is blowing
+   TOWARD, same convention as the report-pin icons and the
+   wizard's compass dial), plus the raw degrees and cardinal
+   direction the wind is blowing FROM underneath.
+═══════════════════════════════════════════════════ */
+#windCompassWidget{
+  position:fixed;
+  top:calc(env(safe-area-inset-top, 0px) + 72px);
+  right:12px;
+  z-index:410;
+  background:var(--floating-bg);
+  border:1px solid var(--floating-border);
+  border-radius:var(--radius-lg);
+  box-shadow:0 2px 8px var(--floating-shadow);
+  padding:6px 10px 7px;
+  display:none;
+  flex-direction:column;
+  align-items:center;
+  gap:1px;
+  min-width:52px;
+  -webkit-tap-highlight-color:transparent;
+}
+#windCompassWidget.visible{ display:flex; }
+#windCompassWidget .wind-compass-deg{
+  font-size:var(--fs-11); font-weight:var(--fw-bold); color:var(--text-primary); margin-top:1px;
+}
+#windCompassWidget .wind-compass-dir{
+  font-size:var(--fs-9); font-weight:var(--fw-medium); color:var(--text-muted); text-transform:uppercase;
+}
 .trace-source-btn.active .icon-img{ filter:none; }
 
 /* ═══════════════════════════════════════════════════
@@ -706,6 +739,18 @@ span.flatpickr-weekday {
 </header>
 
 <div id="map"></div>
+
+<div id="windCompassWidget" title="Live wind direction">
+  <svg id="windCompassSvg" width="34" height="34" viewBox="0 0 34 34" style="overflow:visible;">
+    <circle cx="17" cy="17" r="15" fill="none" stroke="var(--border-color-strong)" stroke-width="1"/>
+    <g id="windCompassArrowGroup" transform="rotate(0 17 17)">
+      <line x1="17" y1="6" x2="17" y2="17" stroke="var(--accent)" stroke-width="3" stroke-linecap="round"/>
+      <polygon points="17,3 13,10 21,10" fill="var(--accent)"/>
+    </g>
+  </svg>
+  <span class="wind-compass-deg" id="windCompassDeg">–</span>
+  <span class="wind-compass-dir" id="windCompassDir">–</span>
+</div>
 
 <div id="splashScreen">
   <div class="splash-spinner-wrap">
@@ -1144,6 +1189,13 @@ function setWindDirection(arrowVisualAngle) {
 // have to look anything up manually. They can still drag the compass or
 // type over the value if it doesn't look right — this never blocks
 // submission, and any manual edit clears the "auto-filled" hint above.
+// Circuit breaker for the get-wind-direction edge function: once it fails,
+// skip calling it again until this timestamp so we're not repeatedly
+// round-tripping to a function that's confirmed down, and instead go
+// straight to the Open-Meteo fallback (see autoFillWindDirection below).
+let windDirEdgeFunctionDownUntil = 0;
+const WIND_EDGE_FUNCTION_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
+
 async function autoFillWindDirection() {
   const activeLoc = (pinMode && manualCoords) ? manualCoords : userCoords;
   const hintEl = document.getElementById('windAutoFillHint');
@@ -1151,25 +1203,27 @@ async function autoFillWindDirection() {
 
   let windDirDeg = null;
 
-  // Up to 2 attempts — a 502 from this edge function is often just a cold
-  // start, and one immediate retry clears most of them before we bother
-  // falling all the way back to Open-Meteo.
-  for (let attempt = 0; attempt < 2 && windDirDeg == null; attempt++) {
+  // Circuit breaker: the last few 502s came back identically on both
+  // immediate-retry attempts, which means the function is down, not just
+  // having a transient blip — retrying it inline every single call just
+  // adds a doomed round-trip before we fall back anyway. So: try it once,
+  // and if it fails, skip calling it again for a cooldown window and go
+  // straight to the Open-Meteo fallback until it's had time to recover.
+  if (Date.now() >= windDirEdgeFunctionDownUntil) {
     try {
       const { data, error } = await sb.functions.invoke('get-wind-direction', {
         body: { lat: activeLoc.lat, lon: activeLoc.lon }
       });
       if (error) {
-        console.error(`get-wind-direction failed (attempt ${attempt + 1}):`, error);
+        console.error('get-wind-direction failed, falling back to Open-Meteo:', error);
+        windDirEdgeFunctionDownUntil = Date.now() + WIND_EDGE_FUNCTION_COOLDOWN_MS;
       } else if (data && data.windDirDeg != null) {
         windDirDeg = data.windDirDeg;
       }
     } catch (err) {
-      console.error(`get-wind-direction threw (attempt ${attempt + 1}):`, err);
+      console.error('get-wind-direction threw, falling back to Open-Meteo:', err);
+      windDirEdgeFunctionDownUntil = Date.now() + WIND_EDGE_FUNCTION_COOLDOWN_MS;
     }
-  }
-  if (windDirDeg == null) {
-    console.warn('get-wind-direction unavailable after retry, falling back to Open-Meteo');
   }
 
   // Fall back to Open-Meteo's free current-conditions forecast (the same
