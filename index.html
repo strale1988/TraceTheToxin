@@ -575,6 +575,16 @@ span.flatpickr-weekday {
 .wiz-details-three-col .wiz-details-row{ flex:1; min-width:0; }
 .wiz-details-three-col input{ height:44px; padding-top:0; padding-bottom:0; }
 .wiz-details-three-col input[type="number"]{ text-align:center; }
+.wind-compass-with-shortcuts{ display:flex; flex-direction:row; align-items:center; justify-content:center; gap:18px; }
+.wind-app-shortcuts{ display:flex; flex-direction:column; gap:8px; }
+.wind-app-btn{
+  display:block; padding:7px 14px; border-radius:var(--radius-md);
+  border:1px solid var(--floating-border); background:var(--floating-bg);
+  color:var(--text-primary); font-size:var(--fs-12); font-weight:var(--fw-semibold);
+  text-decoration:none; text-align:center; white-space:nowrap;
+  box-shadow:0 2px 8px var(--floating-shadow);
+}
+.wind-app-btn:hover{ opacity:.8; }
 .wind-compass-wrap{ display:flex; flex-direction:column; align-items:center; gap:8px; padding:10px 0 4px; }
 .wind-compass-dial{ display:block; touch-action:none; }
 .wind-compass-dial .compass-label-text{ fill:var(--text-secondary); font-size:15px; font-weight:var(--fw-semibold); user-select:none; }
@@ -630,7 +640,7 @@ span.flatpickr-weekday {
 }
 .fullscreen-modal-close:active{ background:var(--border-color-strong); transform:scale(.9); }
 .fullscreen-modal-close .icon-img{ width:18px; height:18px; filter:var(--icon-tint-filter); }
-.fullscreen-modal-body{ flex:1; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch; touch-action:pan-y; overscroll-behavior:contain; padding:16px 16px calc(24px + env(safe-area-inset-bottom,0px)); display:flex; flex-direction:column; gap:16px; }
+.fullscreen-modal-body{ flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:16px 16px calc(24px + env(safe-area-inset-bottom,0px)); display:flex; flex-direction:column; gap:16px; }
 .detail-section{ background:var(--bg-surface); border:1px solid var(--border-color); border-radius:var(--radius-xl); padding:14px; }
 .detail-section-title{ font-size:var(--fs-10); font-weight:var(--fw-bold); letter-spacing:.4px; text-transform:uppercase; color:var(--text-muted); margin-bottom:10px; }
 .detail-export-hint{ font-size:var(--fs-12); color:var(--text-secondary); margin:8px 0 0; line-height:1.4; }
@@ -849,18 +859,6 @@ span.flatpickr-weekday {
   </div>
 </div>
 
-<!-- Full station-list-along-wind-trail details, opened from a report popup's
-     "See all stations" button (see buildReportStationSectionHtml) -->
-<div id="stationDetailsModal" class="generic-modal-overlay" style="display:none" onclick="if(event.target===this) hideStationDetailsModal()">
-  <div class="generic-modal" style="max-width: 380px; text-align:left;">
-    <h2 style="text-align:left; margin-top:6px;" id="stationDetailsTitle"></h2>
-    <div id="stationDetailsContent" style="max-height: 60vh; overflow-y: auto; padding-right: 2px;">
-      <!-- Filled by showStationDetailsModalForReport() -->
-    </div>
-    <button class="generic-modal-close" onclick="hideStationDetailsModal()" style="margin-top:14px;">Close</button>
-  </div>
-</div>
-
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
@@ -945,6 +943,7 @@ function reportFabTap() {
 
 function openReportWizard() {
   wizState = { step: 0, category: null, intensity: 5 };
+  windAutoFilledByUser = false;
   document.getElementById('reportWizard').style.display = 'flex';
   renderWizStep();
 }
@@ -1058,26 +1057,23 @@ function renderWizDetailsStep() {
       </div>
     </div>
     <div class="wiz-details-row">
-      <div class="wind-compass-wrap" style="align-items:flex-start;">
-        <svg class="wind-compass-dial" id="windCompassDial" viewBox="0 0 200 200" width="200" height="200">
-          <circle cx="100" cy="100" r="90" fill="none" stroke="var(--border-color-strong)" stroke-width="2"/>
-          <text class="compass-label-text" x="100" y="30" text-anchor="middle" dominant-baseline="middle">N</text>
-          <text class="compass-label-text" x="170" y="100" text-anchor="middle" dominant-baseline="middle">E</text>
-          <text class="compass-label-text" x="100" y="170" text-anchor="middle" dominant-baseline="middle">S</text>
-          <text class="compass-label-text" x="30" y="100" text-anchor="middle" dominant-baseline="middle">W</text>
-          <g id="compassArrowGroup" transform="rotate(90 100 100)">
-            <line x1="100" y1="100" x2="100" y2="50" stroke="var(--accent)" stroke-width="4" stroke-linecap="round"/>
-            <polygon points="100,36 90,52 110,52" fill="var(--accent)"/>
-          </g>
-          <circle cx="100" cy="100" r="5" fill="var(--accent)"/>
-        </svg>
-      </div>
-    </div>
-    <div class="wiz-details-row" id="windAutoFillHint" style="font-size:11px;color:var(--text-secondary);display:none;"></div>
-    <div class="wiz-details-row" style="padding:0;">
-      <div style="font-size:10px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.3px;margin-bottom:6px;">${t('windAppsLabel')}</div>
-      <div id="windAppLinksRow" style="display:flex;flex-wrap:wrap;gap:6px;">
-        ${buildWindAppLinksHtml()}
+      <div class="wind-compass-with-shortcuts">
+        <div class="wind-compass-wrap">
+          <svg class="wind-compass-dial" id="windCompassDial" viewBox="0 0 200 200" width="200" height="200">
+            <circle cx="100" cy="100" r="90" fill="none" stroke="var(--border-color-strong)" stroke-width="2"/>
+            <text class="compass-label-text" x="100" y="30" text-anchor="middle" dominant-baseline="middle">N</text>
+            <text class="compass-label-text" x="170" y="100" text-anchor="middle" dominant-baseline="middle">E</text>
+            <text class="compass-label-text" x="100" y="170" text-anchor="middle" dominant-baseline="middle">S</text>
+            <text class="compass-label-text" x="30" y="100" text-anchor="middle" dominant-baseline="middle">W</text>
+            <g id="compassArrowGroup" transform="rotate(90 100 100)">
+              <line x1="100" y1="100" x2="100" y2="50" stroke="var(--accent)" stroke-width="4" stroke-linecap="round"/>
+              <polygon points="100,36 90,52 110,52" fill="var(--accent)"/>
+            </g>
+            <circle cx="100" cy="100" r="5" fill="var(--accent)"/>
+          </svg>
+          <span class="compass-dir-letter" id="compassDirLetter">W</span>
+        </div>
+        ${renderWindAppShortcuts()}
       </div>
     </div>
     <div class="wiz-details-row">
@@ -1110,70 +1106,91 @@ function renderWizDetailsStep() {
 ═══════════════════════════════════════════════════ */
 const DEFAULT_WIND_DEG = 270;
 
+// Builders for the "check the wind yourself" shortcut links — shared by the
+// floating map control and the vertical shortcut stack next to the compass
+// in the report wizard's details step. Each takes the coordinates to center
+// the external site on, falling back to the app's default map view.
+function buildWindfinderUrl(lat, lon) {
+  const nowIso = new Date().toISOString().slice(0, 13) + ':00:00Z';
+  return `https://www.windfinder.com/#13/${lat}/${lon}/${nowIso}/spot`;
+}
+function buildWindyUrl(lat, lon) {
+  return `https://www.windy.com/?${lat},${lon},11`;
+}
+function buildVentuskyUrl(lat, lon) {
+  return `https://www.ventusky.com/?p=${lat};${lon};11&l=wind-10m`;
+}
+
+// Renders the vertical stack of wind-app shortcut buttons shown to the
+// right of the compass in the wizard's details step, centered on whatever
+// location the report is being filed for (falls back to the default view).
+function renderWindAppShortcuts() {
+  const coords = userCoords || manualCoords || { lat: 45.2294, lon: 19.8276 };
+  const { lat, lon } = coords;
+  return `
+    <div class="wind-app-shortcuts">
+      <a class="wind-app-btn" href="${buildWindfinderUrl(lat, lon)}" target="_blank" rel="noopener">Windfinder</a>
+      <a class="wind-app-btn" href="${buildWindyUrl(lat, lon)}" target="_blank" rel="noopener">Windy</a>
+      <a class="wind-app-btn" href="${buildVentuskyUrl(lat, lon)}" target="_blank" rel="noopener">Ventusky</a>
+    </div>`;
+}
+
+// Tracks whether the user has touched the wind field themselves, so the
+// automatic fill (below) never overwrites a value they've already set.
+let windAutoFilledByUser = false;
+
 function updateCompassVisual(deg) {
   deg = ((deg % 360) + 360) % 360;
   const arrowVisualAngle = (deg + 180) % 360;
   const g = document.getElementById('compassArrowGroup');
   if (g) g.setAttribute('transform', `rotate(${arrowVisualAngle} 100 100)`);
+  const letterEl = document.getElementById('compassDirLetter');
+  if (letterEl) letterEl.textContent = degToCardinal(deg);
+}
+
+// Fetches the current wind direction straight from Open-Meteo and drops it
+// into the manual wind field, so the field starts pre-filled with a real
+// reading instead of the flat 270° default. This replaces the previous
+// approach of calling the Supabase edge function "get-wind-direction",
+// which had started failing with 502 Bad Gateway errors — fetching
+// Open-Meteo directly from the client sidesteps that broken hop entirely.
+async function autoFillWindDirection() {
+  const coords = userCoords || manualCoords;
+  if (!coords) return;
+  const input = document.getElementById('manualWind');
+  if (!input) return;
+  try {
+    const weather = await getWeatherData(coords.lat, coords.lon);
+    if (weather && weather.wind_direction != null && !windAutoFilledByUser) {
+      const deg = Math.round(weather.wind_direction);
+      input.value = deg;
+      updateCompassVisual(deg);
+      checkWizSubmitReady();
+    }
+  } catch (err) {
+    console.error('Auto wind direction fill failed:', err);
+  }
 }
 
 function onManualWindChange() {
+  windAutoFilledByUser = true;
   const input = document.getElementById('manualWind');
   const raw = input ? input.value : '';
   if (raw !== '' && !isNaN(parseFloat(raw))) {
     updateCompassVisual(parseFloat(raw));
   }
-  const hintEl = document.getElementById('windAutoFillHint');
-  if (hintEl) hintEl.style.display = 'none';
   checkWizSubmitReady();
 }
 
 function setWindDirection(arrowVisualAngle) {
+  windAutoFilledByUser = true;
   // Convert the angle the user just pointed the arrow at back into the
   // reported wind-direction value (180deg offset — see note above).
   const deg = Math.round(((arrowVisualAngle + 180) % 360 + 360) % 360);
   const input = document.getElementById('manualWind');
   if (input) input.value = deg;
   updateCompassVisual(deg);
-  const hintEl = document.getElementById('windAutoFillHint');
-  if (hintEl) hintEl.style.display = 'none';
   checkWizSubmitReady();
-}
-
-// Fetches the current live wind direction for the report's location from
-// Xweather and pre-fills the compass with it, so the user usually doesn't
-// have to look anything up manually. They can still drag the compass or
-// type over the value if it doesn't look right — this never blocks
-// submission, and any manual edit clears the "auto-filled" hint above.
-async function autoFillWindDirection() {
-  const activeLoc = (pinMode && manualCoords) ? manualCoords : userCoords;
-  const hintEl = document.getElementById('windAutoFillHint');
-  if (!activeLoc) return;
-
-  try {
-    const { data, error } = await sb.functions.invoke('get-wind-direction', {
-      body: { lat: activeLoc.lat, lon: activeLoc.lon }
-    });
-    if (error || !data || data.windDirDeg == null) return;
-
-    // Only apply it if the user hasn't already started typing/dragging
-    // their own value while this was in flight.
-    const input = document.getElementById('manualWind');
-    if (!input) return;
-
-    const deg = Math.round(data.windDirDeg);
-    input.value = deg;
-    updateCompassVisual(deg);
-    checkWizSubmitReady();
-
-    if (hintEl) {
-      hintEl.textContent = t('windAutoFilledHint');
-      hintEl.style.display = 'block';
-    }
-  } catch (err) {
-    // Silent fail — the field just keeps its default and the user fills it
-    // in manually via the compass, the number field, or the Windfinder link.
-  }
 }
 
 function setupCompassDrag() {
@@ -1352,15 +1369,6 @@ const TRAIL_SETTLED_GATE_HOURS = TRAIL_WINDOW_HOURS + 1;
 // hour, up to the full TRAIL_WINDOW_HOURS.
 const TRAIL_MIN_HOURS = 1;
 
-// How close (km) a station has to come to any point along a report's
-// backtracked wind trail to count as "passed through" for the popup's
-// station list. Measured as perpendicular distance to the trail's actual
-// path (interpolated between hourly points, not just distance to the
-// hourly vertices themselves) — see distanceToTrailPolyline() — so even a
-// tight radius like this still catches a station the path swings close to
-// between two hourly steps.
-const STATION_TRAIL_MATCH_RADIUS_KM = 5;
-
 /* ═══════════════════════════════════════════════════
    SUPABASE
 ═══════════════════════════════════════════════════ */
@@ -1397,17 +1405,12 @@ const T = {
   aqApprox:       { en: 'Approximate location',sr: 'Približna lokacija' },
 
   nearestStation:     { en: 'Nearest Station where wind has passed', sr: 'Najbliža stanica kroz koju je vetar prošao' },
-  stationsAlongTrail: { en: 'Stations where wind has passed', sr: 'Stanice kroz koje je vetar prošao' },
   nearestStationDist: { en: 'away',                      sr: 'udaljena' },
   windTravelTime:      { en: 'Wind travel time',           sr: 'Vreme putovanja vetra' },
   windTravelDist:      { en: 'Wind travel distance',       sr: 'Pređena razdaljina vetra' },
   stationDataAsOf:     { en: 'Station data as of',         sr: 'Podaci stanice od' },
   stationDataLoading:  { en: 'Loading station data...',    sr: 'Učitavanje podataka stanice...' },
   stationNoneNearby:   { en: 'No stations nearby',         sr: 'Nema stanica u blizini' },
-  seeAllStations:      { en: 'See all stations',           sr: 'Prikaži sve stanice' },
-  seeStationDetails:   { en: 'See station details',        sr: 'Prikaži detalje stanice' },
-  avgUpwindData:       { en: 'Average from upwind stations', sr: 'Prosek sa uzvodnih stanica' },
-  noUpwindStations:    { en: 'No stations upwind of this point', sr: 'Nema stanica uzvodno od ove tačke' },
 
   
   hours:         { en: 'h',                         sr: 'h' },
@@ -1429,12 +1432,7 @@ const T = {
     en:'Turn on your device GPS so the app can find you, or tap the pin button <img src="icons/pin.png" alt="Pin" style="width:18px;height:18px;vertical-align:middle;"> on the map to manually drop your location. A location is required before you can submit a report.', 
     sr:'Uključite GPS na uređaju kako bi aplikacija mogla da vas pronađe, ili pritisnite dugme <img src="icons/pin.png" alt="Pin" style="width:18px;height:18px;vertical-align:middle;"> na mapi da ručno postavite vašu lokaciju. Lokacija je obavezna pre nego što možete da pošaljete prijavu.' },
   helpStep2:    { en:'2. Check the Wind Direction:',     sr:'2. Proverite smer vetra:' },
-  helpStep2Body:{ en:'Wind direction is now filled in automatically for you using live wind data. If it looks wrong, you can drag the compass, type a value directly, or tap the Windfinder link to check it yourself.', sr:'Smer vetra se sada automatski popunjava na osnovu podataka uživo. Ako izgleda netačno, možete prevući kompas, uneti vrednost ručno, ili kliknuti na Windfinder link da proverite sami.' },
-  windfinderCheckLabel:{ en:'Check on Windfinder', sr:'Proveri na Windfinder-u' },
-  windfinderCheckTitle:{ en:'Open Windfinder in a new tab to check wind direction yourself', sr:'Otvori Windfinder u novom tabu da sami proverite smer vetra' },
-  windAppsLabel:{ en:'Check wind apps at your location', sr:'Proverite vetar u aplikacijama na vašoj lokaciji' },
-  windAppCheckTitle:{ en:'Opens in a new tab, centered on your current report location', sr:'Otvara se u novom tabu, centrirano na vašoj trenutnoj lokaciji prijave' },
-  windAutoFilledHint:{ en:'Auto-filled from live wind data — change it if this doesn\u2019t look right.', sr:'Automatski popunjeno na osnovu podataka o vetru uživo \u2014 promenite ako ne izgleda tačno.' },
+  helpStep2Body:{ en:'Click the Windfinder button in the bottom right corner (or one of the wind-app shortcuts next to the compass). On their website map, click directly on your current location, read the wind direction degree value (0-360°), and type it back into this application.', sr:'Kliknite na dugme Windfinder u donjem desnom uglu (ili na neki od prečica za vetar pored kompasa). Na mapi na njihovom sajtu kliknite na vašu lokaciju, pročitajte vrednost smera vetra u stepenima (0-360°) i upišite je u polje u ovoj aplikaciji.' },
   helpStep3:    { en:'3. Report Bad Air:',               sr:'3. Prijavite loš vazduh:' },
   helpStep3Body:{ en:'Tap the Report Bad Air button and choose the type of smell you\'re noticing.', sr:'Pritisnite dugme za prijavu lošeg vazduha i izaberite vrstu mirisa koji osećate.' },
   helpStep4:    { en:'4. Follow the Steps and Submit:',  sr:'4. Pratite korake i pošaljite:' },
@@ -1716,54 +1714,38 @@ let pinMode       = false;
 let manualCoords  = null;
 let manualMarker  = null;
 
-const WINDFINDER_ICON_B64 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAACwklEQVR4AWIYseAiK6DbcoCZHIjieNLp2cZMz7Zt27Zt2wwP4dm2bbPT3d5n2zbedb5o03Sb9eEl/+gl79d5LGlDET7tcrChUE1CETlPOQwij3e67sUVmhRmQJEjaSKDMxWoUcc1r0ZVxijgMAY10U+ng+XipDRF+DIDqiU5O/0GhAdQk1erZeSrdHAK2L1s3aIUkeMMYk5U6QO5YcP8DofT/EIjyhEfBtEVwu8dDhcRGUE5nKSCaUpC5LBD4RJPtlNNmLYoIrMcWG98Wwvi0WaA+QzwpIvdcLdi9UpTRL6bgyR//AaBM1do+jwKkcr2zXeRahVFjsh6ac6MiIKU75KWLwdGj+ZshxeqUUWBe+nBDeUbA7PspGQNPwmzGf6rAKlFORykB2fyGzMXmGUEhWjtAGobvHBVJe04wJIuj7/7FJjFXbunNQFvrYZ7la5VXOQINQ0kV2kF4XsPQ6pohMzQcEh6+R68uo8CWWgFuVlZkJuTA54dh2gsIXLfKjhbmRSR56ZBfPpPhOz4BFBbTkoqxF68xXxmJ4Aict269YrwRdMARtwiD5CbmQkJ959B0OKNeS83VmoG3j3HQMyJS0ALVtdZQviqxXCJI2vUAbz7jofQzfvzgGpf+K6DwMx36DS9LXjRIjg7lyKHsxSBpfKfuBCYZcfFg3vjHrZnwKNYnbIiR0KsgTPRQjUg1eAGzDLDIzXXMVvdFtSdPLQYrNKv2h0hzc0LmOWkprJmVJfgsS5cQsI0y4HakorVhtCN+yDlhwHSfQPY1Jhm4K1u6imHYyyB2C4i66ReOO1MOBM1dwskXujifHieAsw13msHpDdBkcyaWNFRiRM2UVRlipHH3QwFhBpetWrl14QbeNLNgq9PYsFFpYslRI5Tnmxnv1YiL/SR81dpwO6F7X+zCN9lwdmIUBacI1soIjNUwf9P+w1d6+FOXuVcggAAAABJRU5ErkJggg==';
+const WindfinderControl = L.Control.extend({
+  options: { position: 'bottomright' },
+onAdd: function(map) {
+    const container = L.DomUtil.create('a', 'leaflet-bar leaflet-control leaflet-control-custom');
+    
+    // Set up the link
+    container.href = buildWindfinderUrl(45.2294, 19.8276);
+    container.target = '_blank';
 
-// One shared "current report location" resolver — same precedence
-// autoFillWindDirection() uses (dropped pin beats GPS beats nothing) — so
-// every wind-app shortcut and the auto-fill call always agree on where
-// "here" means. Falls back to a fixed Novi Sad coordinate only if neither
-// GPS nor a manual pin is available yet, so the links always work.
-const WIND_APP_FALLBACK_COORDS = { lat: 45.2294, lon: 19.8276 };
-function activeWizLocation() {
-  return (pinMode && manualCoords) ? manualCoords : (userCoords || WIND_APP_FALLBACK_COORDS);
+    // Text-only label (icon removed) so the button reads clearly at a glance.
+    container.innerHTML = `<span style="font-size:11px;font-weight:600;line-height:1;">Windfinder</span>`;
+
+    // Styles
+    container.style.backgroundColor = 'var(--floating-bg)';
+    container.style.height = '32px';
+    container.style.padding = '0 10px';
+    container.style.display = 'flex';
+    container.style.alignItems = 'center';
+    container.style.justifyContent = 'center';
+    container.style.borderRadius = 'var(--radius-md)';
+    container.style.border = '1px solid var(--floating-border)';
+    container.style.boxShadow = '0 2px 8px var(--floating-shadow)';
+    container.style.color = 'var(--text-primary)';
+    container.style.cursor = 'pointer';
+
+    L.DomEvent.disableClickPropagation(container);
+    return container;
 }
+});
 
-// Deep-links into each wind app, pre-centered on the report's location so
-// the user doesn't have to search for their spot by hand in every app.
-function buildWindAppLinksHtml() {
-  const { lat, lon } = activeWizLocation();
-  const latR = lat.toFixed(4), lonR = lon.toFixed(4);
-  const nowIso = new Date().toISOString().slice(0, 16) + 'Z';
-
-  const apps = [
-    {
-      label: 'Windfinder',
-      url: `https://www.windfinder.com/#13/${latR}/${lonR}/${nowIso}/spot`,
-      icon: WINDFINDER_ICON_B64,
-    },
-    {
-      label: 'Windy',
-      url: `https://www.windy.com/?wind,${latR},${lonR},11`,
-    },
-    {
-      label: 'Meteoblue',
-      url: `https://www.meteoblue.com/en/weather/current/${latR}N${lonR}E`,
-    },
-    {
-      label: 'Wunderground',
-      url: `https://www.wunderground.com/wundermap?lat=${latR}&lon=${lonR}&zoom=12`,
-    },
-  ];
-
-  return apps.map(app => `
-    <a href="${app.url}" target="_blank" rel="noopener" title="${t('windAppCheckTitle')}"
-       style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--text-secondary);
-              text-decoration:none;padding:5px 10px;border-radius:999px;background:var(--bg-surface-alt);
-              white-space:nowrap;">
-      ${app.icon ? `<img src="${app.icon}" style="width:14px;height:14px;object-fit:contain;">` : ''}
-      ${app.label}
-    </a>`).join('');
-}
+// Add it to your map instance
+map.addControl(new WindfinderControl());
 
 /* ═══════════════════════════════════════════════════
    GPS MODAL
@@ -1828,17 +1810,6 @@ function checkFormReady() {
     fabBtn.title = hasLoc ? 'Report bad air' : t('wizNoLocationHint');
   }
   if (typeof checkWizSubmitReady === 'function') checkWizSubmitReady();
-
-  // If the details step (with the compass + wind-app shortcuts) is already
-  // open, a GPS fix or pin drop arriving afterwards shouldn't leave those
-  // stuck pointing at the fallback coordinate — refresh them in place.
-  if (typeof wizState !== 'undefined' && wizState.step === 2) {
-    const linksRow = document.getElementById('windAppLinksRow');
-    if (linksRow && typeof buildWindAppLinksHtml === 'function') {
-      linksRow.innerHTML = buildWindAppLinksHtml();
-    }
-    if (typeof autoFillWindDirection === 'function') autoFillWindDirection();
-  }
 }
 
 // Obfuscate a GPS fix by offsetting it a random distance (up to radiusMeters)
@@ -2217,66 +2188,6 @@ function getHaversineDistance(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
-// Perpendicular distance (km) from a point to the segment a→b, using a
-// local equirectangular projection (accurate to a fraction of a percent at
-// the few-km scale we match stations at). Also returns t (0–1), how far
-// along the segment the closest point falls, for interpolating time/distance.
-function pointToSegmentDistanceKm(plat, plon, alat, alon, blat, blon) {
-  const latRef = (alat + blat) / 2;
-  const kmPerDegLat = 111.32;
-  const kmPerDegLon = 111.32 * Math.cos(latRef * Math.PI / 180);
-  const ax = 0, ay = 0;
-  const bx = (blon - alon) * kmPerDegLon, by = (blat - alat) * kmPerDegLat;
-  const px = (plon - alon) * kmPerDegLon, py = (plat - alat) * kmPerDegLat;
-  const abx = bx - ax, aby = by - ay;
-  const abLenSq = abx * abx + aby * aby;
-  let t = abLenSq > 0 ? ((px - ax) * abx + (py - ay) * aby) / abLenSq : 0;
-  t = Math.max(0, Math.min(1, t));
-  const cx = ax + abx * t, cy = ay + aby * t;
-  const distanceKm = Math.sqrt((px - cx) ** 2 + (py - cy) ** 2);
-  return { distanceKm, t };
-}
-
-// Cumulative distance (km) walked along a trail up to each vertex —
-// index 0 is always 0, index i is the path length from rawTrail[0] to
-// rawTrail[i]. Shared by station-matching and spline-click interpolation
-// so both agree on what "how far along the path" means.
-function computeCumulativePathDistances(rawTrail) {
-  const cum = [0];
-  for (let i = 1; i < rawTrail.length; i++) {
-    cum.push(cum[i - 1] + getHaversineDistance(
-      rawTrail[i - 1].lat, rawTrail[i - 1].lon,
-      rawTrail[i].lat, rawTrail[i].lon
-    ));
-  }
-  return cum;
-}
-
-// Finds the closest a wind trail's actual path (interpolated between hourly
-// points, not just the hourly vertices) comes to an arbitrary point — used
-// both for station-matching and for figuring out where along the trail a
-// map click landed. Returns null for trails with fewer than 2 points.
-function distanceToTrailPolyline(plat, plon, rawTrail, cumDist = null) {
-  if (!rawTrail || rawTrail.length < 2) return null;
-  cumDist = cumDist || computeCumulativePathDistances(rawTrail);
-  let best = null;
-  for (let i = 0; i < rawTrail.length - 1; i++) {
-    const a = rawTrail[i], b = rawTrail[i + 1];
-    const { distanceKm, t } = pointToSegmentDistanceKm(plat, plon, a.lat, a.lon, b.lat, b.lon);
-    if (!best || distanceKm < best.distanceKm) {
-      const aTime = new Date(a.time).getTime(), bTime = new Date(b.time).getTime();
-      best = {
-        distanceKm,
-        segmentIndex: i,
-        t,
-        atTime: new Date(aTime + t * (bTime - aTime)).toISOString(),
-        pathDistanceKm: cumDist[i] + t * (cumDist[i + 1] - cumDist[i]),
-      };
-    }
-  }
-  return best;
-}
-
 // Checks if wind data for this report is already in the session cache.
 // Must match the cache key format used in fetchHistoricWind exactly.
 function isWindCached(report) {
@@ -2431,8 +2342,13 @@ function formatStationTime(iso) {
 
 function buildStationPopupHtml(station, reading) {
   const color = reading ? aqiColor(reading.category) : '#9e9e9e';
+  const pollutant = (label, val) => `
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <span style="font-size:9px;color:#888;text-transform:uppercase;">${label}</span>
+      <span style="font-size:11px;font-weight:600;color:#111;">${val != null ? val + ' µg/m³' : '–'}</span>
+    </div>`;
 
-  return `<div class="popup-inner" style="padding:0;min-width:200px;max-width:340px;font-family:sans-serif;">
+  return `<div class="popup-inner" style="padding:0;min-width:160px;max-width:200px;font-family:sans-serif;">
     <div style="background:${color};padding:4px 8px;border-radius:6px 6px 0 0;display:flex;flex-direction:column;align-items:flex-start;gap:1px;">
       <span style="font-size:9px;color:rgba(255,255,255,.85);text-transform:uppercase;">${t('aqStationLabel')}</span>
       <span style="font-size:11px;font-weight:700;color:white;">${station.name}</span>
@@ -2444,7 +2360,11 @@ function buildStationPopupHtml(station, reading) {
           <span style="font-size:9px;color:#999;">${t('aqUpdated')} ${formatStationTime(reading.recorded_at)}</span>
         </div>
         <div style="height:1px;background:#eee;margin:2px 0;"></div>
-        ${pollutantSummaryRowHtml(reading)}
+        ${pollutant('PM10', reading.pm10)}
+        ${pollutant('PM2.5', reading.pm25)}
+        ${pollutant('SO2', reading.so2)}
+        ${pollutant('NO2', reading.no2)}
+        ${pollutant('O3', reading.o3)}
       ` : `<span style="font-size:11px;color:#999;">${t('aqNoData')}</span>`}
       ${station.precision === 'city' ? `
         <div style="font-size:9px;color:#bbb;font-style:italic;margin-top:2px;">${t('aqApprox')}</div>
@@ -2474,7 +2394,7 @@ async function loadAirQualityStations() {
         icon: makeStationIcon(initialReading ? aqiColor(initialReading.category) : '#9e9e9e'),
         zIndexOffset: -1000, // keep beneath report pins
       }).addTo(map);
-      marker.bindPopup(buildStationPopupHtml(station, initialReading), { maxWidth: 340, minWidth: 240 });
+      marker.bindPopup(buildStationPopupHtml(station, initialReading));
 
       // Re-fetch this station's latest reading fresh, every time its popup
       // is opened, so the numbers shown are never older than the click.
@@ -2538,46 +2458,51 @@ async function getStationReadingNear(stationId, targetIso) {
   }
 }
 
-// Returns every station a report's wind trail passed within
-// STATION_TRAIL_MATCH_RADIUS_KM of — sorted most-recent-to-the-report
-// first — instead of a single best guess.
-// Falls back to plain nearest-station (a 1-item list) when there isn't
+// Finds the station relevant to a report's actual wind history, and the
+// reading that station had at the real hour the wind's backtracked path
+// passed closest to it — not a straight-line-nearest-station guess.
+// Falls back to plain nearest-station-at-report-time only when there isn't
 // enough wind history yet (report younger than TRAIL_MIN_HOURS).
-async function getStationsAlongWindTrailForReport(report, maxDistanceKm = STATION_TRAIL_MATCH_RADIUS_KM) {
+async function getNearestStationDataForReport(report) {
   if (!airQualityStationsCache.length) return null;
 
   const reportAgeHoursDbg = (Date.now() - new Date(report.created_at).getTime()) / 3600000;
   const trailResult = await buildWindTrailForReport(report);
 
-  let matches = trailResult?.rawTrail?.length
-    ? findAllStationsAlongWindTrail(trailResult.rawTrail, airQualityStationsCache, maxDistanceKm)
-    : [];
+  let match = trailResult?.rawTrail?.length
+    ? findStationAlongWindTrail(trailResult.rawTrail, airQualityStationsCache)
+    : null;
 
-  if (!matches.length) {
+  if (!match) {
+    // Debug visibility: this is the ONLY path that ignores wind direction and
+    // just picks whichever station is geographically nearest the report pin.
+    // If you're seeing this in the console for reports that are clearly more
+    // than an hour old, buildWindTrailForReport is failing silently (Open-Meteo
+    // fetch error/rate-limit, or no overlapping hourly points) — check the
+    // "wind trail unavailable" warning just above this one for the reason.
     console.warn(
       `[station-match] report #${report.id}: using plain-nearest fallback ` +
       `(age ${reportAgeHoursDbg.toFixed(1)}h, trail points: ${trailResult?.rawTrail?.length || 0})`
     );
     const nearest = findNearestStation(report.latitude, report.longitude);
     if (!nearest) return null;
-    matches = [{ station: nearest.station, distanceKm: nearest.distanceKm, atTime: report.created_at, pathDistanceKm: null }];
+    match = { station: nearest.station, distanceKm: nearest.distanceKm, atTime: report.created_at, pathDistanceKm: null };
   } else {
     console.info(
-      `[station-match] report #${report.id}: matched ${matches.length} station(s) via wind trail ` +
-      matches.map(m => `"${m.station.name}" (${m.distanceKm.toFixed(1)}km at ${m.atTime})`).join(', ')
+      `[station-match] report #${report.id}: matched "${match.station.name}" via wind trail ` +
+      `(${match.distanceKm.toFixed(1)}km at ${match.atTime})`
     );
   }
 
-  return Promise.all(matches.map(async (match) => {
-    const reading = await getStationReadingNear(match.station.id, match.atTime);
-    return {
-      station: match.station,
-      distanceKm: match.distanceKm,
-      pathDistanceKm: match.pathDistanceKm,
-      targetTime: new Date(match.atTime),
-      reading
-    };
-  }));
+  const reading = await getStationReadingNear(match.station.id, match.atTime);
+
+  return {
+    station: match.station,
+    distanceKm: match.distanceKm,
+    pathDistanceKm: match.pathDistanceKm,
+    targetTime: new Date(match.atTime),
+    reading
+  };
 }
 
 /* ═══════════════════════════════════════════════════
@@ -2586,12 +2511,6 @@ async function getStationsAlongWindTrailForReport(report, maxDistanceKm = STATIO
 let btLayers    = []; 
 let bgTrailLayers = [];
 const splineByReport = {}; 
-// Per-report caches populated in generateAllBackgroundTrails, used by the
-// spline click handler (handleSplineClick) to figure out "how far along
-// this report's wind trail did I click" without redoing any network calls —
-// station readings are only fetched lazily, on the actual click.
-const rawTrailByReport = {};
-const stationMatchesByReport = {};
 let btAnimFrame = null;
 
 function clearBacktrack(){
@@ -2779,7 +2698,7 @@ async function backfillWindDirection(reportId, avgDirection) {
 // (ISO string) per point, and spline is the Chaikin-smoothed version drawn
 // on the map. This is the single place that does the Open-Meteo fetch +
 // backtrack math — renderHistoricSplineTrailForReport (map line) and
-// getStationsAlongWindTrailForReport (station matching) both build on top of it.
+// getNearestStationDataForReport (station matching) both build on top of it.
 async function buildWindTrailForReport(report) {
 
   const reportTime = new Date(report.created_at);
@@ -2935,124 +2854,53 @@ async function renderHistoricSplineTrailForReport(report) {
   return result ? result.spline : null;
 }
 
-// Finds the single station a report's backtracked wind trail is most
-// relevant to. Thin wrapper around findAllStationsAlongWindTrail (defined
-// below) — just takes its first (most-recent-to-the-report) result.
-//
-// This used to run its own separate search: scan every (trail-point,
-// station) pair and keep whichever single pair had the smallest straight-
-// line distance, with no distance cap at all. Two problems with that:
-//   1. It picked the globally closest PAIR, not the closest approach PER
-//      STATION — so a station passed extremely close very early in the
-//      12h trail could beat out a different station passed much more
-//      recently but a bit further away, even though the more recent one
-//      is almost always the more useful match.
-//   2. No maxDistanceKm meant it always returned *some* station, even one
-//      50+ km from anywhere the trail actually went, mislabeling it as
-//      "the wind passed through it" when really nothing qualified.
-// findAllStationsAlongWindTrail already fixes both (per-station closest
-// approach, sorted most-recent-first, capped at maxDistanceKm) — so this
-// is now just its top result, guaranteeing the CSV export and the popup
-// can never disagree about which station "the" match is.
-function findStationAlongWindTrail(rawTrail, stations, maxDistanceKm = STATION_TRAIL_MATCH_RADIUS_KM) {
-  const matches = findAllStationsAlongWindTrail(rawTrail, stations, maxDistanceKm);
-  return matches.length ? matches[0] : null;
-}
+// Walks every point of an already-backtracked wind trail and finds which
+// station it passes closest to, using the REAL historical hour that point
+// represents. This is what "nearest station" should mean for a report: not
+// whichever station is nearest the report's own coordinates, but whichever
+// station the wind's actual traced-back path came closest to along the way.
+function findStationAlongWindTrail(rawTrail, stations) {
+  if (!rawTrail?.length || !stations?.length) return null;
+  // rawTrail[0] is the report's own location at zero elapsed time — including
+  // it would let a station simply near the INCIDENT win the match without
+  // the wind having "passed through" it at all, silently degrading this
+  // back to plain nearest-station-to-report. Only points with genuine
+  // backward displacement along the reconstructed path are valid matches.
+  const pastPoints = rawTrail.slice(1);
+  if (!pastPoints.length) return null;
 
-// Like findStationAlongWindTrail, but returns EVERY station the trail's
-// actual path comes within maxDistanceKm of — not just the single closest
-// one — each matched to its own closest approach along the path (using
-// distanceToTrailPolyline, so it catches close approaches between hourly
-// points too, not just at the hourly vertices). Sorted with the station
-// closest to the report (least travel time/distance, i.e. the one the wind
-// passed MOST RECENTLY before arriving) first, and the farthest-back /
-// oldest station last — the order the wind actually encountered them,
-// reversed, so the popup reads "most recent first".
-function findAllStationsAlongWindTrail(rawTrail, stations, maxDistanceKm = STATION_TRAIL_MATCH_RADIUS_KM) {
-  if (!rawTrail?.length || rawTrail.length < 2 || !stations?.length) return [];
+  // Cumulative distance walked along the trail itself (not straight-line
+  // to the station) from the report's own location up to each point —
+  // this is "how far the wind actually traveled" by the time it reached
+  // that point, following the real hour-by-hour path rather than a
+  // point-to-point straight line.
+  let cumulativeKm = 0;
+  const pathDistanceAtIndex = [0]; // index 0 corresponds to rawTrail[0]
+  for (let i = 1; i < rawTrail.length; i++) {
+    cumulativeKm += getHaversineDistance(
+      rawTrail[i - 1].lat, rawTrail[i - 1].lon,
+      rawTrail[i].lat, rawTrail[i].lon
+    );
+    pathDistanceAtIndex.push(cumulativeKm);
+  }
 
-  const cumDist = computeCumulativePathDistances(rawTrail);
-
-  const matches = [];
-  for (const s of stations) {
-    const best = distanceToTrailPolyline(s.lat, s.lon, rawTrail, cumDist);
-    // Skip a match that lands right on the report's own point (segment 0,
-    // t≈0) — a station near the INCIDENT itself isn't "passed by the wind",
-    // same reasoning findStationAlongWindTrail uses above.
-    if (best && !(best.segmentIndex === 0 && best.t < 1e-6) && best.distanceKm <= maxDistanceKm) {
-      matches.push({
-        station: s,
-        distanceKm: best.distanceKm,
-        atTime: best.atTime,
-        pathDistanceKm: best.pathDistanceKm,
-      });
+  let best = null;
+  for (let i = 0; i < pastPoints.length; i++) {
+    const point = pastPoints[i];
+    const rawTrailIndex = i + 1; // pastPoints is rawTrail.slice(1)
+    for (const s of stations) {
+      const d = getHaversineDistance(point.lat, point.lon, s.lat, s.lon);
+      if (!best || d < best.distanceKm) {
+        best = {
+          station: s,
+          distanceKm: d,
+          atTime: point.time,
+          pathDistanceKm: pathDistanceAtIndex[rawTrailIndex],
+        };
+      }
     }
   }
-
-  // pathDistanceKm only grows as we walk further back in time, so sorting
-  // by it ascending is the same as sorting "closest to report time" first.
-  matches.sort((a, b) => a.pathDistanceKm - b.pathDistanceKm);
-  return matches;
-}
-
-// Handles a click anywhere along a report's spline. Shows the AVERAGE
-// reading across whichever matched stations the wind had already passed
-// BEFORE reaching the clicked point — not the station(s) further along
-// the path toward the report, since the wind hasn't gotten there yet from
-// this point's perspective. "Already passed" = matched further back along
-// the path (larger pathDistanceKm) than the click itself.
-async function handleSplineClick(reportId, latlng) {
-  const rawTrail = rawTrailByReport[reportId];
-  const matches = stationMatchesByReport[reportId];
-  if (!rawTrail || !matches) return;
-
-  const hit = distanceToTrailPolyline(latlng.lat, latlng.lng, rawTrail);
-  if (!hit) return;
-
-  const upwindMatches = matches.filter(m => m.pathDistanceKm > hit.pathDistanceKm);
-
-  if (!upwindMatches.length) {
-    L.popup({ className: 'spline-point-popup', maxWidth: 340, minWidth: 220 })
-      .setLatLng(latlng)
-      .setContent(`<div style="font-size:11px;color:#999;padding:2px;">${t('noUpwindStations')}</div>`)
-      .openOn(map);
-    return;
-  }
-
-  const loadingPopup = L.popup({ className: 'spline-point-popup', maxWidth: 340, minWidth: 220 })
-    .setLatLng(latlng)
-    .setContent(`<div style="font-size:11px;color:#999;padding:2px;">${t('stationDataLoading')}</div>`)
-    .openOn(map);
-
-  const readings = await Promise.all(
-    upwindMatches.map(m => getStationReadingNear(m.station.id, m.atTime))
-  );
-
-  // Popup may have been closed (or a different one opened) while the
-  // readings were in flight — don't stomp on whatever's showing now.
-  if (!map.hasLayer(loadingPopup)) return;
-
-  const avg = (vals) => {
-    const nums = vals.filter(v => v != null && !isNaN(v)).map(Number);
-    return nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : null;
-  };
-  const avgReading = {
-    pm10: avg(readings.map(r => r?.pm10)),
-    pm25: avg(readings.map(r => r?.pm25)),
-    so2: avg(readings.map(r => r?.so2)),
-    no2: avg(readings.map(r => r?.no2)),
-    o3: avg(readings.map(r => r?.o3)),
-  };
-  const stationNames = upwindMatches.map(m => m.station.name).join(', ');
-
-  loadingPopup.setContent(`
-    <div style="font-size:11px;display:flex;flex-direction:column;gap:3px;min-width:150px;">
-      <div style="font-weight:700;font-size:10px;color:#333;text-transform:uppercase;">${t('avgUpwindData')}</div>
-      <div style="font-size:9px;color:#888;line-height:1.3;">${stationNames}</div>
-      <div style="height:1px;background:#eee;margin:2px 0;"></div>
-      ${pollutantSummaryRowHtml(readings.some(r => r) ? avgReading : null)}
-    </div>
-  `);
+  return best;
 }
 
 async function startBacktrack(lat, lon, createdAt) {
@@ -3290,45 +3138,12 @@ async function generateAllBackgroundTrails(reports, tracerCoords = null) {
       dashArray: '4, 7',
       lineCap: 'round',
       lineJoin: 'round',
-      className: `spline-report-${report.id}`,
+      className: `bg-trail-teal spline-report-${report.id}`,
       interactive: false,
       pane: 'splinePane'
     }).addTo(map);
     bgTrailLayers.push(dottedSpline);
     splineByReport[report.id] = dottedSpline;
-
-    // Invisible, much wider line drawn along the exact same points, purely
-    // to make the spline easier to tap — the visible 2px dashed line above
-    // is a thin target on mobile, so clicks are actually handled by this
-    // one instead (kept non-interactive on the visible line itself, so a
-    // tap can't land on the wrong layer).
-    const splineHitArea = L.polyline(splineLatLngs, {
-      color: baseColor,
-      weight: 22,
-      opacity: 0,
-      lineCap: 'round',
-      lineJoin: 'round',
-      className: `spline-hitarea-${report.id}`,
-      interactive: true,
-      pane: 'splinePane'
-    }).addTo(map);
-    bgTrailLayers.push(splineHitArea);
-
-    // Cache what handleSplineClick needs: the full raw (unsmoothed) trail
-    // for interpolating "where along the path did this click land", and the
-    // stations matched to it (cheap — no network calls, reuses the trail we
-    // already have). Always cache the FULL trail regardless of displayHours
-    // clipping above, so clicking further back than the display window still
-    // resolves correctly.
-    rawTrailByReport[report.id] = trailResult.rawTrail;
-    stationMatchesByReport[report.id] = findAllStationsAlongWindTrail(
-      trailResult.rawTrail, airQualityStationsCache, STATION_TRAIL_MATCH_RADIUS_KM
-    );
-
-    splineHitArea.on('click', (e) => {
-      L.DomEvent.stopPropagation(e);
-      handleSplineClick(report.id, e.latlng);
-    });
   });
 }
 
@@ -3407,102 +3222,41 @@ function translateCategory(category) {
   return map[category] || category;
 }
 
-// Shared compact pollutant summary — all five values on ONE row (label +
-// number pairs separated by dots) instead of a stacked list, reused by the
-// station popup, the report-details modal, and the spline-click average
-// popup so all three stay visually consistent and compact.
-function pollutantSummaryRowHtml(reading, dark = false) {
-  if (!reading) return `<span style="font-size:10px;color:#999;">${t('aqNoData')}</span>`;
-  const labelColor = dark ? '#999' : '#888';
-  const valueColor = dark ? '#fff' : '#111';
-  const dotColor = dark ? '#555' : '#ccc';
-  const entries = [
-    ['PM10', reading.pm10],
-    ['PM2.5', reading.pm25],
-    ['SO2', reading.so2],
-    ['NO2', reading.no2],
-    ['O3', reading.o3],
-  ];
-  const parts = entries.map(([label, val]) => {
-    const display = (val != null && !isNaN(val)) ? Number(val).toFixed(1) : '–';
-    return `<span style="white-space:nowrap;"><span style="color:${labelColor};">${label}</span> <span style="font-weight:700;color:${valueColor};">${display}</span></span>`;
-  });
-  return `<div style="display:flex;flex-wrap:nowrap;gap:5px 6px;font-size:10px;align-items:baseline;white-space:nowrap;">${parts.join(`<span style="color:${dotColor};">·</span>`)}</div>`;
-}
-
-// Caches each report's resolved station list so the popup's "Details"
-// button (a plain onclick="..." string, since it lives inside popup HTML)
-// can look the data back up by report id without re-fetching anything.
-const stationDetailsByReportId = {};
-
-// Compact block shown directly in the report popup: just the single
-// closest-to-the-report station (name + travel time/distance), plus a
-// "Details" button when there's more to see. Full per-station pollutant
-// breakdowns now live in the stationDetailsModal instead, since a full list
-// inline was making the popup very long.
-function buildReportStationSectionHtml(stationList, reportCreatedAt, reportId) {
-  if (stationList === undefined) {
+// Renders the "nearest station" block of a report popup for each state:
+// still loading (undefined), no station found (null), or resolved data.
+function buildReportStationSectionHtml(stationInfo, reportCreatedAt) {
+  if (stationInfo === undefined) {
     return `<div style="font-size:9px;color:#bbb;font-style:italic;margin-top:2px;">${t('stationDataLoading')}</div>`;
   }
-  if (stationList === null || !stationList.length) {
+  if (stationInfo === null) {
     return `<div style="font-size:9px;color:#bbb;font-style:italic;margin-top:2px;">${t('stationNoneNearby')}</div>`;
   }
 
-  stationDetailsByReportId[reportId] = { stationList, reportCreatedAt };
-
-  const top = stationList[0];
+  const { station, pathDistanceKm, targetTime, reading } = stationInfo;
   const hoursBefore = reportCreatedAt
-    ? (new Date(reportCreatedAt).getTime() - top.targetTime.getTime()) / 3600000
+    ? (new Date(reportCreatedAt).getTime() - targetTime.getTime()) / 3600000
     : null;
-  const moreCount = stationList.length - 1;
+  const pollutant = (label, val) => `
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <span style="font-size:9px;color:#888;text-transform:uppercase;">${label}</span>
+      <span style="font-size:11px;font-weight:600;color:#111;">${val != null ? val + ' µg/m³' : '–'}</span>
+    </div>`;
 
   return `
     <div style="display:flex;flex-direction:column;gap:1px;margin-top:1px;">
       <span style="font-size:9px;color:#bbb;text-transform:uppercase;">${t('nearestStation')}</span>
-      <span style="font-size:10px;color:#555;font-weight:600;">${top.station.name}</span>
+      <span style="font-size:10px;color:#555;font-weight:600;">${station.name}</span>
       ${hoursBefore != null && hoursBefore > 0.05 ? `<span style="font-size:9px;color:#999;">${t('windTravelTime')}: ~${hoursBefore.toFixed(1)}h</span>` : ''}
-      ${top.pathDistanceKm != null ? `<span style="font-size:9px;color:#999;">${t('windTravelDist')}: ~${top.pathDistanceKm.toFixed(1)} km</span>` : ''}
-      ${top.reading ? `<span style="font-size:9px;color:#999;margin-top:1px;">${t('stationDataAsOf')} ${formatStationTime(top.reading.recorded_at)}</span>` : ''}
-      <div style="margin-top:2px;">${pollutantSummaryRowHtml(top.reading)}</div>
-      ${moreCount > 0 ? `<span onclick="showStationDetailsModalForReport(${reportId})" style="margin-top:3px;font-size:9px;color:var(--accent);font-weight:600;cursor:pointer;text-decoration:underline;">${t('seeAllStations')} (${stationList.length})</span>` : ''}
+      ${pathDistanceKm != null ? `<span style="font-size:9px;color:#999;">${t('windTravelDist')}: ~${pathDistanceKm.toFixed(1)} km</span>` : ''}
+      ${reading ? `
+        <span style="font-size:9px;color:#999;">${t('stationDataAsOf')} ${formatStationTime(reading.recorded_at)}</span>
+        ${pollutant('PM10', reading.pm10)}
+        ${pollutant('PM2.5', reading.pm25)}
+        ${pollutant('SO2', reading.so2)}
+        ${pollutant('NO2', reading.no2)}
+        ${pollutant('O3', reading.o3)}
+      ` : `<span style="font-size:10px;color:#999;">${t('aqNoData')}</span>`}
     </div>`;
-}
-
-// Full per-station breakdown, rendered into #stationDetailsContent inside
-// the dark stationDetailsModal (see buildReportStationSectionHtml's button).
-function buildStationDetailsListHtml(stationList, reportCreatedAt) {
-  if (!stationList?.length) return `<p>${t('stationNoneNearby')}</p>`;
-
-  return stationList.map(({ station, pathDistanceKm, targetTime, reading }, i) => {
-    const hoursBefore = reportCreatedAt
-      ? (new Date(reportCreatedAt).getTime() - targetTime.getTime()) / 3600000
-      : null;
-    return `
-      <div style="padding:10px 0;${i > 0 ? 'border-top:1px solid #333;' : ''}">
-        <div style="font-size:13px;font-weight:700;color:#fff;margin-bottom:3px;">${i + 1}. ${station.name}</div>
-        ${hoursBefore != null && hoursBefore > 0.05 ? `<div style="font-size:11px;color:#999;">${t('windTravelTime')}: ~${hoursBefore.toFixed(1)}h</div>` : ''}
-        ${pathDistanceKm != null ? `<div style="font-size:11px;color:#999;margin-bottom:6px;">${t('windTravelDist')}: ~${pathDistanceKm.toFixed(1)} km</div>` : ''}
-        ${reading ? `
-          <div style="font-size:10px;color:#888;margin-bottom:3px;">${t('stationDataAsOf')} ${formatStationTime(reading.recorded_at)}</div>
-          <div style="background:#262626;border-radius:8px;padding:6px 8px;display:flex;flex-direction:column;gap:2px;">
-            ${pollutantSummaryRowHtml(reading, true)}
-          </div>
-        ` : `<div style="font-size:11px;color:#999;">${t('aqNoData')}</div>`}
-      </div>`;
-  }).join('');
-}
-
-function showStationDetailsModalForReport(reportId) {
-  const entry = stationDetailsByReportId[reportId];
-  if (!entry) return;
-  document.getElementById('stationDetailsTitle').textContent = t('stationsAlongTrail');
-  document.getElementById('stationDetailsContent').innerHTML =
-    buildStationDetailsListHtml(entry.stationList, entry.reportCreatedAt);
-  document.getElementById('stationDetailsModal').style.display = 'flex';
-}
-
-function hideStationDetailsModal() {
-  document.getElementById('stationDetailsModal').style.display = 'none';
 }
 
 // Builds the full report popup. stationSectionHtml is passed in separately
@@ -3520,7 +3274,7 @@ function buildReportPopupHtml(report, stationSectionHtml) {
   const catCol = categoryColor(report.category);
   const card  = degToCardinal(report.wind_direction);
 
-  return `<div class="popup-inner" style="padding:0;min-width:200px;max-width:340px;font-family:sans-serif;">
+  return `<div class="popup-inner" style="padding:0;min-width:160px;max-width:200px;font-family:sans-serif;">
   <div style="background:${catCol};padding:4px 8px;border-radius:6px 6px 0 0;display:flex;flex-direction:column;align-items:flex-start;gap:1px;">
     <span style="font-size:11px;font-weight:700;color:white;">
       ${translateCategory(report.category)}
@@ -3584,7 +3338,7 @@ function renderPin(report, index = 0){
 
   // Initial popup shows a loading state for the nearest-station block;
   // it's filled in once the lookup resolves, on first open.
-  marker.bindPopup(buildReportPopupHtml(report, buildReportStationSectionHtml(undefined, report.created_at, report.id)), { maxWidth: 340, minWidth: 240 });
+  marker.bindPopup(buildReportPopupHtml(report, buildReportStationSectionHtml(undefined, report.created_at)));
 
   marker.on('popupopen', () => {
     // startBacktrack(...) used to be called here but its result was never
@@ -3603,11 +3357,11 @@ function renderPin(report, index = 0){
     // Refresh nearest-station data on every open, same pattern as the AQ
     // station markers themselves — the numbers shown are never older than
     // the click that revealed them.
-    getStationsAlongWindTrailForReport(report).then(stationList => {
-      marker.setPopupContent(buildReportPopupHtml(report, buildReportStationSectionHtml(stationList, report.created_at, report.id)));
+    getNearestStationDataForReport(report).then(stationInfo => {
+      marker.setPopupContent(buildReportPopupHtml(report, buildReportStationSectionHtml(stationInfo, report.created_at)));
     }).catch(err => {
       console.error('Nearest station lookup failed for report', report.id, err);
-      marker.setPopupContent(buildReportPopupHtml(report, buildReportStationSectionHtml(null, report.created_at, report.id)));
+      marker.setPopupContent(buildReportPopupHtml(report, buildReportStationSectionHtml(null, report.created_at)));
     });
   });
   marker.on('popupclose', () => {
@@ -3724,12 +3478,9 @@ async function filterPinsBySourceTrajectory(tracerCoords) {
   }).addTo(map);
   tracerVisualCircles.push(primaryRadiusCircle);
 
-  // Apply the on-map filter's date window (mapFp) — NOT the Settings/export
-  // filter (fp). Possible-source tracing works over whatever's currently
-  // shown on the map, same as everything else the map filter scopes.
-  if (!mapFp || !mapFp.selectedDates || mapFp.selectedDates.length < 2) return;
-  const filterStart = new Date(mapFp.selectedDates[0]); filterStart.setHours(0, 0, 0, 0);
-  const filterEnd = new Date(mapFp.selectedDates[1]); filterEnd.setHours(23, 59, 59, 999);
+  // Apply date filter
+  const filterStart = new Date(fp.selectedDates[0]); filterStart.setHours(0, 0, 0, 0);
+  const filterEnd = new Date(fp.selectedDates[1]); filterEnd.setHours(23, 59, 59, 999);
   const timeFilteredData = globalActiveData.filter(r => {
     const ts = new Date(r.created_at).getTime();
     return ts >= filterStart.getTime() && ts <= filterEnd.getTime();
@@ -3899,6 +3650,77 @@ function csvField(val) {
   return s;
 }
 
+// Formats a date/timestamp in the browser's own local time zone as
+// "YYYY-MM-DD HH:mm:ss" — no "Z"/+00:00 suffix, so CSV consumers don't
+// mistake it for UTC. Used everywhere a timestamp goes into an export
+// instead of raw ISO strings (which are always UTC).
+function toLocalTimestamp(dateInput) {
+  const d = (dateInput instanceof Date) ? dateInput : new Date(dateInput);
+  if (isNaN(d.getTime())) return '';
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
+         `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+// Coordinates exported to 4 decimal places (~11m precision) — plenty for
+// this app's purposes and much more readable than the full float.
+function fmtCoord(val) {
+  return (val != null && !isNaN(val)) ? Number(val).toFixed(4) : '';
+}
+
+// Sea-level pressure exported to a single decimal place.
+function fmtPressure(val) {
+  return (val != null && !isNaN(val)) ? Number(val).toFixed(1) : '';
+}
+
+// Reverse-geocodes coordinates into a short human-readable place name via
+// Nominatim, for the CSV "Location" column. Results are cached by rounded
+// coordinate (~100m buckets) since nearby reports very often share a
+// neighbourhood, and calls are made one at a time with a short pause
+// between actual network requests to stay within Nominatim's public usage
+// policy (max ~1 request/sec).
+const reverseGeocodeCache = {};
+async function reverseGeocodeForCsv(lat, lon) {
+  if (lat == null || lon == null) return '';
+  const key = `${Number(lat).toFixed(3)},${Number(lon).toFixed(3)}`;
+  if (Object.prototype.hasOwnProperty.call(reverseGeocodeCache, key)) {
+    return reverseGeocodeCache[key];
+  }
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=14&addressdetails=1`
+    );
+    const data = await res.json();
+    const a = (data && data.address) || {};
+    const area = a.suburb || a.neighbourhood || a.city_district || a.village || '';
+    const locality = a.city || a.town || a.municipality || a.county || '';
+    let label = [area, locality].filter((v, i, arr) => v && arr.indexOf(v) === i).join(', ');
+    if (!label && data && data.display_name) {
+      label = data.display_name.split(',').slice(0, 2).map(s => s.trim()).join(', ');
+    }
+    reverseGeocodeCache[key] = label;
+    return label;
+  } catch (err) {
+    console.error('Reverse geocode failed for CSV export:', err);
+    reverseGeocodeCache[key] = '';
+    return '';
+  }
+}
+
+// Reverse-geocodes a list of {lat, lon} points, reusing the cache above and
+// only pausing between calls that actually hit the network (cached hits
+// resolve instantly), so exports with many reports in the same area stay fast.
+async function reverseGeocodeBatch(points) {
+  const results = [];
+  for (const p of points) {
+    const key = `${Number(p.lat).toFixed(3)},${Number(p.lon).toFixed(3)}`;
+    const alreadyCached = Object.prototype.hasOwnProperty.call(reverseGeocodeCache, key);
+    results.push(await reverseGeocodeForCsv(p.lat, p.lon));
+    if (!alreadyCached) await new Promise(r => setTimeout(r, 1000));
+  }
+  return results;
+}
+
 // Builds a CSV filename suffixed with the given date range (or no suffix
 // if the range isn't a full 2-date selection), and triggers the browser
 // download. Shared by both CSV export buttons.
@@ -4016,27 +3838,38 @@ async function downloadCSV() {
     return result;
   };
 
-  let csv = `Report Generated/Downloaded On: ${new Date().toLocaleString()}\n\n`;
-  csv += 'ID,Date,Latitude,Longitude,Category,Intensity,WindSpeed,WindDirection,SeaLevelPressure,Comment,' +
+  // Reverse-geocode every report's coordinates into a readable place name
+  // for the "Location" column (cached/rate-limited — see reverseGeocodeBatch).
+  const locationNames = await reverseGeocodeBatch(
+    perReport.map(({ report: r }) => ({ lat: r.latitude, lon: r.longitude }))
+  );
+
+  let csv = `Report Generated/Downloaded On: ${toLocalTimestamp(new Date())} (local time)\n\n`;
+  csv += 'ID,Date,Latitude,Longitude,Location,Category,Intensity,WindSpeed,WindDirection,HistoryWindDirection,SeaLevelPressure,Comment,' +
          'NearestStation,StationDistanceKm,StationDataTime,HoursBeforeReport,StationPM10,StationPM2.5,StationSO2,StationNO2,StationO3\n';
 
-  perReport.forEach(({ report: r, station, distanceKm, targetTime }) => {
+  perReport.forEach(({ report: r, station, distanceKm, targetTime }, i) => {
     const reading = station ? pickReadingAtOrBefore(readingsByStation[station.id], targetTime) : null;
     const hoursBefore = station ? (new Date(r.created_at).getTime() - targetTime.getTime()) / 3600000 : null;
     csv += [
       csvField(r.id),
-      csvField(r.created_at),
-      csvField(r.latitude),
-      csvField(r.longitude),
+      csvField(toLocalTimestamp(r.created_at)),
+      csvField(fmtCoord(r.latitude)),
+      csvField(fmtCoord(r.longitude)),
+      csvField(locationNames[i] || ''),
       csvField(r.category),
       csvField(r.intensity || ''),
       csvField(r.wind_speed || 0),
-      csvField(r.wind_direction || 0),
-      csvField(r.sea_level_pressure || 0),
+      // WindDirection: the user-reported value (read off Windfinder/etc.)
+      csvField(r.manual_wind_direction ?? 0),
+      // HistoryWindDirection: Open-Meteo's historical direction for that
+      // hour/location, for comparing against what the user reported.
+      csvField(r.wind_direction ?? 0),
+      csvField(fmtPressure(r.sea_level_pressure ?? 0)),
       csvField(r.comment || ''),
       csvField(station ? station.name : ''),
       csvField(distanceKm != null ? distanceKm.toFixed(2) : ''),
-      csvField(targetTime ? targetTime.toISOString() : ''),
+      csvField(targetTime ? toLocalTimestamp(targetTime) : ''),
       csvField(hoursBefore != null ? hoursBefore.toFixed(2) : ''),
       csvField(reading ? reading.pm10 : ''),
       csvField(reading ? reading.pm25 : ''),
@@ -4096,17 +3929,24 @@ async function downloadStationCSV() {
 
   if (!readings || !readings.length) { alert(t('noStations')); return; }
 
-  let csv = `Report Generated/Downloaded On: ${new Date().toLocaleString()}\n\n`;
-  csv += 'StationID,StationName,Latitude,Longitude,RecordedAt,PM10,PM2.5,SO2,NO2,O3,Category\n';
+  // Reverse-geocode each visible station once (not per reading, since a
+  // station's location never changes across its readings).
+  const stationLocationById = {};
+  const geocoded = await reverseGeocodeBatch(visibleStations.map(s => ({ lat: s.lat, lon: s.lon })));
+  visibleStations.forEach((s, i) => { stationLocationById[s.id] = geocoded[i] || ''; });
+
+  let csv = `Report Generated/Downloaded On: ${toLocalTimestamp(new Date())} (local time)\n\n`;
+  csv += 'StationID,StationName,Latitude,Longitude,Location,RecordedAt,PM10,PM2.5,SO2,NO2,O3,Category\n';
 
   readings.forEach(r => {
     const station = stationById[r.station_id];
     csv += [
       csvField(r.station_id),
       csvField(station ? station.name : ''),
-      csvField(station ? station.lat : ''),
-      csvField(station ? station.lon : ''),
-      csvField(r.recorded_at),
+      csvField(station ? fmtCoord(station.lat) : ''),
+      csvField(station ? fmtCoord(station.lon) : ''),
+      csvField(stationLocationById[r.station_id] || ''),
+      csvField(toLocalTimestamp(r.recorded_at)),
       csvField(r.pm10),
       csvField(r.pm25),
       csvField(r.so2),
