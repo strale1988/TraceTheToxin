@@ -80,6 +80,11 @@ html[data-theme="light"]{
      floating map control can anchor itself above it, however tall it gets. */
   --legend-bar-h: 100px;
 }
+.leaflet-control-container .leaflet-top.leaflet-left{
+  top:calc(env(safe-area-inset-top, 0px) + 78px) !important;
+  left:10px !important;
+  margin:0 !important;
+}
 .leaflet-control-container .leaflet-bottom.leaflet-right{
   top:auto !important;
   bottom:calc(var(--legend-bar-h) + 40px) !important;
@@ -105,6 +110,33 @@ body{
   overflow:hidden;
 }
 
+/* ═══════════════════════════════════════════════════
+   PULL-TO-REFRESH (custom, anchored to the header)
+   Body has overflow:hidden so the browser's native overscroll
+   pull-to-refresh never fires -- this reproduces that gesture
+   specifically when the pull starts on the top bar itself.
+═══════════════════════════════════════════════════ */
+#pullRefreshIndicator{
+  position:fixed; top:0; left:50%;
+  transform:translate(-50%, -60px);
+  z-index:499; /* just behind the header, which slides down to reveal it */
+  background:var(--floating-bg);
+  border:1px solid var(--floating-border);
+  border-top:none;
+  border-radius:0 0 var(--radius-lg) var(--radius-lg);
+  padding:calc(8px + env(safe-area-inset-top, 0px)) 16px 8px;
+  display:flex; align-items:center; gap:6px;
+  font-size:var(--fs-11); color:var(--text-secondary);
+  box-shadow:0 2px 8px var(--floating-shadow);
+  pointer-events:none;
+  white-space:nowrap;
+}
+#pullRefreshIndicator.animate{ transition:transform .2s ease; }
+#pullRefreshIndicator svg{ width:14px; height:14px; transition:transform .1s ease; }
+#pullRefreshIndicator.ready svg{ transform:rotate(180deg); }
+#pullRefreshIndicator.refreshing svg{ animation:pullRefreshSpin .7s linear infinite; }
+@keyframes pullRefreshSpin{ to{ transform:rotate(360deg); } }
+
 header{
   position:fixed;
   top:0;
@@ -118,7 +150,10 @@ header{
   border-bottom:1px solid var(--floating-border);
   border-radius:0 0 20px 20px;
   box-shadow:0 4px 18px var(--floating-shadow);
+  transform:translateY(0);
+  touch-action:pan-y;
 }
+header.animate{ transition:transform .2s ease; }
 
 .header-top{
   display:flex;
@@ -724,6 +759,14 @@ span.flatpickr-weekday {
 </head>
 <body>
 
+<div id="pullRefreshIndicator">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <line x1="12" y1="5" x2="12" y2="19"></line>
+    <polyline points="19 12 12 19 5 12"></polyline>
+  </svg>
+  <span id="pullRefreshLabel">Pull to refresh</span>
+</div>
+
 <header>
   <div class="header-top">
     <div>
@@ -1000,6 +1043,11 @@ function closeReportWizard() {
     pinMode = false;
     const pinBtn = document.getElementById('pinMapBtn');
     if (pinBtn) pinBtn.classList.remove('active');
+    // togglePinMode() reloads pins when leaving pin mode -- since we're
+    // flipping the flag directly here instead of going through it, do the
+    // same, otherwise the markers pin-mode swept off the map on entry never
+    // come back until some unrelated map interaction happens to reload them.
+    loadPinsByWindow();
   }
   if (manualMarker) { map.removeLayer(manualMarker); manualMarker = null; }
   manualCoords = null;
@@ -1548,6 +1596,9 @@ const T = {
   avgUpwindData:       { en: 'Average from upwind stations', sr: 'Prosek sa uzvodnih stanica' },
   noUpwindStations:    { en: 'No stations upwind of this point', sr: 'Nema stanica uzvodno od ove tačke' },
   avgAtReportTime:     { en: 'Average at time & place reported', sr: 'Prosek u vreme i na mestu prijave' },
+  pullToRefresh:       { en: 'Pull to refresh', sr: 'Povucite za osvežavanje' },
+  releaseToRefresh:    { en: 'Release to refresh', sr: 'Otpustite za osvežavanje' },
+  refreshing:          { en: 'Refreshing…', sr: 'Osvežavanje…' },
 
   
   hours:         { en: 'h',                         sr: 'h' },
@@ -1999,6 +2050,31 @@ function fuzzCoords(lat, lon, radiusMeters = 250) {
   };
 }
 
+// GPS dot icon: a white halo (for contrast against busy map tiles/pins)
+// behind the usual blue dot, plus -- once we have a wind reading -- an
+// arrow drawn on top pointing where the wind is blowing toward, so the
+// user's own location marker doubles as a wind indicator at a glance.
+function makeUserLocationIcon(windDeg) {
+  const size = 40, cx = size / 2, cy = size / 2;
+  const hasWind = windDeg != null && !isNaN(windDeg);
+  const visualAngle = hasWind ? (parseFloat(windDeg) + 180) % 360 : 0;
+
+  const arrowSvg = hasWind ? `
+    <g transform="rotate(${visualAngle} ${cx} ${cy})">
+      <line x1="${cx}" y1="${cy - 17}" x2="${cx}" y2="${cy - 7}" stroke="#00d0ff" stroke-width="3" stroke-linecap="round"/>
+      <polygon points="${cx},${cy - 20} ${cx - 4},${cy - 12} ${cx + 4},${cy - 12}" fill="#00d0ff" stroke="#ffffff" stroke-width="0.75"/>
+    </g>` : '';
+
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="overflow:visible;">
+      <circle cx="${cx}" cy="${cy}" r="13" fill="#ffffff" stroke="#00d0ff" stroke-width="1.5" opacity="0.95"/>
+      <circle cx="${cx}" cy="${cy}" r="8" fill="#00d0ff" stroke="#ffffff" stroke-width="2"/>
+      ${arrowSvg}
+    </svg>`;
+
+  return L.divIcon({ className: 'user-location-icon', html: svg, iconSize: [size, size], iconAnchor: [cx, cy] });
+}
+
 function startWatching() {
   navigator.geolocation.getCurrentPosition(
     pos => {
@@ -2009,8 +2085,9 @@ function startWatching() {
       // it on every subsequent fix so the dot tracks the device instead
       // of freezing at the very first location the app ever saw.
       if (!userMarker) {
-        userMarker = L.circleMarker([userCoords.lat, userCoords.lon], {
-          radius: 8, color: '#00d0ff', fillColor: '#00d0ff', fillOpacity: .85, weight: 2
+        userMarker = L.marker([userCoords.lat, userCoords.lon], {
+          icon: makeUserLocationIcon(currentWindDegForMarker),
+          zIndexOffset: 1000
         }).addTo(map);
         map.setView([userCoords.lat, userCoords.lon], 13);
       } else {
@@ -2269,19 +2346,46 @@ async function getWeatherData(lat, lng, datetime = null) {
   }
 }
 
+// Set once by updateWindMarker() the first time a real reading comes back,
+// so the GPS marker can be (re)built with the right arrow even if the wind
+// reading arrives before or after the marker itself exists.
+let currentWindDegForMarker = null;
+// "Just on load, static until refresh" per product decision — once we have
+// a real reading the compass widget and GPS-dot arrow stop updating, even
+// though triggerWindUpdate itself keeps refreshing currentWeatherData every
+// 5 minutes for whatever else in the app wants fresher data.
+let windMarkerLocked = false;
+
 async function triggerWindUpdate() {
-  if (typeof manualCoords === 'undefined' || !manualCoords) return;
-  
-  // Fetch new data
-  const weather = await getWeatherData(manualCoords.lat, manualCoords.lon);
-  
-  // Example: If you have a global state
+  const activeLoc = (pinMode && manualCoords) ? manualCoords : userCoords;
+  if (!activeLoc) return;
+
+  const weather = await getWeatherData(activeLoc.lat, activeLoc.lon);
   currentWeatherData = weather;
-  
-  // Update your marker/UI if needed
-  if (typeof updateWindMarker === 'function') {
+
+  if (!windMarkerLocked && weather.source !== 'Offline/Default' && weather.wind_direction != null) {
     updateWindMarker(weather.wind_direction);
+    windMarkerLocked = true;
   }
+}
+
+// Draws the wind reading fetched at load onto the map: rotates the corner
+// compass widget's arrow and fills in its degrees/cardinal text, and (re)builds
+// the GPS dot so it shows the same arrow directly on the marker.
+function updateWindMarker(windDeg) {
+  currentWindDegForMarker = windDeg;
+  const visualAngle = (parseFloat(windDeg) + 180) % 360;
+
+  const widget = document.getElementById('windCompassWidget');
+  const arrowGroup = document.getElementById('windCompassArrowGroup');
+  const degEl = document.getElementById('windCompassDeg');
+  const dirEl = document.getElementById('windCompassDir');
+  if (arrowGroup) arrowGroup.setAttribute('transform', `rotate(${visualAngle} 17 17)`);
+  if (degEl) degEl.textContent = `${Math.round(windDeg)}°`;
+  if (dirEl) dirEl.textContent = degToCardinal(windDeg);
+  if (widget) widget.classList.add('visible');
+
+  if (userMarker) userMarker.setIcon(makeUserLocationIcon(currentWindDegForMarker));
 }
 
 function startWindWhenReady(){
