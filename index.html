@@ -849,17 +849,6 @@ span.flatpickr-weekday {
   </div>
 </div>
 
-<!-- Full station-list-along-wind-trail details, opened from a report popup's
-     "See all stations" button (see buildReportStationSectionHtml) -->
-<div id="stationDetailsModal" class="generic-modal-overlay" style="display:none" onclick="if(event.target===this) hideStationDetailsModal()">
-  <div class="generic-modal" style="max-width: 360px; text-align:left;">
-    <h2 style="text-align:left; margin-top:6px;" id="stationDetailsTitle"></h2>
-    <div id="stationDetailsContent" style="max-height: 60vh; overflow-y: auto; padding-right: 2px;">
-      <!-- Filled by showStationDetailsModalForReport() -->
-    </div>
-    <button class="generic-modal-close" onclick="hideStationDetailsModal()" style="margin-top:14px;">Close</button>
-  </div>
-</div>
 
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -1361,6 +1350,17 @@ const TRAIL_MIN_HOURS = 1;
 // tight radius like this still catches a station the path swings close to
 // between two hourly steps.
 const STATION_TRAIL_MATCH_RADIUS_KM = 5;
+
+// A station whose CLOSEST approach to the trail happens this early —
+// meaning the wind has travelled less than this many km from the report
+// itself when it comes near the station — is really just "near the
+// incident", not somewhere the wind demonstrably carried anything there.
+// Without this, a station sitting a few km from the report in a totally
+// different direction than the wind was actually blowing could still get
+// falsely matched, since the trail always STARTS at the report's own
+// location and a nearby station is "close to the trail" there by
+// definition even though the wind never carried anything toward it.
+const MIN_TRAIL_MATCH_PATH_KM = 1.0;
 
 /* ═══════════════════════════════════════════════════
    SUPABASE
@@ -2918,10 +2918,11 @@ function findAllStationsAlongWindTrail(rawTrail, stations, maxDistanceKm = STATI
   const matches = [];
   for (const s of stations) {
     const best = distanceToTrailPolyline(s.lat, s.lon, rawTrail, cumDist);
-    // Skip a match that lands right on the report's own point (segment 0,
-    // t≈0) — a station near the INCIDENT itself isn't "passed by the wind",
-    // same reasoning findStationAlongWindTrail uses above.
-    if (best && !(best.segmentIndex === 0 && best.t < 1e-6) && best.distanceKm <= maxDistanceKm) {
+    // Exclude a match whose closest approach is right at the start of the
+    // trail — that's the wind not having travelled anywhere yet, i.e. the
+    // station is just near the incident, not somewhere it was carried to.
+    // See MIN_TRAIL_MATCH_PATH_KM above.
+    if (best && best.pathDistanceKm >= MIN_TRAIL_MATCH_PATH_KM && best.distanceKm <= maxDistanceKm) {
       matches.push({
         station: s,
         distanceKm: best.distanceKm,
@@ -3372,16 +3373,9 @@ function pollutantSummaryRowHtml(reading, dark = false) {
   return `<div style="display:flex;flex-wrap:wrap;gap:5px 8px;font-size:10px;align-items:baseline;">${parts.join(`<span style="color:${dotColor};">·</span>`)}</div>`;
 }
 
-// Caches each report's resolved station list so the popup's "Details"
-// button (a plain onclick="..." string, since it lives inside popup HTML)
-// can look the data back up by report id without re-fetching anything.
-const stationDetailsByReportId = {};
-
-// Compact block shown directly in the report popup: just the single
-// closest-to-the-report station (name + travel time/distance), plus a
-// "Details" button when there's more to see. Full per-station pollutant
-// breakdowns now live in the stationDetailsModal instead, since a full list
-// inline was making the popup very long.
+// Renders every station the report's wind trail actually passed through
+// directly inline — no more separate "see all" link/modal, since with the
+// popup widened to fit one pollutant row each, a full list fits fine.
 function buildReportStationSectionHtml(stationList, reportCreatedAt, reportId) {
   if (stationList === undefined) {
     return `<div style="font-size:9px;color:#bbb;font-style:italic;margin-top:2px;">${t('stationDataLoading')}</div>`;
@@ -3390,61 +3384,22 @@ function buildReportStationSectionHtml(stationList, reportCreatedAt, reportId) {
     return `<div style="font-size:9px;color:#bbb;font-style:italic;margin-top:2px;">${t('stationNoneNearby')}</div>`;
   }
 
-  stationDetailsByReportId[reportId] = { stationList, reportCreatedAt };
+  const header = `<span style="font-size:9px;color:#bbb;text-transform:uppercase;">${stationList.length > 1 ? t('stationsAlongTrail') : t('nearestStation')}</span>`;
 
-  const top = stationList[0];
-  const hoursBefore = reportCreatedAt
-    ? (new Date(reportCreatedAt).getTime() - top.targetTime.getTime()) / 3600000
-    : null;
-  const moreCount = stationList.length - 1;
-
-  return `
-    <div style="display:flex;flex-direction:column;gap:1px;margin-top:1px;">
-      <span style="font-size:9px;color:#bbb;text-transform:uppercase;">${t('nearestStation')}</span>
-      <span style="font-size:10px;color:#555;font-weight:600;">${top.station.name}</span>
-      ${hoursBefore != null && hoursBefore > 0.05 ? `<span style="font-size:9px;color:#999;">${t('windTravelTime')}: ~${hoursBefore.toFixed(1)}h</span>` : ''}
-      ${top.pathDistanceKm != null ? `<span style="font-size:9px;color:#999;">${t('windTravelDist')}: ~${top.pathDistanceKm.toFixed(1)} km</span>` : ''}
-      ${top.reading ? `<span style="font-size:9px;color:#999;margin-top:1px;">${t('stationDataAsOf')} ${formatStationTime(top.reading.recorded_at)}</span>` : ''}
-      <div style="margin-top:2px;">${pollutantSummaryRowHtml(top.reading)}</div>
-      ${moreCount > 0 ? `<span onclick="showStationDetailsModalForReport(${reportId})" style="margin-top:3px;font-size:9px;color:var(--accent);font-weight:600;cursor:pointer;text-decoration:underline;">${t('seeAllStations')} (${stationList.length})</span>` : ''}
-    </div>`;
-}
-
-// Full per-station breakdown, rendered into #stationDetailsContent inside
-// the dark stationDetailsModal (see buildReportStationSectionHtml's button).
-function buildStationDetailsListHtml(stationList, reportCreatedAt) {
-  if (!stationList?.length) return `<p>${t('stationNoneNearby')}</p>`;
-
-  return stationList.map(({ station, pathDistanceKm, targetTime, reading }, i) => {
+  const rows = stationList.map(({ station, pathDistanceKm, targetTime, reading }, i) => {
     const hoursBefore = reportCreatedAt
       ? (new Date(reportCreatedAt).getTime() - targetTime.getTime()) / 3600000
       : null;
+    const dateLabel = formatStationTime(reading ? reading.recorded_at : targetTime);
     return `
-      <div style="padding:10px 0;${i > 0 ? 'border-top:1px solid #333;' : ''}">
-        <div style="font-size:13px;font-weight:700;color:#fff;margin-bottom:3px;">${i + 1}. ${station.name}</div>
-        ${hoursBefore != null && hoursBefore > 0.05 ? `<div style="font-size:11px;color:#999;">${t('windTravelTime')}: ~${hoursBefore.toFixed(1)}h</div>` : ''}
-        ${pathDistanceKm != null ? `<div style="font-size:11px;color:#999;margin-bottom:6px;">${t('windTravelDist')}: ~${pathDistanceKm.toFixed(1)} km</div>` : ''}
-        ${reading ? `
-          <div style="font-size:10px;color:#888;margin-bottom:3px;">${t('stationDataAsOf')} ${formatStationTime(reading.recorded_at)}</div>
-          <div style="background:#262626;border-radius:8px;padding:6px 8px;display:flex;flex-direction:column;gap:2px;">
-            ${pollutantSummaryRowHtml(reading, true)}
-          </div>
-        ` : `<div style="font-size:11px;color:#999;">${t('aqNoData')}</div>`}
+      <div style="margin-top:${i > 0 ? '7px' : '2px'};${i > 0 ? 'padding-top:6px;border-top:1px solid var(--border-color);' : ''}">
+        <span style="font-size:10px;color:#555;font-weight:600;">${station.name}${dateLabel ? ` <span style="font-weight:400;color:#999;">(${dateLabel})</span>` : ''}</span>
+        ${hoursBefore != null && hoursBefore > 0.05 ? `<div style="font-size:9px;color:#999;">${t('windTravelTime')}: ~${hoursBefore.toFixed(1)}h${pathDistanceKm != null ? ` · ${t('windTravelDist')}: ~${pathDistanceKm.toFixed(1)} km` : ''}</div>` : ''}
+        <div style="margin-top:2px;">${pollutantSummaryRowHtml(reading)}</div>
       </div>`;
   }).join('');
-}
 
-function showStationDetailsModalForReport(reportId) {
-  const entry = stationDetailsByReportId[reportId];
-  if (!entry) return;
-  document.getElementById('stationDetailsTitle').textContent = t('stationsAlongTrail');
-  document.getElementById('stationDetailsContent').innerHTML =
-    buildStationDetailsListHtml(entry.stationList, entry.reportCreatedAt);
-  document.getElementById('stationDetailsModal').style.display = 'flex';
-}
-
-function hideStationDetailsModal() {
-  document.getElementById('stationDetailsModal').style.display = 'none';
+  return `<div style="display:flex;flex-direction:column;margin-top:1px;">${header}${rows}</div>`;
 }
 
 // Builds the full report popup. stationSectionHtml is passed in separately
@@ -3462,7 +3417,7 @@ function buildReportPopupHtml(report, stationSectionHtml) {
   const catCol = categoryColor(report.category);
   const card  = degToCardinal(report.wind_direction);
 
-  return `<div class="popup-inner" style="padding:0;min-width:200px;max-width:280px;font-family:sans-serif;">
+  return `<div class="popup-inner" style="padding:0;min-width:220px;max-width:300px;font-family:sans-serif;">
   <div style="background:${catCol};padding:4px 8px;border-radius:6px 6px 0 0;display:flex;flex-direction:column;align-items:flex-start;gap:1px;">
     <span style="font-size:11px;font-weight:700;color:white;">
       ${translateCategory(report.category)}
