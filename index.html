@@ -708,7 +708,17 @@ span.flatpickr-weekday {
 /* ═══════════════════════════════════════════════════
    SETTINGS MODAL (fullscreen)
 ═══════════════════════════════════════════════════ */
-.fullscreen-modal-overlay{ position:fixed; inset:0; z-index:9999; background:var(--bg-app); }
+.fullscreen-modal-overlay{
+  position:fixed; top:0; left:0; right:0;
+  /* Not inset:0/height:100% -- on mobile browsers those size to the large
+     viewport (as if the address bar were hidden), so with the address bar
+     actually showing, the bottom of the modal sat behind the browser's own
+     chrome and was unreachable no matter how far you scrolled inside it.
+     100svh matches what body{} already uses for the same reason. */
+  height:100svh;
+  z-index:9999; background:var(--bg-app);
+  overflow:hidden; /* .fullscreen-modal-body below handles its own scrolling */
+}
 .fullscreen-modal-header{
   display:flex; align-items:center; justify-content:space-between; gap:10px;
   padding:calc(14px + env(safe-area-inset-top,0px)) 16px 14px 16px;
@@ -1708,7 +1718,6 @@ const T = {
     sr:'Uključite GPS na uređaju kako bi aplikacija mogla da vas pronađe, ili pritisnite dugme <img src="icons/pin.png" alt="Pin" style="width:18px;height:18px;vertical-align:middle;"> na mapi da ručno postavite vašu lokaciju. Lokacija je obavezna pre nego što možete da pošaljete prijavu.' },
   helpStep2:    { en:'2. Check the Wind Direction:',     sr:'2. Proverite smer vetra:' },
   helpStep2Body:{ en:'Wind direction is now filled in automatically for you using live wind data. If it looks wrong, you can drag the compass, type a value directly, or tap the Windfinder link to check it yourself.', sr:'Smer vetra se sada automatski popunjava na osnovu podataka uživo. Ako izgleda netačno, možete prevući kompas, uneti vrednost ručno, ili kliknuti na Windfinder link da proverite sami.' },
-  windfinderCheckLabel:{ en:'Check on Windfinder', sr:'Proveri na Windfinder-u' },
   windfinderCheckTitle:{ en:'Open Windfinder in a new tab to check wind direction yourself', sr:'Otvori Windfinder u novom tabu da sami proverite smer vetra' },
   windAppCheckTitle:{ en:'Opens in a new tab, centered on your current report location', sr:'Otvara se u novom tabu, centrirano na vašoj trenutnoj lokaciji prijave' },
   windAutoFilledHint:{ en:'Auto-filled from live wind data — change it if this doesn\u2019t look right.', sr:'Automatski popunjeno na osnovu podataka o vetru uživo \u2014 promenite ako ne izgleda tačno.' },
@@ -2065,7 +2074,7 @@ function buildWindAppLinksHtml() {
 
   const apps = [
     {
-      label: t('windfinderCheckLabel'),
+      label: 'Windfinder',
       url: `https://www.windfinder.com/#13/${latR}/${lonR}/${nowIso}/spot`,
     },
     {
