@@ -166,6 +166,19 @@ header.animate{ transition:transform .2s ease; }
 header h1{ font-size:var(--fs-19); }
 header p{ font-size:var(--fs-11); opacity:.7; margin-top:2px; }
 
+.subtitle-row{
+  display:flex;
+  align-items:baseline;
+  gap:6px;
+  flex-wrap:wrap;
+}
+.header-report-count{
+  font-size:var(--fs-11);
+  font-weight:var(--fw-semibold);
+  color:var(--accent);
+  white-space:nowrap;
+}
+
 .right-controls{
   display:flex;
   gap:8px;
@@ -807,7 +820,10 @@ span.flatpickr-weekday {
   <div class="header-top">
     <div>
       <h1>TraceTheToxin</h1>
-      <p id="subtitle">Community Air Reporting Network</p>
+      <div class="subtitle-row">
+        <p id="subtitle">Community Air Reporting Network</p>
+        <span id="headerReportCount" class="header-report-count"></span>
+      </div>
     </div>
     <div class="right-controls">
       <button class="help-icon-btn" id="settingsBtn" title="Settings / Podešavanja" onclick="showSettingsModal()">
@@ -948,17 +964,6 @@ span.flatpickr-weekday {
         </span>
       </label>
       <p class="detail-export-hint" id="splineVisibilityHint">Show the dashed wind-trail lines behind each pin. Off by default to keep the map uncluttered.</p>
-    </div>
-
-    <div class="detail-section" id="edgeBundlingSettingsSection">
-      <label class="settings-toggle-row" for="edgeBundlingToggle">
-        <span id="edgeBundlingLabel">Edge Bundling</span>
-        <span class="toggle-switch">
-          <input type="checkbox" id="edgeBundlingToggle" onchange="setEdgeBundling(this.checked)">
-          <span class="toggle-switch-track"><span class="toggle-switch-thumb"></span></span>
-        </span>
-      </label>
-      <p class="detail-export-hint" id="edgeBundlingHint">Curves and groups wind trails running along similar paths into unified visual "highways," reducing line crossings. Off by default.</p>
     </div>
 
     <div class="detail-section" style="padding:0;overflow:hidden;">
@@ -1498,8 +1503,6 @@ function showSettingsModal() {
   syncModalHeaderHeight();
   const splineToggle = document.getElementById('splineVisibilityToggle');
   if (splineToggle) splineToggle.checked = splinesVisible;
-  const bundlingToggle = document.getElementById('edgeBundlingToggle');
-  if (bundlingToggle) bundlingToggle.checked = edgeBundlingEnabled;
 }
 function hideSettingsModal() {
   document.getElementById('settingsModal').style.display = 'none';
@@ -1559,19 +1562,6 @@ function setSplineVisibility(visible) {
   applySplineVisibility();
   const toggle = document.getElementById('splineVisibilityToggle');
   if (toggle) toggle.checked = splinesVisible;
-}
-
-// Edge Bundling — off by default, re-draws trails on toggle since bundling
-// happens once at draw time, not as a live CSS effect.
-let edgeBundlingEnabled = (function () {
-  try { return localStorage.getItem('ttt_edge_bundling') === 'true'; } catch (e) { return false; }
-})();
-function setEdgeBundling(enabled) {
-  edgeBundlingEnabled = !!enabled;
-  try { localStorage.setItem('ttt_edge_bundling', String(edgeBundlingEnabled)); } catch (e) {}
-  const toggle = document.getElementById('edgeBundlingToggle');
-  if (toggle) toggle.checked = edgeBundlingEnabled;
-  loadPinsByWindow();
 }
 
 const weatherCache = {};
@@ -1755,8 +1745,6 @@ const T = {
 
   splineVisibilityLabel: { en:'Show historical wind trails', sr:'Prikaži istorijske tragove vetra' },
   splineVisibilityHint:  { en:'Show the dashed wind-trail lines behind each pin. Off by default to keep the map uncluttered.', sr:'Prikaži isprekidane linije traga vetra iza svake oznake. Podrazumevano isključeno radi preglednosti mape.' },
-  edgeBundlingLabel:     { en:'Edge Bundling', sr:'Spajanje linija (Edge Bundling)' },
-  edgeBundlingHint:      { en:'Curves and groups wind trails running along similar paths into unified visual "highways," reducing line crossings. Off by default.', sr:'Zakrivljuje i grupiše tragove vetra koji idu sličnim putanjama u jedinstvene vizuelne "koridore," smanjujući ukrštanje linija. Podrazumevano isključeno.' },
 };
 
 function t(k){ return T[k]?.[lang] ?? k; }
@@ -1856,9 +1844,8 @@ function applyLang(){
   if (el('trailHoursHint'))         el('trailHoursHint').textContent = t('trailHoursHint');
   if (el('splineVisibilityLabel')) el('splineVisibilityLabel').textContent = t('splineVisibilityLabel');
   if (el('splineVisibilityHint'))  el('splineVisibilityHint').textContent = t('splineVisibilityHint');
-  if (el('edgeBundlingLabel'))     el('edgeBundlingLabel').textContent = t('edgeBundlingLabel');
-  if (el('edgeBundlingHint'))      el('edgeBundlingHint').textContent = t('edgeBundlingHint');
   if (el('pullRefreshLabel'))      el('pullRefreshLabel').textContent = t('pullToRefresh');
+  if (lastKnownReportCount !== null) updateReportCountUI(lastKnownReportCount);
 
   // Only re-render the active wizard step if the wizard is currently open,
   // since its inputs (category tiles, comment field, etc.) are rebuilt
@@ -1954,7 +1941,12 @@ function initMapCalendarFilter(optionalDefaultDates) {
         await loadPinsByWindow();
 
         if (traceMode && tracerMarker) {
-          filterPinsBySourceTrajectory(tracerMarker.getLatLng());
+          // getLatLng() returns {lat, lng} (Leaflet's own property name), but
+          // filterPinsBySourceTrajectory expects {lat, lon} like every other
+          // coords object in this app -- passing it straight through left
+          // .lon undefined and crashed L.circle() downstream.
+          const ll = tracerMarker.getLatLng();
+          filterPinsBySourceTrajectory({ lat: ll.lat, lon: ll.lng });
         }
       }
     }
@@ -2610,6 +2602,21 @@ function degToCardinal(deg){
   return ['N','NE','E','SE','S','SW','W','NW'][Math.round(deg/45)%8];
 }
 
+// Updates every place that shows "how many reports are currently visible":
+// the settings modal's filter section and the header badge. Both track the
+// same number (whatever loadPinsByWindow()/filterPinsBySourceTrajectory()
+// actually rendered after applying the map bounds + date filter), so this
+// keeps them from drifting out of sync with each other.
+let lastKnownReportCount = null;
+function updateReportCountUI(n) {
+  lastKnownReportCount = n;
+  const text = n + ' ' + (n === 1 ? t('reportCount1') : t('reportCount'));
+  const rcEl = document.getElementById('reportCount');
+  if (rcEl) rcEl.textContent = text;
+  const headerEl = document.getElementById('headerReportCount');
+  if (headerEl) headerEl.textContent = text;
+}
+
 /* ═══════════════════════════════════════════════════
    WIND & GEOMETRY UTILITIES
 ═══════════════════════════════════════════════════ */
@@ -2752,97 +2759,6 @@ function smoothPathChaikin(points, iterations = 3) {
     current = nextArr;
   }
   return current;
-}
-
-// Edge bundling (Settings toggle, off by default): pulls control points of
-// different trails together whenever they're close AND running a similar
-// direction, over a handful of cooling cycles (decreasing step size each
-// cycle) -- the standard force-directed approach to the same "merge
-// similar-direction trajectories into shared visual highways, reduce line
-// crossings" goal as Hierarchical Edge Bundling. Endpoints are never moved,
-// so every trail still starts/ends exactly where its report/trail data says
-// it should; only the interior curve shifts.
-function computeEdgeBundling(trails, opts = {}) {
-  const SUBDIVISIONS = opts.subdivisions ?? 8;   // interior points per trail
-  const CYCLES = opts.cycles ?? 4;
-  const INITIAL_STEP = opts.stepSize ?? 0.4;     // fraction of the gap closed per cycle
-  const COMPAT_KM = opts.compatibilityKm ?? 2.5; // only bundle points closer than this
-
-  // Cap how many trails we bundle against each other — this is O(E^2), and
-  // a busy map with hundreds of reports would make it noticeably slow for
-  // a purely cosmetic effect. Falls back to un-bundled beyond that.
-  const MAX_TRAILS = 120;
-  if (trails.length > MAX_TRAILS) return trails;
-
-  const N = SUBDIVISIONS + 2; // + the two endpoints
-
-  // Resample a trail to N evenly-arc-length-spaced points, so every trail
-  // has directly comparable control points to compare/pull against.
-  function resample(points, n) {
-    if (points.length < 2) return Array.from({ length: n }, () => points[0].slice());
-    const cum = [0];
-    for (let i = 1; i < points.length; i++) {
-      cum.push(cum[i - 1] + getHaversineDistance(points[i - 1][0], points[i - 1][1], points[i][0], points[i][1]));
-    }
-    const total = cum[cum.length - 1];
-    if (total === 0) return Array.from({ length: n }, () => points[0].slice());
-
-    const out = [];
-    for (let k = 0; k < n; k++) {
-      const target = total * k / (n - 1);
-      let idx = 0;
-      while (idx < cum.length - 2 && cum[idx + 1] < target) idx++;
-      const segStart = cum[idx], segEnd = cum[idx + 1] ?? segStart;
-      const segLen = segEnd - segStart || 1e-9;
-      const f = (target - segStart) / segLen;
-      const p0 = points[idx], p1 = points[idx + 1] ?? p0;
-      out.push([p0[0] + (p1[0] - p0[0]) * f, p0[1] + (p1[1] - p0[1]) * f]);
-    }
-    return out;
-  }
-
-  const pts = trails.map(t => resample(t, N));
-
-  let step = INITIAL_STEP;
-  for (let cycle = 0; cycle < CYCLES; cycle++) {
-    const forces = pts.map(t => t.map(() => [0, 0]));
-
-    for (let i = 0; i < pts.length; i++) {
-      for (let j = i + 1; j < pts.length; j++) {
-        // Cheap pre-check on midpoints before doing the full per-point pass —
-        // trails whose midpoints are far apart won't have any point pairs
-        // within the compatibility radius either.
-        const midI = pts[i][Math.floor(N / 2)], midJ = pts[j][Math.floor(N / 2)];
-        if (getHaversineDistance(midI[0], midI[1], midJ[0], midJ[1]) > COMPAT_KM * 4) continue;
-
-        for (let k = 1; k < N - 1; k++) { // never move the endpoints
-          const a = pts[i][k], b = pts[j][k];
-          const d = getHaversineDistance(a[0], a[1], b[0], b[1]);
-          if (d > COMPAT_KM || d < 1e-6) continue;
-
-          const pull = (1 - d / COMPAT_KM); // 0 at the edge of range, 1 when coincident
-          const ux = (b[0] - a[0]) / d, uy = (b[1] - a[1]) / d;
-          forces[i][k][0] += ux * pull;
-          forces[i][k][1] += uy * pull;
-          forces[j][k][0] -= ux * pull;
-          forces[j][k][1] -= uy * pull;
-        }
-      }
-    }
-
-    // Degrees-of-latitude-sized step; forces above are unit vectors scaled
-    // by "pull" (0-1), so this keeps each cycle's shift small and bounded.
-    const degStep = step * 0.01;
-    for (let i = 0; i < pts.length; i++) {
-      for (let k = 1; k < N - 1; k++) {
-        pts[i][k][0] += forces[i][k][0] * degStep;
-        pts[i][k][1] += forces[i][k][1] * degStep;
-      }
-    }
-    step *= 0.55; // cool down each cycle, like classic force-directed bundling
-  }
-
-  return pts;
 }
 
 
@@ -3801,22 +3717,6 @@ async function generateAllBackgroundTrails(reports, tracerCoords = null) {
     trailsToRender.push({ report, trailResult, splineLatLngs });
   });
 
-  // Phase 2b: Edge Bundling (off by default, toggled in Settings). Curves
-  // each trail's *drawn* path toward nearby, similarly-oriented trails so
-  // parallel trajectories visually merge into shared "highways" instead of
-  // criss-crossing. Purely cosmetic — station-matching and click handling
-  // below still use each trail's real (un-bundled) coordinates, so bundling
-  // never affects the actual data, just how the lines look. Skipped for the
-  // tracer view, where the line needs to precisely reach the traced point.
-  if (edgeBundlingEnabled && !tracerCoords && trailsToRender.length > 1) {
-    try {
-      const bundled = computeEdgeBundling(trailsToRender.map(t => t.splineLatLngs));
-      bundled.forEach((coords, i) => { trailsToRender[i].splineLatLngs = coords; });
-    } catch (err) {
-      console.error('Edge bundling failed, falling back to un-bundled trails:', err);
-    }
-  }
-
   trailsToRender.forEach(({ report, trailResult, splineLatLngs }) => {
     const baseColor = categoryColor(report.category);
 
@@ -4190,8 +4090,7 @@ async function loadPinsByWindow() {
     activeReports.push(r);
   });
 
-  const rcEl = document.getElementById('reportCount');
-  if (rcEl) rcEl.textContent = n + ' ' + (n === 1 ? t('reportCount1') : t('reportCount'));
+  updateReportCountUI(n);
 
   evaluateActiveNearbyClusters();
   if (!traceMode) generateAllBackgroundTrails(activeReports);
@@ -4316,8 +4215,7 @@ async function filterPinsBySourceTrajectory(tracerCoords) {
   generateAllBackgroundTrails(activeReportsToDrawTrails, tracerCoords);
 
   const n = reportMarkers.length;
-  const rcEl = document.getElementById('reportCount');
-  if (rcEl) rcEl.textContent = n + ' ' + (n === 1 ? t('reportCount1') : t('reportCount'));
+  updateReportCountUI(n);
 }
 
 
@@ -4393,6 +4291,21 @@ async function reportBadAir(){
     console.warn('Weather fetch failed at report time, wind_speed will be backfilled later:', weatherErr);
   }
 
+  // Resolve a human-readable place name once, now, and store it on the row.
+  // Previously this only ever happened at CSV-export time, for every report
+  // in the export, every single time it was exported — a burst of dozens of
+  // Nominatim requests per download that regularly tripped their rate limit
+  // (see reverseGeocodeAll). Doing it once per report, right when it's
+  // created, means a real export only ever needs to look up whatever's left
+  // over from before this existed (see the backfill-and-persist step in
+  // downloadCSV).
+  let locationName = null;
+  try {
+    locationName = await reverseGeocodeLocation(coords.lat, coords.lon);
+  } catch (geocodeErr) {
+    console.warn('Reverse geocode failed at report time, will be backfilled on next CSV export:', geocodeErr);
+  }
+
   try {
     const { error } = await sb.from('air_reports').insert([{
       latitude:              parseFloat(coords.lat),
@@ -4407,6 +4320,7 @@ async function reportBadAir(){
       // once historical data is available.
       wind_speed:            finalSpeed,
       sea_level_pressure:    finalPressure || null,
+      location_name:         locationName || null,
       comment,
       category,
       intensity:             parseInt(intensity),
@@ -4513,7 +4427,23 @@ function triggerCsvDownload(csv, baseName, selectedDates) {
   document.body.removeChild(a);
 }
 
+// Guards against downloadCSV() being kicked off again (e.g. an impatient
+// second click) while a previous export is still resolving location names —
+// running two passes concurrently doubles the effective request rate against
+// Nominatim's shared rate limit, which is exactly what was tripping it.
+let csvExportInProgress = false;
+
 async function downloadCSV() {
+  if (csvExportInProgress) return;
+  csvExportInProgress = true;
+  try {
+    await downloadCSVInner();
+  } finally {
+    csvExportInProgress = false;
+  }
+}
+
+async function downloadCSVInner() {
   const bounds = map.getBounds();
   const filterStart = fp.selectedDates[0] ? fp.selectedDates[0].getTime() : 0;
   const filterEnd = fp.selectedDates[1] ? fp.selectedDates[1].getTime() : Infinity;
@@ -4527,9 +4457,34 @@ async function downloadCSV() {
 
   if(!visible.length){ alert(t('noReports')); return; }
 
-  // Resolve a human-readable "Location" for each report from its
-  // coordinates, in the same order as `visible`.
-  const reportLocations = await reverseGeocodeAll(visible.map(r => ({ lat: r.latitude, lon: r.longitude })));
+  // Use each report's already-stored location_name where we have it (set at
+  // submission time going forward -- see submitReport). Only reverse-geocode
+  // the ones that don't (older reports from before that existed), and
+  // persist the result back to the row so this exact report never needs
+  // Nominatim again. This is what turns "a burst of dozens of Nominatim
+  // requests on every single export" into a one-time backfill that shrinks
+  // toward zero as more reports already have it stored.
+  const reportLocations = new Array(visible.length);
+  const toBackfill = [];
+  visible.forEach((r, i) => {
+    if (r.location_name) {
+      reportLocations[i] = r.location_name;
+    } else {
+      toBackfill.push({ index: i, id: r.id, lat: r.latitude, lon: r.longitude });
+    }
+  });
+
+  if (toBackfill.length) {
+    const fetched = await reverseGeocodeAll(toBackfill.map(b => ({ lat: b.lat, lon: b.lon })));
+    await Promise.all(toBackfill.map(async (b, j) => {
+      const name = fetched[j] || '';
+      reportLocations[b.index] = name;
+      if (name) {
+        const { error } = await sb.from('air_reports').update({ location_name: name }).eq('id', b.id);
+        if (error) console.error('Failed to backfill location_name for report', b.id, error);
+      }
+    }));
+  }
 
   // Make sure we have a station list to measure distances from — reuse the
   // already-loaded cache when possible, otherwise fetch fresh.
@@ -4655,6 +4610,16 @@ async function downloadCSV() {
 // report CSV above — but entirely independent from the on-map filter
 // button, which only controls what's rendered, not what gets exported.
 async function downloadStationCSV() {
+  if (csvExportInProgress) return;
+  csvExportInProgress = true;
+  try {
+    await downloadStationCSVInner();
+  } finally {
+    csvExportInProgress = false;
+  }
+}
+
+async function downloadStationCSVInner() {
   const bounds = map.getBounds();
   const filterStart = fp.selectedDates[0] ? new Date(fp.selectedDates[0]) : null;
   if (filterStart) filterStart.setHours(0, 0, 0, 0);
@@ -4680,12 +4645,28 @@ async function downloadStationCSV() {
   const stationById = {};
   visibleStations.forEach(s => { stationById[s.id] = s; });
 
-  // Resolve a "Location" name once per station (readings share the same
-  // fixed station coordinates, so the cache in reverseGeocodeAll makes this
-  // effectively free for every reading beyond the first at that station).
+  // Same pattern as downloadCSV: use each station's already-stored
+  // location_name where we have it, only reverse-geocode (and persist) the
+  // ones missing it. Stations are fixed and few, so this converges to zero
+  // Nominatim calls after the first export.
   const stationLocationById = {};
-  const stationLocations = await reverseGeocodeAll(visibleStations.map(s => ({ lat: s.lat, lon: s.lon })));
-  visibleStations.forEach((s, i) => { stationLocationById[s.id] = stationLocations[i]; });
+  const stationsToBackfill = [];
+  visibleStations.forEach(s => {
+    if (s.location_name) stationLocationById[s.id] = s.location_name;
+    else stationsToBackfill.push(s);
+  });
+
+  if (stationsToBackfill.length) {
+    const fetched = await reverseGeocodeAll(stationsToBackfill.map(s => ({ lat: s.lat, lon: s.lon })));
+    await Promise.all(stationsToBackfill.map(async (s, j) => {
+      const name = fetched[j] || '';
+      stationLocationById[s.id] = name;
+      if (name) {
+        const { error } = await sb.from('air_quality_stations').update({ location_name: name }).eq('id', s.id);
+        if (error) console.error('Failed to backfill location_name for station', s.id, error);
+      }
+    }));
+  }
 
   let query = sb
     .from('air_quality_readings')
