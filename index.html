@@ -344,7 +344,7 @@ button{
 }
 @keyframes traceFlowDash {
   from { stroke-dashoffset: 0; }
-  to   { stroke-dashoffset: -22; }
+  to   { stroke-dashoffset: 22; }
 }
 .trace-pulse-spline path,
 .trace-pulse-spline {
@@ -1511,7 +1511,11 @@ function setThemeMode(mode) {
    SETTINGS MODAL
 ═══════════════════════════════════════════════════ */
 function showSettingsModal() {
-  document.getElementById('settingsModal').style.display = 'block';
+  // Must match the CSS's display:flex (see .fullscreen-modal-overlay) --
+  // setting 'block' here overrode that inline and broke the
+  // flex:1/min-height:0 scroll fix on .fullscreen-modal-body, which is
+  // exactly why the settings panel wasn't scrolling.
+  document.getElementById('settingsModal').style.display = 'flex';
   const splineToggle = document.getElementById('splineVisibilityToggle');
   if (splineToggle) splineToggle.checked = splinesVisible;
 }
@@ -2077,6 +2081,18 @@ map.on('zoomend',   () => document.getElementById('map').classList.remove('zoomi
 // updateConeVisibilityForClustering(), defined further down.
 map.on('zoomend', () => updateConeVisibilityForClustering());
 reportClusterGroup.on('animationend', () => updateConeVisibilityForClustering());
+map.on('zoomend', () => updateMarkerIconsForZoom());
+
+// Swaps every report marker between the small category-color dot (zoomed
+// out) and the full detailed pin icon (zoomed in) as the zoom crosses
+// REPORT_DOT_ZOOM_THRESHOLD. Cheap no-op re-render when nothing crossed
+// the threshold since setIcon() just replaces the divIcon HTML.
+function updateMarkerIconsForZoom() {
+  Object.values(markerByReportId).forEach(marker => {
+    if (!marker || !marker._reportRef) return;
+    marker.setIcon(pickReportIcon(marker._reportRef));
+  });
+}
 
 let userCoords    = null;
 let userMarker    = null;
@@ -2871,6 +2887,42 @@ function makeIcon(color, windDeg, catColor, category) {
     iconAnchor: [cx, cy], 
     popupAnchor: [0, -14] 
   });
+}
+
+// Zoom level below which report pins render as small plain dots (in the
+// report's category color) instead of the full detailed pin icon. Keeps
+// the map from turning into a wall of oversized pins when zoomed out,
+// while still marking every single report's location and letting its
+// cone stay visible (see updateConeVisibilityForClustering).
+const REPORT_DOT_ZOOM_THRESHOLD = 14;
+
+// Small flat dot used for a report's marker when zoomed out — just the
+// category color, no wind arrow/rotation/clean-air petals, since those
+// details aren't legible at that scale anyway.
+function makeDotIcon(catColor) {
+  const size = 14;
+  const cx = size / 2, cy = size / 2;
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="overflow:visible;">
+      <circle cx="${cx}" cy="${cy}" r="5" fill="${catColor}" stroke="#fff" stroke-width="1.5"/>
+    </svg>`;
+  return L.divIcon({
+    className: 'modern-marker-shadow report-pin-icon report-dot-icon',
+    html: svg,
+    iconSize: [size, size],
+    iconAnchor: [cx, cy],
+    popupAnchor: [0, -8]
+  });
+}
+
+// Picks the right icon for a report given the map's current zoom level.
+function pickReportIcon(report) {
+  const catCol = categoryColor(report.category);
+  if (map.getZoom() < REPORT_DOT_ZOOM_THRESHOLD) {
+    return makeDotIcon(catCol);
+  }
+  const color = ageColor(report.created_at);
+  return makeIcon(color, report.manual_wind_direction ?? report.wind_direction, catCol, report.category);
 }
 
 // Small diamond marker for government AQ stations — visually distinct
@@ -3814,26 +3866,17 @@ function clearMarkers(){
   markerByReportId = {};
 }
 
-// A report's cone is only meaningful next to its own visible pin — once
-// several reports get merged into a single cluster badge, their individual
-// cones just pile up into an unreadable tangle of overlapping colors (this
-// is what prompted the fix: a cluster of ~47 reports rendering ~47
-// overlapping cones with no way to tell which belonged to which pin, or
-// even which pin was which, since they'd all collapsed into one badge).
-// Hides each clustered report's cone; shows it again once that report's pin
-// is displayed individually (fully zoomed in, or spiderfied out of its
-// cluster).
+// Cones now always render, even when a report's pin has collapsed into a
+// cluster badge or shrunk to a small dot while zoomed out (previously this
+// hid a clustered report's cone entirely; now the dot-icon zoom behavior
+// in updateMarkerIconsForZoom() keeps the map from getting cluttered with
+// full-size pins instead, so the cones can stay visible). Kept as a no-op
+// pass-through (rather than deleting every call site) in case anything
+// still wants a single hook to re-assert cone visibility.
 function updateConeVisibilityForClustering() {
   Object.keys(markerByReportId).forEach(id => {
-    const marker = markerByReportId[id];
-    if (!marker) return;
-    let isClustered = false;
-    try {
-      const visibleParent = reportClusterGroup.getVisibleParent(marker);
-      isClustered = !!visibleParent && visibleParent !== marker;
-    } catch (e) { /* marker not yet added to the cluster group */ }
     document.querySelectorAll(`.cone-report-${id}`).forEach(el => {
-      el.style.display = isClustered ? 'none' : '';
+      el.style.display = '';
     });
   });
 }
@@ -4016,15 +4059,13 @@ function buildReportPopupHtml(report, stationSectionHtml) {
 }
 
 function renderPin(report, index = 0){
-  const color = ageColor(report.created_at);
-  const catCol = categoryColor(report.category);
-
   const zIndexPriority = 10000 - index;
   const marker=L.marker([report.latitude,report.longitude],{
-    icon: makeIcon(color, report.manual_wind_direction ?? report.wind_direction, catCol, report.category),
+    icon: pickReportIcon(report),
 
     zIndexOffset: zIndexPriority 
   });
+  marker._reportRef = report; // used by updateMarkerIconsForZoom() to redraw icons on zoom change
   reportClusterGroup.addLayer(marker);
   markerByReportId[report.id] = marker;
 
