@@ -3572,6 +3572,16 @@ async function startBacktrack(lat, lon, createdAt) {
     
     if(!steps.length) return;
 
+    // steps is currently oldest→newest (Open-Meteo returns it chronologically
+    // ascending). buildRawVectorTrail() applies steps[0]'s wind vector at the
+    // walk's starting point (lat,lon) and each subsequent step further along
+    // the trail — so without reversing, the report's own pin would be walked
+    // using the OLDEST hour in the window instead of the one closest to
+    // report time, and the freshest reading would land many km away at the
+    // far end of the trail. Mirrors the steps.reverse() already done in
+    // buildWindTrailForReport() for exactly this reason.
+    steps.reverse();
+
     const rawTrail = buildRawVectorTrail(lat, lon, steps);
     const smoothed = smoothPathChaikin(rawTrail, 3);
 
