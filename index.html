@@ -330,6 +330,19 @@ button{
   animation: marchDots 0.6s linear infinite;
 }
 
+/* Zoomed-out report dots: a ring expands outward from the dot and fades,
+   looping continuously, so individual reports stay noticeable even at
+   small sizes / low zoom. Animates only the ring's own r/opacity -- never
+   the wrapping marker div's transform, which Leaflet uses for positioning. */
+@keyframes reportDotPulse {
+  0%   { r: 5; opacity: 0.6; }
+  100% { r: 12; opacity: 0; }
+}
+.report-dot-pulse-ring {
+  animation: reportDotPulse 1.8s ease-out infinite;
+  transform-origin: center;
+}
+
 /* Trace Possible Source: a breathing ripple on the source point, and a
    flowing-dash animation along each matched report's trail -- together
    giving the impression of something spreading outward from the source to
@@ -2044,15 +2057,15 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
   attribution:'© OpenStreetMap'
 }).addTo(map);
 
-// Report pins cluster together at lower zoom levels instead of piling up
-// into an unreadable mess, and "spiderfy" (fan out into a ring so each one
-// is individually clickable) when you tap a cluster that's already at the
-// closest zoom Leaflet will cluster at. During the zoom gesture itself the
-// pins/clusters are hidden (see zoomstart/zoomend below) so nothing jumps
-// around mid-animation -- they reappear, resolved into their new
-// clustered/spiderfied layout, once the zoom settles.
+// Report pins used to cluster together at lower zoom levels into a count
+// badge ("47", "30", etc). That's now switched off in favor of always
+// showing every report individually -- each one shrinks to a small
+// animated category-color dot (see makeDotIcon/REPORT_DOT_ZOOM_THRESHOLD)
+// instead of merging into a badge, so cones and dots both stay visible
+// across the whole map no matter how far you zoom out.
 const reportClusterGroup = L.markerClusterGroup({
   maxClusterRadius: 60,
+  disableClusteringAtZoom: 0, // 0 = never cluster, at any zoom level
   spiderfyOnMaxZoom: true,
   showCoverageOnHover: false,
   zoomToBoundsOnClick: true,
@@ -2898,12 +2911,16 @@ const REPORT_DOT_ZOOM_THRESHOLD = 14;
 
 // Small flat dot used for a report's marker when zoomed out — just the
 // category color, no wind arrow/rotation/clean-air petals, since those
-// details aren't legible at that scale anyway.
+// details aren't legible at that scale anyway. A pulsing ring behind the
+// dot (pure CSS, animates the ring's own radius/opacity -- never touches
+// the wrapping div's transform, so it can't fight Leaflet's positioning)
+// keeps each report noticeable even when the map is full of tiny dots.
 function makeDotIcon(catColor) {
   const size = 14;
   const cx = size / 2, cy = size / 2;
   const svg = `
     <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="overflow:visible;">
+      <circle class="report-dot-pulse-ring" cx="${cx}" cy="${cy}" r="5" fill="none" stroke="${catColor}" stroke-width="2"/>
       <circle cx="${cx}" cy="${cy}" r="5" fill="${catColor}" stroke="#fff" stroke-width="1.5"/>
     </svg>`;
   return L.divIcon({
