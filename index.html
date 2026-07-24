@@ -330,19 +330,6 @@ button{
   animation: marchDots 0.6s linear infinite;
 }
 
-/* Zoomed-out report dots: a ring expands outward from the dot and fades,
-   looping continuously, so individual reports stay noticeable even at
-   small sizes / low zoom. Animates only the ring's own r/opacity -- never
-   the wrapping marker div's transform, which Leaflet uses for positioning. */
-@keyframes reportDotPulse {
-  0%   { r: 5; opacity: 0.6; }
-  100% { r: 12; opacity: 0; }
-}
-.report-dot-pulse-ring {
-  animation: reportDotPulse 1.8s ease-out infinite;
-  transform-origin: center;
-}
-
 /* Trace Possible Source: a breathing ripple on the source point, and a
    flowing-dash animation along each matched report's trail -- together
    giving the impression of something spreading outward from the source to
@@ -541,6 +528,24 @@ span.flatpickr-weekday {
 #traceSourceBtn{ position:fixed; bottom:calc(var(--legend-bar-h) + 94px); right:12px; }
 #pinMapBtn{ position:fixed; bottom:calc(var(--legend-bar-h) + 148px); right:12px; }
 #mapFilterBtn{ position:fixed; bottom:calc(var(--legend-bar-h) + 202px); right:12px; }
+#sourceHeatBtn{ position:fixed; bottom:calc(var(--legend-bar-h) + 256px); right:12px; }
+.source-heat-btn{
+  background:var(--floating-bg);
+  border:1px solid var(--floating-border);
+  border-radius:50%;
+  width:44px; height:44px;
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer; font-size:22px;
+  box-shadow:0 2px 8px var(--floating-shadow);
+  transition:background .15s ease, transform .12s ease, box-shadow .15s ease;
+  user-select:none;
+  -webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;
+}
+.source-heat-btn:active{ transform:scale(.9); }
+.source-heat-btn.active{ background:#f5a623; border-color:#f5a623; }
+.source-heat-btn svg{ stroke:var(--text-secondary); transition:stroke .15s ease; }
+.source-heat-btn.active svg{ stroke:#fff; }
 .map-filter-btn{
   background:var(--floating-bg);
   border:1px solid var(--floating-border);
@@ -928,6 +933,12 @@ span.flatpickr-weekday {
   <div id="traceSourceBtn" class="trace-source-btn" style="display:none" title="Trace Possible Source" onclick="toggleTraceMode()">
     <img class="icon-img" src="icons/search.png" alt="Trace">
   </div>
+  <div id="sourceHeatBtn" class="source-heat-btn" style="display:none" title="Show probable source heatmap" onclick="toggleSourceHeat()">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 2c-1.5 3-4 5.5-4 9a4 4 0 0 0 8 0c0-1-.3-1.8-.8-2.6C14.8 9.6 14 11 12 11c1-2 .5-4.5-1-6.5C11.3 6 12 4 12 2z"/>
+      <path d="M8.5 13.5A3.5 3.5 0 0 0 12 20a3.5 3.5 0 0 0 3.5-6.5"/>
+    </svg>
+  </div>
 </div>
 <input type="text" id="mapDateRangePicker" style="display:none">
 
@@ -1054,6 +1065,7 @@ span.flatpickr-weekday {
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 <!-- Flatpickr Calendar Engine -->
 <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
@@ -2394,6 +2406,17 @@ const TraceControl = L.Control.extend({
 new TraceControl().addTo(map);
 document.getElementById('traceSourceBtn').style.display = 'flex';
 
+const SourceHeatControl = L.Control.extend({
+  options:{ position:'bottomleft' },
+  onAdd(){
+    const btn = document.getElementById('sourceHeatBtn');
+    L.DomEvent.disableClickPropagation(btn);
+    return btn;
+  }
+});
+new SourceHeatControl().addTo(map);
+document.getElementById('sourceHeatBtn').style.display = 'flex';
+
 function togglePinMode() {
   pinMode = !pinMode;
   
@@ -2886,7 +2909,7 @@ function makeIcon(color, windDeg, catColor, category) {
   const svg = `
     <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="overflow: visible;">
       ${petals}
-      <circle cx="${cx}" cy="${cy}" r="${circleR}" fill="${color}" stroke="${accent}" stroke-width="2"/>
+      <circle cx="${cx}" cy="${cy}" r="${circleR}" fill="${color}" stroke="#fff" stroke-width="2"/>
       <g transform="rotate(${rotation + 180} ${cx} ${cy})">
         <line x1="${cx}" y1="${cy - 8}" x2="${cx}" y2="${cy}" stroke="${accent}" stroke-width="3" stroke-linecap="round"/>
         <polygon points="${cx},${cy - 11} ${cx - 3},${cy - 6} ${cx + 3},${cy - 6}" fill="${accent}"/>
@@ -2911,16 +2934,12 @@ const REPORT_DOT_ZOOM_THRESHOLD = 14;
 
 // Small flat dot used for a report's marker when zoomed out — just the
 // category color, no wind arrow/rotation/clean-air petals, since those
-// details aren't legible at that scale anyway. A pulsing ring behind the
-// dot (pure CSS, animates the ring's own radius/opacity -- never touches
-// the wrapping div's transform, so it can't fight Leaflet's positioning)
-// keeps each report noticeable even when the map is full of tiny dots.
+// details aren't legible at that scale anyway.
 function makeDotIcon(catColor) {
   const size = 14;
   const cx = size / 2, cy = size / 2;
   const svg = `
     <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="overflow:visible;">
-      <circle class="report-dot-pulse-ring" cx="${cx}" cy="${cy}" r="5" fill="none" stroke="${catColor}" stroke-width="2"/>
       <circle cx="${cx}" cy="${cy}" r="5" fill="${catColor}" stroke="#fff" stroke-width="1.5"/>
     </svg>`;
   return L.divIcon({
@@ -3907,6 +3926,82 @@ function updateConeVisibilityForClustering() {
     });
   });
 }
+/* ═══════════════════════════════════════════════════
+   PROBABLE SOURCE HEATMAP
+   Toggled via the new floating button. Rather than reading one report's
+   cone at a time, this samples weighted points along every active report's
+   own upwind bearing (same direction each cone already points) and feeds
+   them all into one heat layer -- so instead of eyeballing where several
+   separate cones happen to overlap, the areas several reports' upwind
+   paths actually converge on light up as a single hot zone: a rough
+   "here's most likely where it's coming from" read across the whole map,
+   even when zoomed out past where individual cones/pins are visible.
+═══════════════════════════════════════════════════ */
+let sourceHeatVisible = (function () {
+  try { return localStorage.getItem('ttt_source_heat_visible') === 'true'; } catch (e) { return false; }
+})();
+let sourceHeatLayer = null;
+
+const SOURCE_HEAT_MAX_DIST_KM = 8;   // how far upwind each report's contribution reaches
+const SOURCE_HEAT_STEP_KM     = 0.4; // sampling resolution along that upwind path
+
+// Walks upwind from each report (same bearing its cone already points),
+// sampling weighted points that fade out with distance -- points close to
+// the report are a more certain read on where its air came from than
+// points far upwind, so they carry more weight in the heat layer.
+function computeSourceHeatPoints(reports) {
+  const points = [];
+  reports.forEach(report => {
+    const lat = parseFloat(report.latitude);
+    const lon = parseFloat(report.longitude);
+    const windDeg = parseFloat(report.manual_wind_direction ?? report.wind_direction);
+    if (isNaN(lat) || isNaN(lon) || isNaN(windDeg)) return;
+
+    for (let d = 0; d <= SOURCE_HEAT_MAX_DIST_KM; d += SOURCE_HEAT_STEP_KM) {
+      const weight = 1 - d / SOURCE_HEAT_MAX_DIST_KM;
+      if (weight <= 0) continue;
+      const p = moveUpwind(lat, lon, windDeg, d);
+      points.push([p.lat, p.lon, weight]);
+    }
+  });
+  return points;
+}
+
+// (Re)builds the heat layer from the given active reports. Safe to call
+// even when the heatmap is currently hidden -- it just won't be added to
+// the map until toggleSourceHeat() turns it on.
+function renderSourceHeatLayer(reports) {
+  const points = computeSourceHeatPoints(reports || globalActiveData);
+  if (sourceHeatLayer) {
+    sourceHeatLayer.setLatLngs(points);
+  } else {
+    sourceHeatLayer = L.heatLayer(points, {
+      radius: 28,
+      blur: 22,
+      maxZoom: 17,
+      minOpacity: 0.25,
+      gradient: { 0.2: '#2a682a', 0.45: '#d4c600', 0.7: '#f5a623', 1.0: '#c41e27' }
+    });
+  }
+  if (sourceHeatVisible && !map.hasLayer(sourceHeatLayer)) {
+    sourceHeatLayer.addTo(map);
+  }
+}
+
+function toggleSourceHeat() {
+  sourceHeatVisible = !sourceHeatVisible;
+  try { localStorage.setItem('ttt_source_heat_visible', String(sourceHeatVisible)); } catch (e) {}
+
+  const btn = document.getElementById('sourceHeatBtn');
+  if (btn) btn.classList.toggle('active', sourceHeatVisible);
+
+  if (sourceHeatVisible) {
+    renderSourceHeatLayer(globalActiveData);
+  } else if (sourceHeatLayer && map.hasLayer(sourceHeatLayer)) {
+    map.removeLayer(sourceHeatLayer);
+  }
+}
+
 function translateCategory(category) {
   const srToEn = {
     "Dim": "Smoke",
@@ -4177,6 +4272,7 @@ async function loadPinsByWindow() {
 
   evaluateActiveNearbyClusters();
   if (!traceMode) generateAllBackgroundTrails(activeReports);
+  if (sourceHeatVisible) renderSourceHeatLayer(activeReports);
 }
 
 /* ═══════════════════════════════════════════════════
@@ -4297,6 +4393,7 @@ async function filterPinsBySourceTrajectory(tracerCoords) {
   });
 
   generateAllBackgroundTrails(activeReportsToDrawTrails, tracerCoords);
+  if (sourceHeatVisible) renderSourceHeatLayer(activeReportsToDrawTrails);
 
   const n = reportMarkers.length;
   updateReportCountUI(n, timeFilteredData.length);
@@ -4797,6 +4894,11 @@ async function downloadStationCSVInner() {
    ORCHESTRATION ARCHITECTURE
 ═══════════════════════════════════════════════════ */
 initTheme();
+
+// Reflect the persisted source-heatmap toggle on the button; the actual
+// layer gets built the first time loadPinsByWindow() runs (it checks
+// sourceHeatVisible itself once reports are loaded).
+document.getElementById('sourceHeatBtn')?.classList.toggle('active', sourceHeatVisible);
 
 try {
   const savedLangMode = localStorage.getItem('ttt_lang_mode');
