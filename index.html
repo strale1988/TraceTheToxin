@@ -329,6 +329,27 @@ button{
 .bg-trail-animated {
   animation: marchDots 0.6s linear infinite;
 }
+
+/* Trace Possible Source: a breathing ripple on the source point, and a
+   flowing-dash animation along each matched report's trail -- together
+   giving the impression of something spreading outward from the source to
+   the reports (and a little further, per the trail's own buffer past the
+   traced point). */
+@keyframes tracePulseBreathe {
+  0%, 100% { opacity: 0.12; }
+  50%      { opacity: 0.4; }
+}
+.trace-pulse-circle path {
+  animation: tracePulseBreathe 1.6s ease-in-out infinite;
+}
+@keyframes traceFlowDash {
+  from { stroke-dashoffset: 0; }
+  to   { stroke-dashoffset: -22; }
+}
+.trace-pulse-spline path,
+.trace-pulse-spline {
+  animation: traceFlowDash 0.9s linear infinite;
+}
   
 .generic-modal-overlay{
   position:fixed; inset:0;
@@ -730,12 +751,13 @@ span.flatpickr-weekday {
      100svh matches what body{} already uses for the same reason. */
   height:100svh;
   z-index:9999; background:var(--bg-app);
-  overflow:hidden; /* .fullscreen-modal-body below handles its own scrolling */
+  display:flex; flex-direction:column; /* header keeps its natural height; body gets the rest */
 }
 .fullscreen-modal-header{
   display:flex; align-items:center; justify-content:space-between; gap:10px;
   padding:calc(14px + env(safe-area-inset-top,0px)) 16px 14px 16px;
   border-bottom:1px solid var(--border-color);
+  flex-shrink:0;
 }
 .fullscreen-modal-header h2{ font-size:var(--fs-16); font-weight:var(--fw-bold); margin:0; flex:1; min-width:0; }
 .fullscreen-modal-close{
@@ -747,14 +769,18 @@ span.flatpickr-weekday {
 }
 .fullscreen-modal-close:active{ background:var(--border-color-strong); transform:scale(.9); }
 .fullscreen-modal-close .icon-img{ width:18px; height:18px; filter:var(--icon-tint-filter); }
-/* Positioned below the header (offset via --modal-header-h, live-measured —
-   see syncModalHeaderHeight()) rather than flex:1, so its scrollable height
-   is never at the mercy of flexbox's default min-height:auto refusing to
-   shrink — a known cross-browser mobile Chrome/Safari gotcha that silently
-   breaks overflow-y:auto and was the actual cause of "can't scroll to the
-   bottom" here. Absolute positioning has no such default-min-size rule. */
 .fullscreen-modal-body{
-  position:absolute; top:var(--modal-header-h, 60px); left:0; right:0; bottom:0;
+  flex:1 1 auto;
+  /* THE fix: a flex item's default min-height is auto, meaning it refuses
+     to shrink smaller than its content -- so overflow-y:auto never actually
+     kicks in and the last section (filter + CSV buttons) just extends past
+     the visible area with no way to reach it. This is the standard, JS-free
+     fix for that exact bug; the previous approach worked around it with
+     absolute positioning + a JS-measured header-height offset instead,
+     which depended on that measurement running (and being correct) before
+     every single open/resize -- a real race-condition surface, and very
+     likely why this kept coming back intermittently. */
+  min-height:0;
   overflow-y:auto; -webkit-overflow-scrolling:touch; touch-action:pan-y; overscroll-behavior:contain;
   padding:16px 16px calc(24px + env(safe-area-inset-bottom,0px));
   display:flex; flex-direction:column; gap:16px;
@@ -763,7 +789,7 @@ span.flatpickr-weekday {
 .detail-section-title{ font-size:var(--fs-10); font-weight:var(--fw-bold); letter-spacing:.4px; text-transform:uppercase; color:var(--text-muted); margin-bottom:10px; }
 .detail-export-hint{ font-size:var(--fs-12); color:var(--text-secondary); margin:8px 0 0; line-height:1.4; }
 .icon-img{ width:20px; height:20px; object-fit:contain; vertical-align:middle; }
-.icon-img-inline{ width:16px; height:16px; margin:0 4px -3px 0; }
+.icon-img-inline{ width:16px; height:16px; margin:0 4px -3px 0; filter:var(--icon-tint-filter); }
 
 .settings-btn{
   background:var(--bg-surface-alt); color:var(--text-primary); border:none; border-radius:var(--radius-xl);
@@ -1107,10 +1133,10 @@ function closeReportWizard() {
     pinMode = false;
     const pinBtn = document.getElementById('pinMapBtn');
     if (pinBtn) pinBtn.classList.remove('active');
-    // togglePinMode() reloads pins when leaving pin mode -- since we're
-    // flipping the flag directly here instead of going through it, do the
-    // same, otherwise the markers pin-mode swept off the map on entry never
-    // come back until some unrelated map interaction happens to reload them.
+    // togglePinMode() reloads pins and restores the GPS marker when leaving
+    // pin mode -- since we're flipping the flag directly here instead of
+    // going through it, do the same.
+    if (userMarker && !map.hasLayer(userMarker)) userMarker.addTo(map);
     loadPinsByWindow();
   }
   if (manualMarker) { map.removeLayer(manualMarker); manualMarker = null; }
@@ -1484,23 +1510,8 @@ function setThemeMode(mode) {
 /* ═══════════════════════════════════════════════════
    SETTINGS MODAL
 ═══════════════════════════════════════════════════ */
-// Header height varies slightly by language/text length, so it's measured
-// live rather than hardcoded — keeps --modal-header-h (used by
-// .fullscreen-modal-body's top offset) exact instead of guessed.
-function syncModalHeaderHeight() {
-  const header = document.querySelector('#settingsModal .fullscreen-modal-header');
-  if (!header) return;
-  document.documentElement.style.setProperty('--modal-header-h', header.offsetHeight + 'px');
-}
-window.addEventListener('resize', syncModalHeaderHeight);
-if (window.ResizeObserver) {
-  const settingsHeaderEl = document.querySelector('#settingsModal .fullscreen-modal-header');
-  if (settingsHeaderEl) new ResizeObserver(syncModalHeaderHeight).observe(settingsHeaderEl);
-}
-
 function showSettingsModal() {
   document.getElementById('settingsModal').style.display = 'block';
-  syncModalHeaderHeight();
   const splineToggle = document.getElementById('splineVisibilityToggle');
   if (splineToggle) splineToggle.checked = splinesVisible;
 }
@@ -1520,6 +1531,26 @@ let tracerVisualCircles = [];
 let globalActiveData = [];
 
 let fp = null; 
+
+// Persists a flatpickr range selection to localStorage and restores it on
+// next load, so the date filter a user picked survives a page reload
+// instead of always resetting to the last-3-days default.
+function saveDateRange(storageKey, selectedDates) {
+  if (!selectedDates || selectedDates.length < 2) return;
+  try {
+    localStorage.setItem(storageKey, JSON.stringify([selectedDates[0].toISOString(), selectedDates[1].toISOString()]));
+  } catch (e) {}
+}
+function loadDateRange(storageKey) {
+  try {
+    const raw = localStorage.getItem(storageKey);
+    if (!raw) return null;
+    const [s, e] = JSON.parse(raw);
+    const dates = [new Date(s), new Date(e)];
+    if (isNaN(dates[0]) || isNaN(dates[1])) return null;
+    return dates;
+  } catch (e) { return null; }
+}
 // Independent flatpickr instance behind the on-map filter button — controls
 // only which report pins are rendered on the map. Kept separate from fp,
 // which now only scopes what the Settings CSV export buttons download.
@@ -1649,6 +1680,7 @@ const T = {
   subtitle:     { en:'Community Air Reporting Network',  sr:'Mreža za prijavu kvaliteta vazduha' },
   reportCount:  { en:'Reports',                          sr:'Prijava' },
   reportCount1: { en:'Report',                           sr:'Prijava' },
+  ofCount:      { en:'of',                                sr:'od' },
   reportBtn:    { en:'REPORT BAD AIR',                   sr:'PRIJAVI LOŠ VAZDUH' },
   reportBtnCleanAir: { en:'REPORT CLEAN AIR',             sr:'PRIJAVI ČIST VAZDUH' },
   csvLabel:     { en:'CSV',                              sr:'CSV' },
@@ -1680,8 +1712,6 @@ const T = {
   stationNoneNearby:   { en: 'No stations nearby',         sr: 'Nema stanica u blizini' },
   seeAllStations:      { en: 'See all stations',           sr: 'Prikaži sve stanice' },
   seeStationDetails:   { en: 'See station details',        sr: 'Prikaži detalje stanice' },
-  avgUpwindData:       { en: 'Average from upwind stations', sr: 'Prosek sa uzvodnih stanica' },
-  noUpwindStations:    { en: 'No stations upwind of this point', sr: 'Nema stanica uzvodno od ove tačke' },
   avgAtReportTime:     { en: 'Average at time & place reported', sr: 'Prosek u vreme i na mestu prijave' },
   pullToRefresh:       { en: 'Pull to refresh', sr: 'Povucite za osvežavanje' },
   releaseToRefresh:    { en: 'Release to refresh', sr: 'Otpustite za osvežavanje' },
@@ -1845,7 +1875,7 @@ function applyLang(){
   if (el('splineVisibilityLabel')) el('splineVisibilityLabel').textContent = t('splineVisibilityLabel');
   if (el('splineVisibilityHint'))  el('splineVisibilityHint').textContent = t('splineVisibilityHint');
   if (el('pullRefreshLabel'))      el('pullRefreshLabel').textContent = t('pullToRefresh');
-  if (lastKnownReportCount !== null) updateReportCountUI(lastKnownReportCount);
+  if (lastKnownReportCount !== null) updateReportCountUI(lastKnownReportCount, lastKnownReportTotal);
 
   // Only re-render the active wizard step if the wizard is currently open,
   // since its inputs (category tiles, comment field, etc.) are rebuilt
@@ -1898,7 +1928,7 @@ function buildHelpModalContent() {
 // Settings' date-range filter — scopes ONLY what the two CSV export buttons
 // download. Independent from the map filter below; doesn't touch rendering.
 function initCalendarFilter(optionalDefaultDates) {
-  let initialDates = optionalDefaultDates;
+  let initialDates = optionalDefaultDates || loadDateRange('ttt_csv_filter_dates');
   
   if (!initialDates || initialDates.length === 0) {
     const defaultStart = new Date();
@@ -1912,7 +1942,10 @@ function initCalendarFilter(optionalDefaultDates) {
     theme: "dark",
     dateFormat: "d.m.Y", 
     locale: lang === 'sr' ? flatpickr.l10ns.sr : 'default',
-    defaultDate: initialDates
+    defaultDate: initialDates,
+    onClose: function(selectedDates) {
+      saveDateRange('ttt_csv_filter_dates', selectedDates);
+    }
   });
 }
 
@@ -1920,7 +1953,7 @@ function initCalendarFilter(optionalDefaultDates) {
 // icon). Scopes ONLY which report pins are rendered on the map — entirely
 // independent from the Settings CSV filter above.
 function initMapCalendarFilter(optionalDefaultDates) {
-  let initialDates = optionalDefaultDates;
+  let initialDates = optionalDefaultDates || loadDateRange('ttt_map_filter_dates');
 
   if (!initialDates || initialDates.length === 0) {
     const defaultStart = new Date();
@@ -1938,6 +1971,7 @@ function initMapCalendarFilter(optionalDefaultDates) {
     positionElement: document.getElementById('mapFilterBtn'),
     onClose: async function(selectedDates) {
       if (selectedDates.length === 2) {
+        saveDateRange('ttt_map_filter_dates', selectedDates);
         await loadPinsByWindow();
 
         if (traceMode && tracerMarker) {
@@ -2037,9 +2071,20 @@ map.addLayer(reportClusterGroup);
 map.on('zoomstart', () => document.getElementById('map').classList.add('zooming-hide-reports'));
 map.on('zoomend',   () => document.getElementById('map').classList.remove('zooming-hide-reports'));
 
+// Whenever clustering changes (zoom, or a cluster forming/spiderfying),
+// re-check which reports are shown individually vs merged into a cluster
+// badge, and hide/show their cones to match — see
+// updateConeVisibilityForClustering(), defined further down.
+map.on('zoomend', () => updateConeVisibilityForClustering());
+reportClusterGroup.on('animationend', () => updateConeVisibilityForClustering());
+
 let userCoords    = null;
 let userMarker    = null;
 let reportMarkers = [];
+// report.id -> its Leaflet marker instance, used to ask the cluster group
+// whether that report's pin is currently shown individually or absorbed
+// into a cluster badge (see updateConeVisibilityForClustering).
+let markerByReportId = {};
 let pinMode       = false;
 let manualCoords  = null;
 let manualMarker  = null;
@@ -2143,6 +2188,7 @@ function enableManualPinMode() {
   if (btn) btn.classList.add('active');
   clearMarkers();
   clearBackgroundTrails();
+  if (userMarker && map.hasLayer(userMarker)) map.removeLayer(userMarker);
   checkFormReady();
 }
 
@@ -2224,13 +2270,18 @@ function startWatching() {
 
       // Create the blue dot the first time we get a fix, then just move
       // it on every subsequent fix so the dot tracks the device instead
-      // of freezing at the very first location the app ever saw.
+      // of freezing at the very first location the app ever saw. Not
+      // added to the map yet if pin mode is currently active -- it stays
+      // hidden (see togglePinMode) until pin mode is turned back off.
       if (!userMarker) {
         userMarker = L.marker([userCoords.lat, userCoords.lon], {
           icon: makeUserLocationIcon(currentWindDegForMarker),
           pane: 'userLocationPane'
-        }).addTo(map);
-        map.setView([userCoords.lat, userCoords.lon], 13);
+        });
+        if (!pinMode) {
+          userMarker.addTo(map);
+          map.setView([userCoords.lat, userCoords.lon], 13);
+        }
       } else {
         userMarker.setLatLng([userCoords.lat, userCoords.lon]);
       }
@@ -2328,9 +2379,16 @@ function togglePinMode() {
     // Sweep the pins off the map for a clean workspace while placing one
     clearMarkers();
     clearBackgroundTrails();
+    // Hide the GPS dot too -- it now looks identical to the manual pin
+    // (same icon), so showing both at once is redundant/confusing. Its
+    // position keeps updating in the background; it's just not drawn
+    // until pin mode is turned back off.
+    if (userMarker && map.hasLayer(userMarker)) map.removeLayer(userMarker);
   } else {
     if(manualMarker){ map.removeLayer(manualMarker); manualMarker = null; }
     manualCoords = null; 
+    // Restore the GPS dot now that manual placement is done.
+    if (userMarker && !map.hasLayer(userMarker)) userMarker.addTo(map);
     loadPinsByWindow();
   }
   checkFormReady();
@@ -2607,10 +2665,18 @@ function degToCardinal(deg){
 // same number (whatever loadPinsByWindow()/filterPinsBySourceTrajectory()
 // actually rendered after applying the map bounds + date filter), so this
 // keeps them from drifting out of sync with each other.
+// `total`, when given and different from `n`, switches the text to
+// "N of TOTAL Reports" — used by Trace Possible Source to show how many of
+// the currently-filtered reports were matched to the traced source.
 let lastKnownReportCount = null;
-function updateReportCountUI(n) {
+let lastKnownReportTotal = null;
+function updateReportCountUI(n, total = null) {
   lastKnownReportCount = n;
-  const text = n + ' ' + (n === 1 ? t('reportCount1') : t('reportCount'));
+  lastKnownReportTotal = (total != null && total !== n) ? total : null;
+  const noun = n === 1 ? t('reportCount1') : t('reportCount');
+  const text = lastKnownReportTotal != null
+    ? `${n} ${t('ofCount')} ${lastKnownReportTotal} ${noun}`
+    : `${n} ${noun}`;
   const rcEl = document.getElementById('reportCount');
   if (rcEl) rcEl.textContent = text;
   const headerEl = document.getElementById('headerReportCount');
@@ -3003,12 +3069,6 @@ async function getStationsAlongWindTrailForReport(report, maxDistanceKm = STATIO
 let btLayers    = []; 
 let bgTrailLayers = [];
 const splineByReport = {}; 
-// Per-report caches populated in generateAllBackgroundTrails, used by the
-// spline click handler (handleSplineClick) to figure out "how far along
-// this report's wind trail did I click" without redoing any network calls —
-// station readings are only fetched lazily, on the actual click.
-const rawTrailByReport = {};
-const stationMatchesByReport = {};
 let btAnimFrame = null;
 
 function clearBacktrack(){
@@ -3438,50 +3498,6 @@ function findAllStationsAlongWindTrail(rawTrail, stations, maxDistanceKm = STATI
 // the path toward the report, since the wind hasn't gotten there yet from
 // this point's perspective. "Already passed" = matched further back along
 // the path (larger pathDistanceKm) than the click itself.
-async function handleSplineClick(reportId, latlng) {
-  const rawTrail = rawTrailByReport[reportId];
-  const matches = stationMatchesByReport[reportId];
-  if (!rawTrail || !matches) return;
-
-  const hit = distanceToTrailPolyline(latlng.lat, latlng.lng, rawTrail);
-  if (!hit) return;
-
-  const upwindMatches = matches.filter(m => m.pathDistanceKm > hit.pathDistanceKm);
-
-  if (!upwindMatches.length) {
-    L.popup({ className: 'spline-point-popup', maxWidth: 220 })
-      .setLatLng(latlng)
-      .setContent(`<div style="font-size:11px;color:#999;padding:2px;">${t('noUpwindStations')}</div>`)
-      .openOn(map);
-    return;
-  }
-
-  const loadingPopup = L.popup({ className: 'spline-point-popup', maxWidth: 220 })
-    .setLatLng(latlng)
-    .setContent(`<div style="font-size:11px;color:#999;padding:2px;">${t('stationDataLoading')}</div>`)
-    .openOn(map);
-
-  const readings = await Promise.all(
-    upwindMatches.map(m => getStationReadingNear(m.station.id, m.atTime))
-  );
-
-  // Popup may have been closed (or a different one opened) while the
-  // readings were in flight — don't stomp on whatever's showing now.
-  if (!map.hasLayer(loadingPopup)) return;
-
-  const avgReading = averagePollutantReadings(readings);
-  const stationNames = upwindMatches.map(m => m.station.name).join(', ');
-
-  loadingPopup.setContent(`
-    <div style="font-size:11px;display:flex;flex-direction:column;gap:3px;min-width:150px;">
-      <div style="font-weight:700;font-size:10px;color:#333;text-transform:uppercase;">${t('avgUpwindData')}</div>
-      <div style="font-size:9px;color:#888;line-height:1.3;">${stationNames}</div>
-      <div style="height:1px;background:#eee;margin:2px 0;"></div>
-      ${pollutantSummaryRowHtml(readings.some(r => r) ? avgReading : null)}
-    </div>
-  `);
-}
-
 async function startBacktrack(lat, lon, createdAt) {
   clearBacktrack();
   const HOURS = TRAIL_WINDOW_HOURS;
@@ -3585,7 +3601,7 @@ async function generateAllBackgroundTrails(reports, tracerCoords = null) {
         color: baseColor,
         weight: 1,
         opacity: 0.5,
-        className: 'bg-trail-teal',
+        className: `bg-trail-teal cone-report-${report.id}`,
         interactive: false,
         pane: 'conePane'
       }).addTo(map);
@@ -3594,7 +3610,7 @@ async function generateAllBackgroundTrails(reports, tracerCoords = null) {
         color: baseColor,
         weight: 1,
         opacity: 0.5,
-        className: 'bg-trail-teal',
+        className: `bg-trail-teal cone-report-${report.id}`,
         interactive: false,
         pane: 'conePane'
       }).addTo(map);
@@ -3628,7 +3644,7 @@ async function generateAllBackgroundTrails(reports, tracerCoords = null) {
         weight: 1,
         fillOpacity: segmentFillOpacity,
         opacity: segmentStrokeOpacity,
-        className: 'bg-trail-teal',
+        className: `bg-trail-teal cone-report-${report.id}`,
         interactive: false,
         pane: 'conePane'
       }).addTo(map);
@@ -3727,50 +3743,23 @@ async function generateAllBackgroundTrails(reports, tracerCoords = null) {
       dashArray: '4, 7',
       lineCap: 'round',
       lineJoin: 'round',
-      className: `spline-report-${report.id}`,
+      className: `spline-report-${report.id}${tracerCoords ? ' trace-pulse-spline' : ''}`,
       interactive: false,
       pane: 'splinePane'
     }).addTo(map);
     bgTrailLayers.push(dottedSpline);
     splineByReport[report.id] = dottedSpline;
-
-    // Invisible, much wider line drawn along the exact same points, purely
-    // to make the spline easier to tap — the visible 2px dashed line above
-    // is a thin target on mobile, so clicks are actually handled by this
-    // one instead (kept non-interactive on the visible line itself, so a
-    // tap can't land on the wrong layer).
-    const splineHitArea = L.polyline(splineLatLngs, {
-      color: baseColor,
-      weight: 22,
-      opacity: 0,
-      lineCap: 'round',
-      lineJoin: 'round',
-      className: `spline-hitarea-${report.id}`,
-      interactive: true,
-      pane: 'splinePane'
-    }).addTo(map);
-    bgTrailLayers.push(splineHitArea);
-
-    // Cache what handleSplineClick needs: the full raw (unsmoothed) trail
-    // for interpolating "where along the path did this click land", and the
-    // stations matched to it (cheap — no network calls, reuses the trail we
-    // already have). Always cache the FULL trail regardless of displayHours
-    // clipping above, so clicking further back than the display window still
-    // resolves correctly.
-    rawTrailByReport[report.id] = trailResult.rawTrail;
-    stationMatchesByReport[report.id] = findAllStationsAlongWindTrail(
-      trailResult.rawTrail, airQualityStationsCache, STATION_TRAIL_MATCH_RADIUS_KM
-    );
-
-    splineHitArea.on('click', (e) => {
-      L.DomEvent.stopPropagation(e);
-      handleSplineClick(report.id, e.latlng);
-    });
   });
 
   // Splines default to hidden (Settings toggle, off by default) — apply
   // that state to whatever we just drew, same as toggling it live does.
   applySplineVisibility();
+
+  // Chunked cluster loading (see reportClusterGroup's options) processes
+  // marker additions across a few animation frames for large datasets, so
+  // give it a moment to settle before checking which reports ended up
+  // individually visible vs. clustered.
+  setTimeout(updateConeVisibilityForClustering, 60);
 }
 
 /* ═══════════════════════════════════════════════════
@@ -3822,6 +3811,31 @@ function evaluateActiveNearbyClusters() {
 function clearMarkers(){
   reportClusterGroup.clearLayers();
   reportMarkers=[];
+  markerByReportId = {};
+}
+
+// A report's cone is only meaningful next to its own visible pin — once
+// several reports get merged into a single cluster badge, their individual
+// cones just pile up into an unreadable tangle of overlapping colors (this
+// is what prompted the fix: a cluster of ~47 reports rendering ~47
+// overlapping cones with no way to tell which belonged to which pin, or
+// even which pin was which, since they'd all collapsed into one badge).
+// Hides each clustered report's cone; shows it again once that report's pin
+// is displayed individually (fully zoomed in, or spiderfied out of its
+// cluster).
+function updateConeVisibilityForClustering() {
+  Object.keys(markerByReportId).forEach(id => {
+    const marker = markerByReportId[id];
+    if (!marker) return;
+    let isClustered = false;
+    try {
+      const visibleParent = reportClusterGroup.getVisibleParent(marker);
+      isClustered = !!visibleParent && visibleParent !== marker;
+    } catch (e) { /* marker not yet added to the cluster group */ }
+    document.querySelectorAll(`.cone-report-${id}`).forEach(el => {
+      el.style.display = isClustered ? 'none' : '';
+    });
+  });
 }
 function translateCategory(category) {
   const srToEn = {
@@ -4012,6 +4026,7 @@ function renderPin(report, index = 0){
     zIndexOffset: zIndexPriority 
   });
   reportClusterGroup.addLayer(marker);
+  markerByReportId[report.id] = marker;
 
   // Initial popup shows a loading state for the nearest-station block;
   // it's filled in once the lookup resolves, on first open.
@@ -4150,7 +4165,8 @@ async function filterPinsBySourceTrajectory(tracerCoords) {
     fillOpacity: 0.15,
     weight: 1.5,
     dashArray: '3, 4',
-    interactive: false
+    interactive: false,
+    className: 'trace-pulse-circle'
   }).addTo(map);
   tracerVisualCircles.push(primaryRadiusCircle);
 
@@ -4215,7 +4231,7 @@ async function filterPinsBySourceTrajectory(tracerCoords) {
   generateAllBackgroundTrails(activeReportsToDrawTrails, tracerCoords);
 
   const n = reportMarkers.length;
-  updateReportCountUI(n);
+  updateReportCountUI(n, timeFilteredData.length);
 }
 
 
