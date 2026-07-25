@@ -4117,32 +4117,63 @@ function updateConeVisibilityForClustering() {
    still does the "more reports = brighter" job it always did, on top of
    this per-report gradient.
 
-   Five pieces of math feed into how bright/wide each report's trail is:
-    1. DISPERSION SPREAD -- lateral widening is no longer a flat number.
-       It grows with elapsed travel time (diffusion ~ sqrt(time)) and
-       shrinks with the actual wind speed of that hourly leg (a fast
-       narrow jet vs. a slow, spread-out drift) -- both read straight off
-       the trail's own points instead of a constant.
-    2. INTENSITY WEIGHT -- a "10/10, overwhelming" report counts for more
-       than a "1/10, barely noticeable" one; previously intensity wasn't
-       used at all.
-    3. TIME DECAY -- older reports fade in influence (half-life below),
-       separate from the trail's own red->yellow age coloring elsewhere.
-    4. STATION CORROBORATION -- if a report's trail passes an air-quality
-       station, and that station's own reading nearby in time was
-       elevated, that's real measured confirmation, so the report's
-       weight gets boosted proportionally to how bad the reading was.
-    5. TRIANGULATION -- after every report's trail is built, every PAIR
-       of trails is checked for how close they come to each other. Two
-       (or more) independent reports whose backtrajectories converge on
-       roughly the same spot is much stronger evidence of a shared source
-       than any single trail alone, so that convergence point gets an
-       extra weight boost on top of everything above.
+   Each piece below has its own on/off switch in Settings > "Source
+   Heatmap Science" (sourceHeatOptions) so any of them can be compared
+   against the simpler behavior it replaces:
+    - dispersion spread: grows with sqrt(elapsed time), shrinks with the
+      leg's actual wind speed -- always on, everything else refines it.
+    - stability: Pasquill-Gifford-style stability class (from wind speed
+      + time of day) multiplies that spread -- unstable daytime air
+      spreads much more than calm, stable night air.
+    - monteCarlo: adds seeded-random "ensemble member" points within the
+      dispersion envelope at each trail vertex, approximating an
+      uncertainty-propagated ensemble without re-fetching N separate
+      forecasts per report.
+    - decayLaw: ties concentration weight to the same dispersion sigma
+      (roughly 1/sigma, like a real Gaussian plume's centerline
+      concentration) instead of a flat linear fade.
+    - intensity / time-decay / station corroboration: always-on per-report
+      weight factors (unchanged from before).
+    - clustering: groups reports into separate incidents by space+time
+      before anything below uses more than one report together.
+    - temporalGate: on top of (or instead of) clustering, only lets
+      triangulation compare two reports if they're within a few hours of
+      each other -- otherwise two unrelated days' reports could "confirm"
+      a source that never existed.
+    - triangulation: independent reports' backtrajectories that converge
+      on the same spot are stronger evidence than any single trail.
+    - confidence: scores each cluster (report count + corroboration) and
+      dims low-confidence areas rather than showing every estimate at
+      full brightness; also drives the on-map confidence badge.
 ═══════════════════════════════════════════════════ */
 let sourceHeatVisible = (function () {
   try { return localStorage.getItem('ttt_source_heat_visible') === 'true'; } catch (e) { return false; }
 })();
 let sourceHeatLayer = null;
+
+// Per-feature on/off switches, shown as toggles in Settings > "Source
+// Heatmap Science". All default on; switching one off falls back to the
+// simpler behavior it replaced.
+let sourceHeatOptions = (function () {
+  const defaults = { monteCarlo: true, stability: true, decayLaw: true, temporalGate: true, clustering: true, confidence: true };
+  const opts = {};
+  try {
+    Object.keys(defaults).forEach(k => {
+      const v = localStorage.getItem('ttt_heat_' + k);
+      opts[k] = v === null ? defaults[k] : v === 'true';
+    });
+  } catch (e) { return defaults; }
+  return opts;
+})();
+
+function setSourceHeatOption(key, checked) {
+  sourceHeatOptions[key] = checked;
+  try { localStorage.setItem('ttt_heat_' + key, String(checked)); } catch (e) {}
+  if (sourceHeatVisible) renderSourceHeatLayer(globalActiveData);
+}
+
+// Set by buildProbableSourceHeatPoints, read by updateSourceHeatConfidenceBadge.
+let lastSourceHeatSummary = null;
 
 // Great-circle bearing (degrees, 0=N) from point 1 to point 2 -- used to
 // find "perpendicular to the trail" at each point along it.
@@ -4165,21 +4196,95 @@ function pushSpreadPoints(points, lat, lon, pathBearing, spreadKm, weight) {
   points.push([right.lat, right.lon, weight]);
 }
 
+// Deterministic PRNG (mulberry32) seeded from a string, so re-renders don't
+// jitter -- the same report+point always gets the same "random" offsets.
+function seededRandom(seedStr) {
+  let h = 1779033703 ^ seedStr.length;
+  for (let i = 0; i < seedStr.length; i++) {
+    h = Math.imul(h ^ seedStr.charCodeAt(i), 3432918353);
+    h = (h << 13) | (h >>> 19);
+  }
+  return function () {
+    h = Math.imul(h ^ (h >>> 16), 2246822507);
+    h = Math.imul(h ^ (h >>> 13), 3266489909);
+    h ^= h >>> 16;
+    return (h >>> 0) / 4294967296;
+  };
+}
+
+// Approximates a Monte Carlo dispersion ensemble: re-fetching N separate
+// perturbed wind forecasts per report isn't practical from the client (it'd
+// multiply the Open-Meteo calls by N), so instead each trail point gets a
+// handful of extra "ensemble member" points scattered at random bearings
+// and distances within the same physically-derived dispersion envelope.
+function pushEnsembleMembers(points, lat, lon, spreadKm, weight, seed) {
+  if (spreadKm <= 0) return;
+  const rand = seededRandom(seed);
+  const MEMBERS = 4;
+  for (let m = 0; m < MEMBERS; m++) {
+    const bearing = rand() * 360;
+    const dist = rand() * spreadKm * 1.4;
+    const p = moveUpwind(lat, lon, bearing, dist);
+    points.push([p.lat, p.lon, weight]);
+  }
+}
+
+// Coarse Pasquill-Gifford-style stability class from wind speed (converted
+// to m/s) and local hour -- the same lookup real short-range dispersion
+// models use, simplified to not require solar radiation/cloud cover data
+// this app doesn't have. Returns a dispersion-width multiplier: unstable
+// daytime air spreads much more than calm, stable night air.
+function stabilityDispersionMultiplier(legSpeedKmH, atLocalHour) {
+  const speedMs = legSpeedKmH / 3.6;
+  const isDaytime = atLocalHour >= 7 && atLocalHour < 19;
+  let cls;
+  if (isDaytime) {
+    if (speedMs < 2) cls = 'A';
+    else if (speedMs < 5) cls = 'B';
+    else if (speedMs < 6) cls = 'C';
+    else cls = 'D';
+  } else {
+    if (speedMs < 2) cls = 'F';
+    else if (speedMs < 3) cls = 'E';
+    else cls = 'D';
+  }
+  const MULTIPLIER = { A: 2.2, B: 1.8, C: 1.4, D: 1.0, E: 0.7, F: 0.5 };
+  return MULTIPLIER[cls];
+}
+
 // Physical-ish dispersion width: grows with sqrt(elapsed hours) (simple
 // Fickian diffusion -- more time = more turbulent spreading) and shrinks
-// with the leg's actual wind speed (a fast-moving plume stays narrower
-// than a slow, drifting one covering the same distance). Capped so one
-// very calm hourly leg can't blow the spread out to something absurd.
-function dispersionSpreadKm(elapsedHours, legSpeedKmH) {
+// with the leg's actual wind speed (a fast narrow jet vs. a slow, spread-
+// out drift). When the stability toggle is on, also scaled by the local
+// atmospheric-stability multiplier above. Capped so one very calm leg (or
+// a class-A daytime multiplier) can't blow the spread out to something
+// absurd.
+function dispersionSpreadKm(elapsedHours, legSpeedKmH, atDate) {
   const BASE_COEFF = 0.35;
   const speed = Math.max(legSpeedKmH, 2); // floor so near-zero wind doesn't divide-by-near-zero
-  const spread = BASE_COEFF * Math.sqrt(elapsedHours + 0.25) / (speed / 10);
-  return Math.min(spread, 1.6);
+  let spread = BASE_COEFF * Math.sqrt(elapsedHours + 0.25) / (speed / 10);
+  if (sourceHeatOptions.stability && atDate) {
+    spread *= stabilityDispersionMultiplier(legSpeedKmH, atDate.getHours());
+  }
+  return Math.min(spread, 3.2);
+}
+
+// Ties concentration decay to the same dispersion sigma used for spread --
+// a real Gaussian plume's centerline concentration falls off roughly as
+// 1/sigma, so a leg still close to the source (small sigma) stays strong
+// while one far downwind (large sigma) fades -- instead of the flat linear
+// ramp used when this toggle is off.
+function decayLawWeight(elapsedHours, legSpeedKmH, atDate) {
+  const sigmaAtSource = dispersionSpreadKm(0.25, legSpeedKmH, atDate);
+  const sigmaHere = dispersionSpreadKm(elapsedHours, legSpeedKmH, atDate);
+  const ratio = sigmaAtSource / Math.max(sigmaHere, 0.05);
+  return Math.max(0.3, Math.min(3.0, 1.2 + ratio * 1.8));
 }
 
 // Multiplies together intensity, time-decay, and station-corroboration
 // into one per-report weight factor applied to every point that report
-// contributes to the heatmap.
+// contributes to the heatmap. Also reports whether corroboration was
+// actually found, for computeClusterConfidence().
 async function computeReportWeightFactor(report, rawTrail) {
   const intensity = parseInt(report.intensity, 10);
   const intensityFactor = isNaN(intensity) ? 1 : Math.max(0.3, intensity / 5); // 5/10 (wizard default) = neutral 1.0
@@ -4189,23 +4294,76 @@ async function computeReportWeightFactor(report, rawTrail) {
   const timeDecayFactor = Math.max(0.25, Math.pow(0.5, ageHours / DECAY_HALF_LIFE_HOURS));
 
   let corroborationFactor = 1.0;
+  let corroborated = false;
   if (rawTrail && rawTrail.length >= 2 && airQualityStationsCache?.length) {
     try {
       const match = findStationAlongWindTrail(rawTrail, airQualityStationsCache);
       if (match) {
         const reading = await getStationReadingNear(match.station.id, match.atTime);
         const severity = reading?.category != null ? AQI_SEVERITY[reading.category] : undefined;
-        if (severity != null) corroborationFactor = 1.0 + severity * 0.15; // up to +0.75 at the worst AQI category
+        if (severity != null) {
+          corroborationFactor = 1.0 + severity * 0.15; // up to +0.75 at the worst AQI category
+          if (severity >= 2) corroborated = true; // UMEREN or worse counts as real corroboration
+        }
       }
     } catch (e) { /* corroboration is a bonus, never block the heatmap on it */ }
   }
 
-  return intensityFactor * timeDecayFactor * corroborationFactor;
+  return { factor: intensityFactor * timeDecayFactor * corroborationFactor, corroborated };
+}
+
+// Groups reports into incident clusters using simple space+time adjacency
+// (two reports are "neighbors" if within CLUSTER_EPS_KM AND
+// CLUSTER_EPS_HOURS of each other); connected components become clusters.
+// Keeps unrelated incidents -- a different day, a different side of town --
+// from being triangulated or confidence-boosted together.
+function clusterReports(reports) {
+  const CLUSTER_EPS_KM = 4;
+  const CLUSTER_EPS_HOURS = 6;
+  const n = reports.length;
+  const visited = new Array(n).fill(false);
+  const clusters = [];
+  for (let i = 0; i < n; i++) {
+    if (visited[i]) continue;
+    visited[i] = true;
+    const queue = [i];
+    const cluster = [];
+    while (queue.length) {
+      const idx = queue.pop();
+      cluster.push(reports[idx]);
+      for (let j = 0; j < n; j++) {
+        if (visited[j]) continue;
+        const dKm = getHaversineDistance(
+          parseFloat(reports[idx].latitude), parseFloat(reports[idx].longitude),
+          parseFloat(reports[j].latitude), parseFloat(reports[j].longitude)
+        );
+        const dHours = Math.abs(new Date(reports[idx].created_at) - new Date(reports[j].created_at)) / 3600000;
+        if (dKm <= CLUSTER_EPS_KM && dHours <= CLUSTER_EPS_HOURS) {
+          visited[j] = true;
+          queue.push(j);
+        }
+      }
+    }
+    clusters.push(cluster);
+  }
+  return clusters;
+}
+
+// Rough 0-1 confidence score for a cluster of reports: more independent
+// reports agreeing is stronger evidence, and an actual corroborating
+// station reading is worth more than another uncorroborated report.
+function computeClusterConfidence(cluster, corroboratedIds) {
+  const n = cluster.length;
+  let score = n === 1 ? 0.3 : n === 2 ? 0.5 : n === 3 ? 0.65 : 0.8;
+  if (cluster.some(r => corroboratedIds.has(r.id))) score = Math.min(1, score + 0.15);
+  const label = score < 0.45 ? 'Low' : score < 0.7 ? 'Medium' : 'High';
+  return { score, label };
 }
 
 async function buildProbableSourceHeatPoints(reports) {
   const points = [];
   const trailsByReportId = {};
+  const perReport = {}; // report.id -> { rawTrail, weightFactor, corroborated, lat, lon, report }
 
   await Promise.all(reports.map(async (report) => {
     const lat = parseFloat(report.latitude);
@@ -4216,59 +4374,116 @@ async function buildProbableSourceHeatPoints(reports) {
     const rawTrail = trailResult ? trailResult.rawTrail : null;
     if (rawTrail && rawTrail.length >= 2) trailsByReportId[report.id] = rawTrail;
 
-    const weightFactor = await computeReportWeightFactor(report, rawTrail);
+    const { factor: weightFactor, corroborated } = await computeReportWeightFactor(report, rawTrail);
+    perReport[report.id] = { rawTrail, weightFactor, corroborated, lat, lon, report };
+  }));
+
+  // Cluster into separate incidents, then score each cluster's confidence
+  // -- both feed the weighting below.
+  const clusters = sourceHeatOptions.clustering ? clusterReports(reports) : [reports.slice()];
+  const corroboratedIds = new Set(Object.values(perReport).filter(p => p.corroborated).map(p => p.report.id));
+  const clusterByReportId = {};
+  const confidenceByReportId = {};
+  let topConfidence = null;
+  clusters.forEach(cluster => {
+    const confidence = sourceHeatOptions.confidence ? computeClusterConfidence(cluster, corroboratedIds) : { score: 1, label: 'High' };
+    if (!topConfidence || confidence.score > topConfidence.score) topConfidence = confidence;
+    cluster.forEach(r => {
+      clusterByReportId[r.id] = cluster;
+      confidenceByReportId[r.id] = confidence;
+    });
+  });
+  lastSourceHeatSummary = { clusterCount: clusters.length, totalReports: reports.length, topConfidence };
+
+  // Backtrail + source-end points, weighted by intensity/decay/
+  // corroboration (weightFactor) and now also by cluster confidence.
+  Object.values(perReport).forEach(({ rawTrail, weightFactor, lat, lon, report }) => {
+    const confidence = confidenceByReportId[report.id] || { score: 1 };
+    const confidenceMultiplier = 0.5 + 0.5 * confidence.score; // low-confidence clusters dim, never fully hidden
+    const totalFactor = weightFactor * confidenceMultiplier;
+    const reportTime = new Date(report.created_at);
 
     if (rawTrail && rawTrail.length >= 2) {
       const sourceIdx = rawTrail.length - 1; // furthest back in time = presumed source
       for (let i = sourceIdx; i >= 0; i--) {
         const t = i / sourceIdx; // 1 at the source (red), 0 at the report (orange)
-        const baseWeight = 1.2 + t * 1.8; // 1.2 report end -> 3.0 source end
-        const pt = rawTrail[i];
-        points.push([pt.lat, pt.lon, baseWeight * weightFactor]);
-
-        const next = rawTrail[i - 1] || pt; // one step closer to the report
-        const bearing = bearingBetween(pt.lat, pt.lon, next.lat, next.lon);
-        const legSpeedKmH = getHaversineDistance(pt.lat, pt.lon, next.lat, next.lon); // km covered in this ~1h leg
         const elapsedHours = sourceIdx - i; // hours travelled since the presumed source
-        const spreadKm = dispersionSpreadKm(elapsedHours, legSpeedKmH);
-        pushSpreadPoints(points, pt.lat, pt.lon, bearing, spreadKm, baseWeight * weightFactor * 0.5);
+        const pt = rawTrail[i];
+        const next = rawTrail[i - 1] || pt; // one step closer to the report
+        const legSpeedKmH = getHaversineDistance(pt.lat, pt.lon, next.lat, next.lon); // km covered in this ~1h leg
+        const atDate = new Date(reportTime.getTime() - elapsedHours * 3600000);
+        const baseWeight = sourceHeatOptions.decayLaw
+          ? decayLawWeight(elapsedHours, legSpeedKmH, atDate)
+          : (1.2 + t * 1.8); // 1.2 report end -> 3.0 source end
+
+        points.push([pt.lat, pt.lon, baseWeight * totalFactor]);
+
+        const bearing = bearingBetween(pt.lat, pt.lon, next.lat, next.lon);
+        const spreadKm = dispersionSpreadKm(elapsedHours, legSpeedKmH, atDate);
+        pushSpreadPoints(points, pt.lat, pt.lon, bearing, spreadKm, baseWeight * totalFactor * 0.5);
+        if (sourceHeatOptions.monteCarlo) {
+          pushEnsembleMembers(points, pt.lat, pt.lon, spreadKm, baseWeight * totalFactor * 0.25, `${report.id}_${i}`);
+        }
       }
     } else {
       // No settled wind trail yet (very fresh report) -- still show it,
       // just as a single orange point instead of dropping it entirely.
-      points.push([lat, lon, 1.4 * weightFactor]);
+      points.push([lat, lon, 1.4 * totalFactor]);
     }
+  });
 
-    // Forward tail: continues past the report using real wind data for
-    // just the 1h right after it was made, fading further into yellow
-    // and spreading wider than the report point itself as it goes.
+  // Forward tails: continue past each report using real wind data for
+  // just the 1h right after it was made, fading further into yellow and
+  // spreading wider as they go -- same per-report factors as above.
+  await Promise.all(Object.values(perReport).map(async ({ rawTrail, weightFactor, lat, lon, report }) => {
+    const confidence = confidenceByReportId[report.id] || { score: 1 };
+    const confidenceMultiplier = 0.5 + 0.5 * confidence.score;
+    const totalFactor = weightFactor * confidenceMultiplier;
+    const reportTime = new Date(report.created_at);
+    const sourceIdx = rawTrail && rawTrail.length >= 2 ? rawTrail.length - 1 : 0;
+
     const tail = await computeForwardWindExtension(report, 5, 1).catch(() => []);
-    if (tail.length) {
-      let prev = { lat, lon };
-      const sourceIdx = rawTrail && rawTrail.length >= 2 ? rawTrail.length - 1 : 0;
-      tail.forEach((pt, i) => {
-        const baseWeight = Math.max(0.3, 0.9 - 0.5 * (i / tail.length));
-        points.push([pt.lat, pt.lon, baseWeight * weightFactor]);
-        const bearing = bearingBetween(prev.lat, prev.lon, pt.lat, pt.lon);
-        const legSpeedKmH = getHaversineDistance(prev.lat, prev.lon, pt.lat, pt.lon);
-        const elapsedHours = sourceIdx + i + 1; // keeps counting forward from the source's elapsed time
-        const spreadKm = dispersionSpreadKm(elapsedHours, legSpeedKmH);
-        pushSpreadPoints(points, pt.lat, pt.lon, bearing, spreadKm, baseWeight * weightFactor * 0.5);
-        prev = pt;
-      });
-    }
+    if (!tail.length) return;
+    let prev = { lat, lon };
+    tail.forEach((pt, i) => {
+      const elapsedFromReport = i + 1;
+      const elapsedHours = sourceIdx + elapsedFromReport; // keeps counting forward from the source's elapsed time
+      const legSpeedKmH = getHaversineDistance(prev.lat, prev.lon, pt.lat, pt.lon);
+      const atDate = new Date(reportTime.getTime() + elapsedFromReport * 3600000);
+      const baseWeight = sourceHeatOptions.decayLaw
+        ? decayLawWeight(elapsedHours, legSpeedKmH, atDate) * 0.5 // forward tail always reads dimmer than the backtrail, even under the decay law
+        : Math.max(0.3, 0.9 - 0.5 * (i / tail.length));
+
+      points.push([pt.lat, pt.lon, baseWeight * totalFactor]);
+      const bearing = bearingBetween(prev.lat, prev.lon, pt.lat, pt.lon);
+      const spreadKm = dispersionSpreadKm(elapsedHours, legSpeedKmH, atDate);
+      pushSpreadPoints(points, pt.lat, pt.lon, bearing, spreadKm, baseWeight * totalFactor * 0.5);
+      if (sourceHeatOptions.monteCarlo) {
+        pushEnsembleMembers(points, pt.lat, pt.lon, spreadKm, baseWeight * totalFactor * 0.25, `${report.id}_tail_${i}`);
+      }
+      prev = pt;
+    });
   }));
 
-  // Triangulation pass: for every pair of reports' trails, find their
-  // closest approach to each other. A close, independent convergence is
-  // stronger source evidence than any single trail, so it gets its own
-  // extra-weighted point on top of everything already added above.
+  // Triangulation pass: for every pair of reports' trails (gated by
+  // cluster membership and/or time proximity), find their closest
+  // approach to each other. A close, independent convergence is stronger
+  // source evidence than any single trail, so it gets its own extra-
+  // weighted point on top of everything already added above.
   const ids = Object.keys(trailsByReportId);
   const CONVERGENCE_THRESHOLD_KM = 3;
   const MAX_CONVERGENCE_BOOST = 2.5;
+  const MAX_TRIANGULATION_GAP_HOURS = 3;
   for (let a = 0; a < ids.length; a++) {
+    const reportA = perReport[ids[a]].report;
     const trailA = trailsByReportId[ids[a]];
     for (let b = a + 1; b < ids.length; b++) {
+      const reportB = perReport[ids[b]].report;
+      if (sourceHeatOptions.clustering && clusterByReportId[reportA.id] !== clusterByReportId[reportB.id]) continue;
+      if (sourceHeatOptions.temporalGate) {
+        const gapHours = Math.abs(new Date(reportA.created_at) - new Date(reportB.created_at)) / 3600000;
+        if (gapHours > MAX_TRIANGULATION_GAP_HOURS) continue;
+      }
       const trailB = trailsByReportId[ids[b]];
       let best = null;
       for (let i = 0; i < trailA.length; i++) {
@@ -4299,7 +4514,7 @@ async function renderSourceHeatLayer(reports) {
       radius: 26,
       blur: 20,
       maxZoom: 17,
-      max: 6.5, // fixed scale so color meaning (red=source) stays consistent regardless of how many reports are on screen; raised to fit the new intensity/corroboration/triangulation boosts
+      max: 6.5, // fixed scale so color meaning (red=source) stays consistent regardless of how many reports are on screen
       minOpacity: 0.25,
       gradient: { 0.15: '#fff59d', 0.4: '#ffca28', 0.65: '#f57c00', 1.0: '#c41e27' }
     });
@@ -4307,6 +4522,25 @@ async function renderSourceHeatLayer(reports) {
   if (sourceHeatVisible && !map.hasLayer(sourceHeatLayer)) {
     sourceHeatLayer.addTo(map);
   }
+  updateSourceHeatConfidenceBadge();
+}
+
+// Reflects lastSourceHeatSummary (set by buildProbableSourceHeatPoints) in
+// the small badge near the flame button -- the only on-map indicator of
+// how much evidence backs the current probable-source estimate.
+function updateSourceHeatConfidenceBadge() {
+  const badge = document.getElementById('sourceHeatConfidenceBadge');
+  if (!badge) return;
+  if (!sourceHeatVisible || !sourceHeatOptions.confidence || !lastSourceHeatSummary || !lastSourceHeatSummary.topConfidence) {
+    badge.style.display = 'none';
+    return;
+  }
+  const { topConfidence, clusterCount, totalReports } = lastSourceHeatSummary;
+  const COLORS = { Low: '#ff9800', Medium: '#ffca28', High: '#4CAF50' };
+  badge.style.display = 'flex';
+  badge.style.setProperty('--confidence-color', COLORS[topConfidence.label] || '#888');
+  const clusterNote = clusterCount > 1 ? `, ${clusterCount} clusters` : '';
+  badge.innerHTML = `<span class="source-heat-confidence-dot"></span>Confidence: ${topConfidence.label} <span class="source-heat-confidence-sub">(${totalReports} report${totalReports === 1 ? '' : 's'}${clusterNote})</span>`;
 }
 
 function toggleSourceHeat() {
@@ -4318,8 +4552,9 @@ function toggleSourceHeat() {
 
   if (sourceHeatVisible) {
     renderSourceHeatLayer(globalActiveData);
-  } else if (sourceHeatLayer && map.hasLayer(sourceHeatLayer)) {
-    map.removeLayer(sourceHeatLayer);
+  } else {
+    if (sourceHeatLayer && map.hasLayer(sourceHeatLayer)) map.removeLayer(sourceHeatLayer);
+    updateSourceHeatConfidenceBadge();
   }
 }
 
