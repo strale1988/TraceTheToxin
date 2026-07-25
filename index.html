@@ -529,6 +529,7 @@ span.flatpickr-weekday {
 #pinMapBtn{ position:fixed; bottom:calc(var(--legend-bar-h) + 148px); right:12px; }
 #mapFilterBtn{ position:fixed; bottom:calc(var(--legend-bar-h) + 202px); right:12px; }
 #sourceHeatBtn{ position:fixed; bottom:calc(var(--legend-bar-h) + 256px); right:12px; }
+#autoSourceBtn{ position:fixed; bottom:calc(var(--legend-bar-h) + 310px); right:12px; }
 .source-heat-btn{
   background:var(--floating-bg);
   border:1px solid var(--floating-border);
@@ -546,6 +547,24 @@ span.flatpickr-weekday {
 .source-heat-btn.active{ background:#f5a623; border-color:#f5a623; }
 .source-heat-btn svg{ stroke:var(--text-secondary); transition:stroke .15s ease; }
 .source-heat-btn.active svg{ stroke:#fff; }
+.auto-source-btn{
+  background:var(--floating-bg);
+  border:1px solid var(--floating-border);
+  border-radius:50%;
+  width:44px; height:44px;
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer; font-size:22px;
+  box-shadow:0 2px 8px var(--floating-shadow);
+  transition:background .15s ease, transform .12s ease, box-shadow .15s ease;
+  user-select:none;
+  -webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;
+}
+.auto-source-btn:active{ transform:scale(.9); }
+.auto-source-btn svg{ stroke:var(--text-secondary); transition:stroke .15s ease; }
+.auto-source-btn.busy{ pointer-events:none; }
+.auto-source-btn.busy svg{ animation:autoSourceSpin 0.9s linear infinite; stroke:var(--accent); }
+@keyframes autoSourceSpin{ to{ transform:rotate(360deg); } }
 .map-filter-btn{
   background:var(--floating-bg);
   border:1px solid var(--floating-border);
@@ -937,6 +956,14 @@ span.flatpickr-weekday {
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <path d="M12 2c-1.5 3-4 5.5-4 9a4 4 0 0 0 8 0c0-1-.3-1.8-.8-2.6C14.8 9.6 14 11 12 11c1-2 .5-4.5-1-6.5C11.3 6 12 4 12 2z"/>
       <path d="M8.5 13.5A3.5 3.5 0 0 0 12 20a3.5 3.5 0 0 0 3.5-6.5"/>
+    </svg>
+  </div>
+  <div id="autoSourceBtn" class="auto-source-btn" style="display:none" title="Automatically find the most likely source" onclick="autoFindSource()">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="9"/>
+      <circle cx="12" cy="12" r="4"/>
+      <circle cx="12" cy="12" r="0.6" fill="currentColor" stroke="none"/>
+      <path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>
     </svg>
   </div>
 </div>
@@ -2416,6 +2443,17 @@ const SourceHeatControl = L.Control.extend({
 });
 new SourceHeatControl().addTo(map);
 document.getElementById('sourceHeatBtn').style.display = 'flex';
+
+const AutoSourceControl = L.Control.extend({
+  options:{ position:'bottomleft' },
+  onAdd(){
+    const btn = document.getElementById('autoSourceBtn');
+    L.DomEvent.disableClickPropagation(btn);
+    return btn;
+  }
+});
+new AutoSourceControl().addTo(map);
+document.getElementById('autoSourceBtn').style.display = 'flex';
 
 function togglePinMode() {
   pinMode = !pinMode;
@@ -3927,119 +3965,45 @@ function updateConeVisibilityForClustering() {
   });
 }
 /* ═══════════════════════════════════════════════════
-   PROBABLE SOURCE HEATMAP
-   Toggled via the new floating button. The first version of this just
-   faded weighted points out from each report's own position along its
-   upwind bearing -- which mostly just re-drew "where are there a lot of
-   reports", not an actual source estimate.
-   This version instead reuses the SAME matching logic as the manual
-   "Trace Possible Source" pin (filterPinsBySourceTrajectory /
-   distanceToSegment, below): for a set of candidate points sampled along
-   every report's real historical wind trail, it scores each candidate by
-   how many OTHER reports' trails also pass within that same
-   distance-plus-dispersion tolerance. A spot several reports' wind
-   histories agree on scores highest (reddest); moving from there out
-   along any one report's own trail, fewer other trails still pass nearby,
-   so the score -- and the color -- fades through orange to yellow well
-   before reaching that report's own pin. Effectively this is what you'd
-   get if you dropped the manual trace pin at every plausible spot and
-   kept whichever got the most matches, visualized all at once.
+   REPORT CONCENTRATION HEATMAP
+   Toggled via the flame button. Deliberately simple and fast: one heat
+   point per active report, at its own location. No trail math, no
+   per-candidate scoring -- Leaflet.heat's own additive blending is what
+   makes areas with more reports glow brighter, which is exactly the
+   "where are reports concentrated" read this is meant to give. Trying to
+   turn this same view into a source estimate (a slower prior version did)
+   didn't hold up -- that job now belongs to the auto-source-finder below.
 ═══════════════════════════════════════════════════ */
 let sourceHeatVisible = (function () {
   try { return localStorage.getItem('ttt_source_heat_visible') === 'true'; } catch (e) { return false; }
 })();
 let sourceHeatLayer = null;
-let sourceHeatRequestId = 0; // guards against a slower, stale computation overwriting a newer one
 
-// Same tolerance the manual trace tool uses (filterPinsBySourceTrajectory)
-// -- kept in sync deliberately, so the heatmap and the manual pin always
-// agree on what counts as "passing near" a candidate point.
-const SOURCE_HEAT_BASE_RADIUS_KM   = 2.0;
-const SOURCE_HEAT_DISPERSION_KM_H  = 2.0;
-// Spacing between candidate points resampled along each report's trail.
-// Candidates come from the trails themselves (not a full 2D grid) since
-// the source has to be near one of them anyway -- far cheaper, same result.
-const SOURCE_HEAT_SAMPLE_STEP_KM   = 0.5;
-
-// Resamples a trail (array of {lat,lon[,time]}) into evenly-spaced points
-// roughly stepKm apart, so long trails and short trails contribute a
-// comparable number of candidate points instead of long ones dominating.
-function resampleTrail(trail, stepKm) {
-  const out = [trail[0]];
-  let accKm = 0;
-  for (let i = 1; i < trail.length; i++) {
-    accKm += getHaversineDistance(trail[i - 1].lat, trail[i - 1].lon, trail[i].lat, trail[i].lon);
-    if (accKm >= stepKm) { out.push(trail[i]); accKm = 0; }
-  }
-  return out;
-}
-
-// Fetches every active report's full historical trail (same one the
-// manual trace tool matches against -- cached, so this is free/instant
-// for any report whose cone/spline has already been drawn), scores
-// candidate points by cross-report convergence, and returns Leaflet.heat
-// points: [lat, lon, weight].
-async function computeSourceHeatPoints(reports, requestId) {
-  const trailArrays = [];
-  for (const report of reports) {
-    const trail = await renderHistoricSplineTrailForReport(report);
-    if (requestId !== sourceHeatRequestId) return null; // superseded mid-fetch
-    if (trail && trail.length >= 2) trailArrays.push(trail);
-  }
-  if (trailArrays.length < 2) return []; // need at least 2 trails to find any agreement
-
-  // Sampling every trail at a fixed spacing keeps the candidate count (and
-  // therefore the O(candidates × trails) scoring pass below) roughly
-  // proportional to total trail length rather than exploding with report
-  // count -- but as a further safety margin against a very large active
-  // set, widen the spacing a bit once there are a lot of trails at once.
-  const stepKm = trailArrays.length > 60
-    ? SOURCE_HEAT_SAMPLE_STEP_KM * (trailArrays.length / 60)
-    : SOURCE_HEAT_SAMPLE_STEP_KM;
-
-  const candidates = trailArrays.flatMap(trail => resampleTrail(trail, stepKm));
-
+function computeSourceHeatPoints(reports) {
   const points = [];
-  candidates.forEach(c => {
-    let score = 0;
-    trailArrays.forEach(trail => {
-      // Closest approach of THIS trail to the candidate point, same
-      // expanding-with-time-back tolerance filterPinsBySourceTrajectory
-      // uses (more dispersion allowed the further back along the trail).
-      for (let i = 0; i < trail.length - 1; i++) {
-        const d = distanceToSegment(c, trail[i], trail[i + 1]);
-        const allowed = SOURCE_HEAT_BASE_RADIUS_KM + SOURCE_HEAT_DISPERSION_KM_H * (i + 1) * (6 / trail.length);
-        if (d <= allowed) {
-          score += 1 - (d / allowed); // closer counts more than a near-miss at the edge of tolerance
-          break; // count each trail at most once per candidate point
-        }
-      }
-    });
-    if (score > 0) points.push([c.lat, c.lon, score]);
+  reports.forEach(report => {
+    const lat = parseFloat(report.latitude);
+    const lon = parseFloat(report.longitude);
+    if (isNaN(lat) || isNaN(lon)) return;
+    points.push([lat, lon, 1]);
   });
-
   return points;
 }
 
 // (Re)builds the heat layer from the given active reports. Safe to call
 // even when the heatmap is currently hidden -- it just won't be added to
-// the map until toggleSourceHeat() turns it on. Async and can take a
-// moment on a large active set (it's walking every report's full trail),
-// so it's guarded against a stale, slower call clobbering a newer one.
-async function renderSourceHeatLayer(reports) {
-  const requestId = ++sourceHeatRequestId;
-  const points = await computeSourceHeatPoints(reports || globalActiveData, requestId);
-  if (points === null || requestId !== sourceHeatRequestId) return; // superseded
-
+// the map until toggleSourceHeat() turns it on.
+function renderSourceHeatLayer(reports) {
+  const points = computeSourceHeatPoints(reports || globalActiveData);
   if (sourceHeatLayer) {
     sourceHeatLayer.setLatLngs(points);
   } else {
     sourceHeatLayer = L.heatLayer(points, {
-      radius: 26,
-      blur: 20,
+      radius: 30,
+      blur: 24,
       maxZoom: 17,
-      minOpacity: 0.2,
-      gradient: { 0.15: '#2a682a', 0.4: '#d4c600', 0.65: '#f5a623', 1.0: '#c41e27' }
+      minOpacity: 0.25,
+      gradient: { 0.2: '#2a682a', 0.45: '#d4c600', 0.7: '#f5a623', 1.0: '#c41e27' }
     });
   }
   if (sourceHeatVisible && !map.hasLayer(sourceHeatLayer)) {
@@ -4058,6 +4022,99 @@ function toggleSourceHeat() {
     renderSourceHeatLayer(globalActiveData);
   } else if (sourceHeatLayer && map.hasLayer(sourceHeatLayer)) {
     map.removeLayer(sourceHeatLayer);
+  }
+}
+
+/* ═══════════════════════════════════════════════════
+   AUTO SOURCE FINDER
+   One click instead of manually dragging the trace pin around: finds the
+   single point that would get the most matches from
+   filterPinsBySourceTrajectory (same radius/dispersion tolerance, so the
+   result is exactly what you'd get by manually landing the pin on the
+   best spot yourself), then drops the tracer there and runs the normal
+   trace -- reusing the same trusted matching code, just automating the
+   search for where to place it.
+
+   Two things make this fast, unlike the earlier heatmap attempt:
+   1. Trails are fetched in PARALLEL (Promise.all) instead of one at a
+      time in a for-await loop -- the previous version awaited each
+      report sequentially, so on an active set with several not-yet-cached
+      reports it was paying full network latency N times over instead of
+      once.
+   2. Candidates + matching both use each report's RAW hourly trail
+      (buildWindTrailForReport's rawTrail: one point per hour, ~6-12
+      points) instead of the Chaikin-smoothed display spline, which has
+      several times more points/segments for the same path. Same
+      real-world path, far fewer points to check.
+═══════════════════════════════════════════════════ */
+// Same tolerance filterPinsBySourceTrajectory uses -- kept here so
+// findAutoProbableSource agrees with the manual trace tool about what
+// counts as "passing near" a point.
+const SOURCE_HEAT_BASE_RADIUS_KM  = 2.0;
+const SOURCE_HEAT_DISPERSION_KM_H = 2.0;
+
+async function findAutoProbableSource(reports) {
+  const trailArrays = (await Promise.all(
+    reports.map(r => buildWindTrailForReport(r))
+  ))
+    .map(result => result?.rawTrail)
+    .filter(trail => trail && trail.length >= 2);
+
+  if (trailArrays.length < 2) return null; // need at least 2 trails to find any agreement
+
+  let bestPoint = null, bestScore = 0;
+  trailArrays.forEach(trail => {
+    trail.forEach(candidate => {
+      let score = 0;
+      trailArrays.forEach(other => {
+        for (let i = 0; i < other.length - 1; i++) {
+          const d = distanceToSegment(candidate, other[i], other[i + 1]);
+          const allowed = SOURCE_HEAT_BASE_RADIUS_KM + SOURCE_HEAT_DISPERSION_KM_H * (i + 1) * (6 / other.length);
+          if (d <= allowed) {
+            score += 1 - (d / allowed);
+            break; // count each trail at most once per candidate point
+          }
+        }
+      });
+      if (score > bestScore) { bestScore = score; bestPoint = candidate; }
+    });
+  });
+
+  return bestPoint;
+}
+
+async function autoFindSource() {
+  const btn = document.getElementById('autoSourceBtn');
+  if (btn) btn.classList.add('busy');
+
+  try {
+    if (!globalActiveData.length) return;
+
+    // Piggyback on the trace tool's own on/off machinery so state (pin
+    // mode, old tracer marker/circles, etc) is cleared exactly like a
+    // manual trace click would.
+    if (!traceMode) toggleTraceMode();
+
+    const best = await findAutoProbableSource(globalActiveData);
+    if (!best) return; // not enough reports with wind data in the current window
+
+    const latlng = L.latLng(best.lat, best.lon);
+    if (tracerMarker) {
+      tracerMarker.setLatLng(latlng);
+    } else {
+      tracerMarker = L.marker(latlng, {
+        icon: L.divIcon({
+          className: '',
+          html: `<div style="width:22px;height:22px;background:#ff4d4d;border-radius:50%;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,.5)"></div>`,
+          iconAnchor: [11, 11]
+        })
+      }).addTo(map);
+    }
+    map.panTo(latlng);
+
+    await filterPinsBySourceTrajectory(best);
+  } finally {
+    if (btn) btn.classList.remove('busy');
   }
 }
 
