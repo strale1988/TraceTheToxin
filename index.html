@@ -242,6 +242,7 @@ header p{ font-size:var(--fs-11); opacity:.7; margin-top:2px; }
   background: var(--bg-surface);
   padding: 0 12px 14px 12px;
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   align-items: center;
 }
@@ -256,7 +257,21 @@ input[type=number]::-webkit-outer-spin-button {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  flex: 1;
+  /* flex-basis:100% forces the date picker onto its own full-width row
+     whenever there isn't room beside both CSV buttons, instead of the row
+     staying nowrap and the buttons getting pushed off past the edge of
+     the screen (which is what was actually happening on narrow phones --
+     the row wasn't "missing", it was rendering off-screen because nothing
+     in it could shrink or wrap). */
+  flex: 1 1 100%;
+  min-width: 140px;
+}
+
+/* The two export buttons share the row below the date picker on narrow
+   screens instead of each keeping a fixed, non-shrinking padding. */
+.filter-select-row .export-btn{
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 input[type="text"], input[type="number"], input[type="time"]{
@@ -799,11 +814,17 @@ span.flatpickr-weekday {
      every single open/resize -- a real race-condition surface, and very
      likely why this kept coming back intermittently. */
   min-height:0;
-  overflow-y:auto; -webkit-overflow-scrolling:touch; touch-action:pan-y; overscroll-behavior:contain;
-  padding:16px 16px calc(24px + env(safe-area-inset-bottom,0px));
+  overflow-y:auto; overflow-x:hidden; -webkit-overflow-scrolling:touch; touch-action:pan-y; overscroll-behavior:contain;
+  /* Bumped from 24px -> 40px: on some phones env(safe-area-inset-bottom)
+     resolves to 0 even though there's a home-indicator bar, which left the
+     last section (the date filter + CSV row) sitting flush against the
+     very edge of the screen -- reachable if you scrolled exactly far
+     enough, but easy to mistake for "the scroll stops before it". This
+     extra fixed buffer makes sure there's always visible room past it. */
+  padding:16px 16px calc(40px + env(safe-area-inset-bottom,0px));
   display:flex; flex-direction:column; gap:16px;
 }
-.detail-section{ background:var(--bg-surface); border:1px solid var(--border-color); border-radius:var(--radius-xl); padding:14px; }
+.detail-section{ background:var(--bg-surface); border:1px solid var(--border-color); border-radius:var(--radius-xl); padding:14px; flex-shrink:0; }
 .detail-section-title{ font-size:var(--fs-10); font-weight:var(--fw-bold); letter-spacing:.4px; text-transform:uppercase; color:var(--text-muted); margin-bottom:10px; }
 .detail-export-hint{ font-size:var(--fs-12); color:var(--text-secondary); margin:8px 0 0; line-height:1.4; }
 .icon-img{ width:20px; height:20px; object-fit:contain; vertical-align:middle; }
@@ -1037,11 +1058,11 @@ span.flatpickr-weekday {
           <input type="text" id="dateRangePicker" placeholder="Select date range..." readonly>
         </div>
         <button class="export-btn" onclick="downloadCSV()"
-                style="width:auto;flex:0 0 auto;padding:11px 14px;font-size:12px;white-space:nowrap;">
+                style="width:auto;padding:11px 10px;font-size:12px;">
           <span id="csvLabel">CSV</span>
         </button>
         <button class="export-btn" onclick="downloadStationCSV()"
-                style="width:auto;flex:0 0 auto;padding:11px 14px;font-size:12px;white-space:nowrap;">
+                style="width:auto;padding:11px 10px;font-size:12px;">
           <span id="stationCsvLabel">Stations CSV</span>
         </button>
       </div>
@@ -4077,45 +4098,118 @@ function updateConeVisibilityForClustering() {
   });
 }
 /* ═══════════════════════════════════════════════════
-   REPORT CONCENTRATION HEATMAP
-   Toggled via the flame button. Deliberately simple and fast: one heat
-   point per active report, at its own location. No trail math, no
-   per-candidate scoring -- Leaflet.heat's own additive blending is what
-   makes areas with more reports glow brighter, which is exactly the
-   "where are reports concentrated" read this is meant to give. Trying to
-   turn this same view into a source estimate (a slower prior version did)
-   didn't hold up -- that job now belongs to the auto-source-finder below.
+   PROBABLE SOURCE HEATMAP
+   Toggled via the flame button. For every active report, walks that
+   report's own historic backtrajectory (the same wind trail used for
+   station matching) out to its oldest point -- the best proxy we have
+   for where the plume actually originated -- and weights it reddest
+   there, fading through orange as the trail approaches the report
+   itself. Past the report, a short forward tail (real wind data for the
+   ~1h right after the report was made, via computeForwardWindExtension)
+   continues the same fade into yellow, so you can see where it kept
+   drifting after someone noticed it. Leaflet.heat's additive blending
+   still does the "more reports = brighter" job it always did, on top of
+   this per-report gradient.
+
+   The trail also physically widens (extra points offset left/right,
+   perpendicular to the local wind direction, at a lower weight than the
+   centerline) the closer it gets to and past the report -- real plumes
+   disperse further from their source, so it's drawn tight near the
+   presumed origin and progressively wider through the report and its
+   forward tail, rather than a uniform-width blob.
 ═══════════════════════════════════════════════════ */
 let sourceHeatVisible = (function () {
   try { return localStorage.getItem('ttt_source_heat_visible') === 'true'; } catch (e) { return false; }
 })();
 let sourceHeatLayer = null;
 
-function computeSourceHeatPoints(reports) {
+// Great-circle bearing (degrees, 0=N) from point 1 to point 2 -- used to
+// find "perpendicular to the trail" at each point along it.
+function bearingBetween(lat1, lon1, lat2, lon2) {
+  const toRad = d => d * Math.PI / 180;
+  const y = Math.sin(toRad(lon2 - lon1)) * Math.cos(toRad(lat2));
+  const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) -
+            Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(toRad(lon2 - lon1));
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+}
+
+// Adds a lower-weight point on either side of (lat,lon), spreadKm out,
+// perpendicular to pathBearing -- what makes the plume read as widening
+// instead of a constant-thickness line.
+function pushSpreadPoints(points, lat, lon, pathBearing, spreadKm, weight) {
+  if (spreadKm <= 0) return;
+  const left = moveUpwind(lat, lon, (pathBearing + 90) % 360, spreadKm);
+  const right = moveUpwind(lat, lon, (pathBearing + 270) % 360, spreadKm);
+  points.push([left.lat, left.lon, weight]);
+  points.push([right.lat, right.lon, weight]);
+}
+
+async function buildProbableSourceHeatPoints(reports) {
   const points = [];
-  reports.forEach(report => {
+  const MAX_SPREAD_KM = 0.7; // lateral offset reached right at the report; widens further along the forward tail
+
+  await Promise.all(reports.map(async (report) => {
     const lat = parseFloat(report.latitude);
     const lon = parseFloat(report.longitude);
     if (isNaN(lat) || isNaN(lon)) return;
-    points.push([lat, lon, 1]);
-  });
+
+    const trailResult = await buildWindTrailForReport(report).catch(() => null);
+    const rawTrail = trailResult ? trailResult.rawTrail : null;
+
+    if (rawTrail && rawTrail.length >= 2) {
+      const sourceIdx = rawTrail.length - 1; // furthest back in time = presumed source
+      for (let i = sourceIdx; i >= 0; i--) {
+        const t = i / sourceIdx; // 1 at the source (red), 0 at the report (orange)
+        const weight = 1.2 + t * 1.8; // 1.2 report end -> 3.0 source end
+        const pt = rawTrail[i];
+        points.push([pt.lat, pt.lon, weight]);
+
+        const next = rawTrail[i - 1] || pt; // one step closer to the report
+        const bearing = bearingBetween(pt.lat, pt.lon, next.lat, next.lon);
+        const spreadKm = MAX_SPREAD_KM * (1 - t); // tight near the source, wide by the report
+        pushSpreadPoints(points, pt.lat, pt.lon, bearing, spreadKm, weight * 0.5);
+      }
+    } else {
+      // No settled wind trail yet (very fresh report) -- still show it,
+      // just as a single orange point instead of dropping it entirely.
+      points.push([lat, lon, 1.4]);
+    }
+
+    // Forward tail: continues past the report using real wind data for
+    // just the 1h right after it was made, fading further into yellow
+    // and spreading wider than the report point itself as it goes.
+    const tail = await computeForwardWindExtension(report, 5, 1).catch(() => []);
+    if (tail.length) {
+      let prev = { lat, lon };
+      tail.forEach((pt, i) => {
+        const weight = Math.max(0.3, 0.9 - 0.5 * (i / tail.length));
+        points.push([pt.lat, pt.lon, weight]);
+        const bearing = bearingBetween(prev.lat, prev.lon, pt.lat, pt.lon);
+        const spreadKm = MAX_SPREAD_KM * (1 + (i + 1) / tail.length); // keeps widening past the report
+        pushSpreadPoints(points, pt.lat, pt.lon, bearing, spreadKm, weight * 0.5);
+        prev = pt;
+      });
+    }
+  }));
+
   return points;
 }
 
 // (Re)builds the heat layer from the given active reports. Safe to call
 // even when the heatmap is currently hidden -- it just won't be added to
 // the map until toggleSourceHeat() turns it on.
-function renderSourceHeatLayer(reports) {
-  const points = computeSourceHeatPoints(reports || globalActiveData);
+async function renderSourceHeatLayer(reports) {
+  const points = await buildProbableSourceHeatPoints(reports || globalActiveData);
   if (sourceHeatLayer) {
     sourceHeatLayer.setLatLngs(points);
   } else {
     sourceHeatLayer = L.heatLayer(points, {
-      radius: 30,
-      blur: 24,
+      radius: 26,
+      blur: 20,
       maxZoom: 17,
+      max: 3.2, // fixed scale so color meaning (red=source) stays consistent regardless of how many reports are on screen
       minOpacity: 0.25,
-      gradient: { 0.2: '#2a682a', 0.45: '#d4c600', 0.7: '#f5a623', 1.0: '#c41e27' }
+      gradient: { 0.15: '#fff59d', 0.4: '#ffca28', 0.65: '#f57c00', 1.0: '#c41e27' }
     });
   }
   if (sourceHeatVisible && !map.hasLayer(sourceHeatLayer)) {
