@@ -529,7 +529,6 @@ span.flatpickr-weekday {
 #pinMapBtn{ position:fixed; bottom:calc(var(--legend-bar-h) + 148px); right:12px; }
 #mapFilterBtn{ position:fixed; bottom:calc(var(--legend-bar-h) + 202px); right:12px; }
 #sourceHeatBtn{ position:fixed; bottom:calc(var(--legend-bar-h) + 256px); right:12px; }
-#autoSourceBtn{ position:fixed; bottom:calc(var(--legend-bar-h) + 310px); right:12px; }
 .source-heat-btn{
   background:var(--floating-bg);
   border:1px solid var(--floating-border);
@@ -547,24 +546,6 @@ span.flatpickr-weekday {
 .source-heat-btn.active{ background:#f5a623; border-color:#f5a623; }
 .source-heat-btn svg{ stroke:var(--text-secondary); transition:stroke .15s ease; }
 .source-heat-btn.active svg{ stroke:#fff; }
-.auto-source-btn{
-  background:var(--floating-bg);
-  border:1px solid var(--floating-border);
-  border-radius:50%;
-  width:44px; height:44px;
-  display:flex; align-items:center; justify-content:center;
-  cursor:pointer; font-size:22px;
-  box-shadow:0 2px 8px var(--floating-shadow);
-  transition:background .15s ease, transform .12s ease, box-shadow .15s ease;
-  user-select:none;
-  -webkit-tap-highlight-color:transparent;
-  touch-action:manipulation;
-}
-.auto-source-btn:active{ transform:scale(.9); }
-.auto-source-btn svg{ stroke:var(--text-secondary); transition:stroke .15s ease; }
-.auto-source-btn.busy{ pointer-events:none; }
-.auto-source-btn.busy svg{ animation:autoSourceSpin 0.9s linear infinite; stroke:var(--accent); }
-@keyframes autoSourceSpin{ to{ transform:rotate(360deg); } }
 .map-filter-btn{
   background:var(--floating-bg);
   border:1px solid var(--floating-border);
@@ -958,14 +939,6 @@ span.flatpickr-weekday {
       <path d="M8.5 13.5A3.5 3.5 0 0 0 12 20a3.5 3.5 0 0 0 3.5-6.5"/>
     </svg>
   </div>
-  <div id="autoSourceBtn" class="auto-source-btn" style="display:none" title="Automatically find the most likely source" onclick="autoFindSource()">
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <circle cx="12" cy="12" r="9"/>
-      <circle cx="12" cy="12" r="4"/>
-      <circle cx="12" cy="12" r="0.6" fill="currentColor" stroke="none"/>
-      <path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>
-    </svg>
-  </div>
 </div>
 <input type="text" id="mapDateRangePicker" style="display:none">
 
@@ -1041,6 +1014,17 @@ span.flatpickr-weekday {
         </span>
       </label>
       <p class="detail-export-hint" id="splineVisibilityHint">Show the dashed wind-trail lines behind each pin. Off by default to keep the map uncluttered.</p>
+    </div>
+
+    <div class="detail-section" id="traceHeatmapSettingsSection">
+      <label class="settings-toggle-row" for="traceHeatmapToggle">
+        <span id="traceHeatmapLabel">Show heatmap when tracing possible source</span>
+        <span class="toggle-switch">
+          <input type="checkbox" id="traceHeatmapToggle" onchange="setTraceHeatmapEnabled(this.checked)">
+          <span class="toggle-switch-track"><span class="toggle-switch-thumb"></span></span>
+        </span>
+      </label>
+      <p class="detail-export-hint" id="traceHeatmapHint">While using Trace Possible Source: red at the source, fading to orange toward each matched report, then a yellow tail continuing ~5km further along the wind past the report -- brightening back toward orange wherever it crosses another report's trail.</p>
     </div>
 
     <div class="detail-section" style="padding:0;overflow:hidden;">
@@ -1570,6 +1554,8 @@ function showSettingsModal() {
   document.getElementById('settingsModal').style.display = 'flex';
   const splineToggle = document.getElementById('splineVisibilityToggle');
   if (splineToggle) splineToggle.checked = splinesVisible;
+  const traceHeatToggle = document.getElementById('traceHeatmapToggle');
+  if (traceHeatToggle) traceHeatToggle.checked = traceHeatmapEnabled;
 }
 function hideSettingsModal() {
   document.getElementById('settingsModal').style.display = 'none';
@@ -1635,6 +1621,9 @@ function setTrailDisplayHours(hours) {
 let splinesVisible = (function () {
   try { return localStorage.getItem('ttt_splines_visible') === 'true'; } catch (e) { return false; }
 })();
+let traceHeatmapEnabled = (function () {
+  try { return localStorage.getItem('ttt_trace_heatmap_enabled') === 'true'; } catch (e) { return false; }
+})();
 function applySplineVisibility() {
   const pane = map.getPane('splinePane');
   // Trace Possible Source relies on the trail being visible to mean
@@ -1649,6 +1638,28 @@ function setSplineVisibility(visible) {
   applySplineVisibility();
   const toggle = document.getElementById('splineVisibilityToggle');
   if (toggle) toggle.checked = splinesVisible;
+}
+
+// lastTraceTracerCoords/lastTraceMatchedReports/traceHeatLayer/
+// renderTraceHeatLayer are declared further down alongside
+// filterPinsBySourceTrajectory (their natural home) -- fine to reference
+// them here since this function only runs on a user click, well after the
+// whole script (and those declarations) has finished loading.
+function setTraceHeatmapEnabled(enabled) {
+  traceHeatmapEnabled = !!enabled;
+  try { localStorage.setItem('ttt_trace_heatmap_enabled', String(traceHeatmapEnabled)); } catch (e) {}
+  const toggle = document.getElementById('traceHeatmapToggle');
+  if (toggle) toggle.checked = traceHeatmapEnabled;
+
+  if (!traceHeatmapEnabled) {
+    if (traceHeatLayer && map.hasLayer(traceHeatLayer)) map.removeLayer(traceHeatLayer);
+    return;
+  }
+  // Turned on mid-trace: show it immediately for whatever's already traced,
+  // without requiring another map click.
+  if (traceMode && lastTraceTracerCoords) {
+    renderTraceHeatLayer(lastTraceTracerCoords, lastTraceMatchedReports);
+  }
 }
 
 const weatherCache = {};
@@ -2444,17 +2455,6 @@ const SourceHeatControl = L.Control.extend({
 new SourceHeatControl().addTo(map);
 document.getElementById('sourceHeatBtn').style.display = 'flex';
 
-const AutoSourceControl = L.Control.extend({
-  options:{ position:'bottomleft' },
-  onAdd(){
-    const btn = document.getElementById('autoSourceBtn');
-    L.DomEvent.disableClickPropagation(btn);
-    return btn;
-  }
-});
-new AutoSourceControl().addTo(map);
-document.getElementById('autoSourceBtn').style.display = 'flex';
-
 function togglePinMode() {
   pinMode = !pinMode;
   
@@ -2505,6 +2505,9 @@ function toggleTraceMode() {
       map.removeLayer(tracerMarker);
       tracerMarker = null;
     }
+    if (traceHeatLayer && map.hasLayer(traceHeatLayer)) map.removeLayer(traceHeatLayer);
+    lastTraceTracerCoords = null;
+    lastTraceMatchedReports = [];
   } else {
     // 2. Returning back to normal mode: Restore everything safely
     if (tracerMarker) {
@@ -2513,6 +2516,9 @@ function toggleTraceMode() {
     }
     tracerVisualCircles.forEach(c => map.removeLayer(c));
     tracerVisualCircles = [];
+    if (traceHeatLayer && map.hasLayer(traceHeatLayer)) map.removeLayer(traceHeatLayer);
+    lastTraceTracerCoords = null;
+    lastTraceMatchedReports = [];
     
     loadPinsByWindow(); // Re-render default historical background trails and pins
   }
@@ -3214,6 +3220,14 @@ function moveUpwind(lat,lon,windFromDeg,distKm){
   return { lat:lat2*180/Math.PI, lon:lon2*180/Math.PI };
 }
 
+// Same great-circle projection as moveUpwind, just the physically-forward
+// direction (bearing flipped 180°) -- where the air a report's wind
+// reading describes actually continues TO, used to project where the
+// smell might have drifted after the report was made.
+function moveDownwind(lat, lon, windFromDeg, distKm) {
+  return moveUpwind(lat, lon, (windFromDeg + 180) % 360, distKm);
+}
+
 /* ═══════════════════════════════════════════════════
    HISTORICAL WEATHER & SPLINE GENERATION
 ═══════════════════════════════════════════════════ */
@@ -3256,6 +3270,63 @@ if (weatherCache[cacheKey]) return weatherCache[cacheKey];
   const doFetch = async () => {
     // Up to 3 attempts total with growing backoff before giving up — a
     // burst of concurrent reports used to 429 after just one quick retry.
+    const backoffMs = [1500, 3500];
+    let r;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        r = await fetch(url);
+      } catch (e) {
+        return null;
+      }
+      if (r.status !== 429 || attempt >= backoffMs.length) break;
+      await new Promise(res => setTimeout(res, backoffMs[attempt]));
+    }
+    if (!r.ok) return null;
+    try {
+      const d = await r.json();
+      if (!d.hourly) return null;
+      weatherCache[cacheKey] = d.hourly;
+      return d.hourly;
+    } catch (e) {
+      return null;
+    }
+  };
+
+  const p = runWithOpenMeteoLimit(doFetch).finally(() => {
+    delete weatherFetchInFlight[cacheKey];
+  });
+  weatherFetchInFlight[cacheKey] = p;
+  return p;
+}
+
+// Same shape as fetchHistoricWind, minus its TRAIL_MIN_HOURS settle-gate.
+// That gate exists there because backward trail data gets persisted to
+// Supabase as if final/authoritative -- it deliberately waits for
+// Open-Meteo's numbers to stop being forecast estimates. This is used
+// only for the trace heatmap's transient "after the report" tail, never
+// persisted, so a fresh report showing its likely next few hours via
+// forecast data (rather than nothing at all until 5+ hours later) is the
+// right tradeoff here.
+async function fetchForwardWind(lat, lon, isoStart, isoEnd) {
+  lat = parseFloat(lat);
+  lon = parseFloat(lon);
+  const cacheKey = `fwd_${lat.toFixed(3)}_${lon.toFixed(3)}_${isoStart.slice(0,13)}`;
+  if (weatherCache[cacheKey]) return weatherCache[cacheKey];
+  if (weatherFetchInFlight[cacheKey]) return weatherFetchInFlight[cacheKey];
+
+  const daysDiff = (Date.now() - new Date(isoStart)) / 86400000;
+  let url = '';
+  if (daysDiff < 7) {
+    // forecast_days:2 (vs fetchHistoricWind's 1) so even a report made
+    // this minute has forecasted hours past "now" to cover its forward
+    // window with.
+    url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=wind_speed_10m,wind_direction_10m,pressure_msl&wind_speed_unit=kmh&timezone=UTC&past_days=7&forecast_days=2`;
+  } else {
+    const sd = isoStart.slice(0, 10), ed = isoEnd.slice(0, 10);
+    url = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${sd}&end_date=${ed}&hourly=wind_speed_10m,wind_direction_10m,pressure_msl&wind_speed_unit=kmh&timezone=UTC`;
+  }
+
+  const doFetch = async () => {
     const backoffMs = [1500, 3500];
     let r;
     for (let attempt = 0; ; attempt++) {
@@ -3555,6 +3626,47 @@ async function buildWindTrailForReport(report) {
 async function renderHistoricSplineTrailForReport(report) {
   const result = await buildWindTrailForReport(report);
   return result ? result.spline : null;
+}
+
+// Projects roughly maxKm forward from a report's own location using
+// hourly wind readings for the hours right AFTER it was made -- i.e.
+// where the smell likely continued drifting once someone noticed and
+// reported it, as opposed to buildWindTrailForReport's rawTrail, which
+// walks backward in time toward the source. Used only by the
+// trace-heatmap's yellow "after the report" tail (never persisted), via
+// fetchForwardWind so even a very fresh report gets a forward tail from
+// forecast data rather than nothing until it's 5+ hours old.
+async function computeForwardWindExtension(report, maxKm = 5, maxHoursForward = 6) {
+  const reportTime = new Date(report.created_at);
+  const forwardEnd = new Date(reportTime.getTime() + maxHoursForward * 3600000);
+
+  const hourly = await fetchForwardWind(
+    report.latitude, report.longitude,
+    reportTime.toISOString(), forwardEnd.toISOString()
+  );
+  if (!hourly?.time) return [];
+
+  const steps = [];
+  for (let i = 0; i < hourly.time.length; i++) {
+    const ts = new Date(hourly.time[i] + 'Z');
+    if (ts > reportTime && ts <= forwardEnd) {
+      steps.push({ spd: hourly.wind_speed_10m[i], dir: hourly.wind_direction_10m[i] });
+    }
+  }
+  if (!steps.length) return [];
+
+  const points = [];
+  let cLat = parseFloat(report.latitude), cLon = parseFloat(report.longitude);
+  let travelled = 0;
+  for (const s of steps) {
+    if (travelled >= maxKm) break;
+    const stepKm = Math.min(s.spd * 1.0, maxKm - travelled); // spd is km/h, 1h per hourly step
+    const m = moveDownwind(cLat, cLon, s.dir, stepKm);
+    cLat = m.lat; cLon = m.lon;
+    travelled += stepKm;
+    points.push({ lat: cLat, lon: cLon });
+  }
+  return points;
 }
 
 // Finds the single station a report's backtracked wind trail is most
@@ -4025,98 +4137,6 @@ function toggleSourceHeat() {
   }
 }
 
-/* ═══════════════════════════════════════════════════
-   AUTO SOURCE FINDER
-   One click instead of manually dragging the trace pin around: finds the
-   single point that would get the most matches from
-   filterPinsBySourceTrajectory (same radius/dispersion tolerance, so the
-   result is exactly what you'd get by manually landing the pin on the
-   best spot yourself), then drops the tracer there and runs the normal
-   trace -- reusing the same trusted matching code, just automating the
-   search for where to place it.
-
-   Two things make this fast, unlike the earlier heatmap attempt:
-   1. Trails are fetched in PARALLEL (Promise.all) instead of one at a
-      time in a for-await loop -- the previous version awaited each
-      report sequentially, so on an active set with several not-yet-cached
-      reports it was paying full network latency N times over instead of
-      once.
-   2. Candidates + matching both use each report's RAW hourly trail
-      (buildWindTrailForReport's rawTrail: one point per hour, ~6-12
-      points) instead of the Chaikin-smoothed display spline, which has
-      several times more points/segments for the same path. Same
-      real-world path, far fewer points to check.
-═══════════════════════════════════════════════════ */
-// Same tolerance filterPinsBySourceTrajectory uses -- kept here so
-// findAutoProbableSource agrees with the manual trace tool about what
-// counts as "passing near" a point.
-const SOURCE_HEAT_BASE_RADIUS_KM  = 2.0;
-const SOURCE_HEAT_DISPERSION_KM_H = 2.0;
-
-async function findAutoProbableSource(reports) {
-  const trailArrays = (await Promise.all(
-    reports.map(r => buildWindTrailForReport(r))
-  ))
-    .map(result => result?.rawTrail)
-    .filter(trail => trail && trail.length >= 2);
-
-  if (trailArrays.length < 2) return null; // need at least 2 trails to find any agreement
-
-  let bestPoint = null, bestScore = 0;
-  trailArrays.forEach(trail => {
-    trail.forEach(candidate => {
-      let score = 0;
-      trailArrays.forEach(other => {
-        for (let i = 0; i < other.length - 1; i++) {
-          const d = distanceToSegment(candidate, other[i], other[i + 1]);
-          const allowed = SOURCE_HEAT_BASE_RADIUS_KM + SOURCE_HEAT_DISPERSION_KM_H * (i + 1) * (6 / other.length);
-          if (d <= allowed) {
-            score += 1 - (d / allowed);
-            break; // count each trail at most once per candidate point
-          }
-        }
-      });
-      if (score > bestScore) { bestScore = score; bestPoint = candidate; }
-    });
-  });
-
-  return bestPoint;
-}
-
-async function autoFindSource() {
-  const btn = document.getElementById('autoSourceBtn');
-  if (btn) btn.classList.add('busy');
-
-  try {
-    if (!globalActiveData.length) return;
-
-    // Piggyback on the trace tool's own on/off machinery so state (pin
-    // mode, old tracer marker/circles, etc) is cleared exactly like a
-    // manual trace click would.
-    if (!traceMode) toggleTraceMode();
-
-    const best = await findAutoProbableSource(globalActiveData);
-    if (!best) return; // not enough reports with wind data in the current window
-
-    const latlng = L.latLng(best.lat, best.lon);
-    if (tracerMarker) {
-      tracerMarker.setLatLng(latlng);
-    } else {
-      tracerMarker = L.marker(latlng, {
-        icon: L.divIcon({
-          className: '',
-          html: `<div style="width:22px;height:22px;background:#ff4d4d;border-radius:50%;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,.5)"></div>`,
-          iconAnchor: [11, 11]
-        })
-      }).addTo(map);
-    }
-    map.panTo(latlng);
-
-    await filterPinsBySourceTrajectory(best);
-  } finally {
-    if (btn) btn.classList.remove('busy');
-  }
-}
 
 function translateCategory(category) {
   const srToEn = {
@@ -4427,6 +4447,86 @@ function distanceToSegment(p, p1, p2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
+/* ═══════════════════════════════════════════════════
+   TRACE-SOURCE HEATMAP
+   Optional overlay (Settings toggle) shown alongside the normal dashed
+   trails while using Trace Possible Source. One shared Leaflet.heat
+   layer, built from three kinds of weighted points per matched report:
+     - A cluster right at the tracer pin itself -- highest weight, reddest.
+     - Points along that report's own backtrajectory, from the report out
+       to wherever it passes closest to the tracer -- weight ramps up
+       from "orange near the report" to "red near the source", so it
+       reads as one continuous gradient with the source cluster above.
+     - A short tail continuing ~5km past the report, using REAL wind data
+       for the hours after the report was made (computeForwardWindExtension)
+       -- low weight, yellow. Where two reports' tails (or a tail and
+       another report's backtrajectory) happen to cross, Leaflet.heat just
+       adds the weights together automatically -- no extra intersection
+       math needed -- which is what pushes that overlap up into orange.
+═══════════════════════════════════════════════════ */
+let traceHeatLayer = null;
+let lastTraceTracerCoords = null;
+let lastTraceMatchedReports = [];
+
+async function buildTraceHeatPoints(tracerCoords, matchedReports) {
+  const points = [];
+
+  // Source cluster -- reddest point on the map.
+  points.push([tracerCoords.lat, tracerCoords.lon, 3]);
+  points.push([tracerCoords.lat, tracerCoords.lon, 3]);
+
+  const trails = await Promise.all(matchedReports.map(r => renderHistoricSplineTrailForReport(r)));
+  const forwardTails = await Promise.all(matchedReports.map(r => computeForwardWindExtension(r)));
+
+  matchedReports.forEach((report, idx) => {
+    const trail = trails[idx];
+    if (trail && trail.length >= 2) {
+      // Closest-approach point on this report's trail to the tracer --
+      // only the report→source portion matters for the heatmap; anything
+      // further back in the trail than that is past the source already.
+      let closestIdx = 0, closestDist = Infinity;
+      trail.forEach((pt, i) => {
+        const d = getHaversineDistance(pt.lat, pt.lon, tracerCoords.lat, tracerCoords.lon);
+        if (d < closestDist) { closestDist = d; closestIdx = i; }
+      });
+      for (let i = 0; i <= closestIdx; i++) {
+        const t = closestIdx > 0 ? i / closestIdx : 1; // 0 at the report, 1 at the source
+        const weight = 1.0 + t * 2.0; // 1.0 (report end) ramping to 3.0 (source end)
+        points.push([trail[i].lat, trail[i].lon, weight]);
+      }
+    }
+
+    const tail = forwardTails[idx];
+    if (tail && tail.length) {
+      tail.forEach((pt, i) => {
+        const weight = Math.max(0.3, 0.9 - 0.5 * (i / tail.length)); // low + fading -> yellow
+        points.push([pt.lat, pt.lon, weight]);
+      });
+    }
+  });
+
+  return points;
+}
+
+async function renderTraceHeatLayer(tracerCoords, matchedReports) {
+  const points = await buildTraceHeatPoints(tracerCoords, matchedReports);
+  if (traceHeatLayer) {
+    traceHeatLayer.setLatLngs(points);
+  } else {
+    traceHeatLayer = L.heatLayer(points, {
+      radius: 24,
+      blur: 18,
+      maxZoom: 17,
+      max: 3.2, // fixed scale so a lone yellow tail can't get renormalized into orange just because nothing brighter is on screen
+      minOpacity: 0.25,
+      gradient: { 0.1: '#fff59d', 0.3: '#ffca28', 0.55: '#f57c00', 0.8: '#e64a19', 1.0: '#c41e27' }
+    });
+  }
+  if (traceHeatmapEnabled && !map.hasLayer(traceHeatLayer)) {
+    traceHeatLayer.addTo(map);
+  }
+}
+
 async function filterPinsBySourceTrajectory(tracerCoords) {
   const BASE_RADIUS_KM = 2.0;
   const DISPERSION_RATE_KM_H = 2.0;
@@ -4510,6 +4610,10 @@ async function filterPinsBySourceTrajectory(tracerCoords) {
 
   generateAllBackgroundTrails(activeReportsToDrawTrails, tracerCoords);
   if (sourceHeatVisible) renderSourceHeatLayer(activeReportsToDrawTrails);
+
+  lastTraceTracerCoords = tracerCoords;
+  lastTraceMatchedReports = activeReportsToDrawTrails;
+  if (traceHeatmapEnabled) renderTraceHeatLayer(tracerCoords, activeReportsToDrawTrails);
 
   const n = reportMarkers.length;
   updateReportCountUI(n, timeFilteredData.length);
