@@ -3928,59 +3928,118 @@ function updateConeVisibilityForClustering() {
 }
 /* ═══════════════════════════════════════════════════
    PROBABLE SOURCE HEATMAP
-   Toggled via the new floating button. Rather than reading one report's
-   cone at a time, this samples weighted points along every active report's
-   own upwind bearing (same direction each cone already points) and feeds
-   them all into one heat layer -- so instead of eyeballing where several
-   separate cones happen to overlap, the areas several reports' upwind
-   paths actually converge on light up as a single hot zone: a rough
-   "here's most likely where it's coming from" read across the whole map,
-   even when zoomed out past where individual cones/pins are visible.
+   Toggled via the new floating button. The first version of this just
+   faded weighted points out from each report's own position along its
+   upwind bearing -- which mostly just re-drew "where are there a lot of
+   reports", not an actual source estimate.
+   This version instead reuses the SAME matching logic as the manual
+   "Trace Possible Source" pin (filterPinsBySourceTrajectory /
+   distanceToSegment, below): for a set of candidate points sampled along
+   every report's real historical wind trail, it scores each candidate by
+   how many OTHER reports' trails also pass within that same
+   distance-plus-dispersion tolerance. A spot several reports' wind
+   histories agree on scores highest (reddest); moving from there out
+   along any one report's own trail, fewer other trails still pass nearby,
+   so the score -- and the color -- fades through orange to yellow well
+   before reaching that report's own pin. Effectively this is what you'd
+   get if you dropped the manual trace pin at every plausible spot and
+   kept whichever got the most matches, visualized all at once.
 ═══════════════════════════════════════════════════ */
 let sourceHeatVisible = (function () {
   try { return localStorage.getItem('ttt_source_heat_visible') === 'true'; } catch (e) { return false; }
 })();
 let sourceHeatLayer = null;
+let sourceHeatRequestId = 0; // guards against a slower, stale computation overwriting a newer one
 
-const SOURCE_HEAT_MAX_DIST_KM = 8;   // how far upwind each report's contribution reaches
-const SOURCE_HEAT_STEP_KM     = 0.4; // sampling resolution along that upwind path
+// Same tolerance the manual trace tool uses (filterPinsBySourceTrajectory)
+// -- kept in sync deliberately, so the heatmap and the manual pin always
+// agree on what counts as "passing near" a candidate point.
+const SOURCE_HEAT_BASE_RADIUS_KM   = 2.0;
+const SOURCE_HEAT_DISPERSION_KM_H  = 2.0;
+// Spacing between candidate points resampled along each report's trail.
+// Candidates come from the trails themselves (not a full 2D grid) since
+// the source has to be near one of them anyway -- far cheaper, same result.
+const SOURCE_HEAT_SAMPLE_STEP_KM   = 0.5;
 
-// Walks upwind from each report (same bearing its cone already points),
-// sampling weighted points that fade out with distance -- points close to
-// the report are a more certain read on where its air came from than
-// points far upwind, so they carry more weight in the heat layer.
-function computeSourceHeatPoints(reports) {
+// Resamples a trail (array of {lat,lon[,time]}) into evenly-spaced points
+// roughly stepKm apart, so long trails and short trails contribute a
+// comparable number of candidate points instead of long ones dominating.
+function resampleTrail(trail, stepKm) {
+  const out = [trail[0]];
+  let accKm = 0;
+  for (let i = 1; i < trail.length; i++) {
+    accKm += getHaversineDistance(trail[i - 1].lat, trail[i - 1].lon, trail[i].lat, trail[i].lon);
+    if (accKm >= stepKm) { out.push(trail[i]); accKm = 0; }
+  }
+  return out;
+}
+
+// Fetches every active report's full historical trail (same one the
+// manual trace tool matches against -- cached, so this is free/instant
+// for any report whose cone/spline has already been drawn), scores
+// candidate points by cross-report convergence, and returns Leaflet.heat
+// points: [lat, lon, weight].
+async function computeSourceHeatPoints(reports, requestId) {
+  const trailArrays = [];
+  for (const report of reports) {
+    const trail = await renderHistoricSplineTrailForReport(report);
+    if (requestId !== sourceHeatRequestId) return null; // superseded mid-fetch
+    if (trail && trail.length >= 2) trailArrays.push(trail);
+  }
+  if (trailArrays.length < 2) return []; // need at least 2 trails to find any agreement
+
+  // Sampling every trail at a fixed spacing keeps the candidate count (and
+  // therefore the O(candidates × trails) scoring pass below) roughly
+  // proportional to total trail length rather than exploding with report
+  // count -- but as a further safety margin against a very large active
+  // set, widen the spacing a bit once there are a lot of trails at once.
+  const stepKm = trailArrays.length > 60
+    ? SOURCE_HEAT_SAMPLE_STEP_KM * (trailArrays.length / 60)
+    : SOURCE_HEAT_SAMPLE_STEP_KM;
+
+  const candidates = trailArrays.flatMap(trail => resampleTrail(trail, stepKm));
+
   const points = [];
-  reports.forEach(report => {
-    const lat = parseFloat(report.latitude);
-    const lon = parseFloat(report.longitude);
-    const windDeg = parseFloat(report.manual_wind_direction ?? report.wind_direction);
-    if (isNaN(lat) || isNaN(lon) || isNaN(windDeg)) return;
-
-    for (let d = 0; d <= SOURCE_HEAT_MAX_DIST_KM; d += SOURCE_HEAT_STEP_KM) {
-      const weight = 1 - d / SOURCE_HEAT_MAX_DIST_KM;
-      if (weight <= 0) continue;
-      const p = moveUpwind(lat, lon, windDeg, d);
-      points.push([p.lat, p.lon, weight]);
-    }
+  candidates.forEach(c => {
+    let score = 0;
+    trailArrays.forEach(trail => {
+      // Closest approach of THIS trail to the candidate point, same
+      // expanding-with-time-back tolerance filterPinsBySourceTrajectory
+      // uses (more dispersion allowed the further back along the trail).
+      for (let i = 0; i < trail.length - 1; i++) {
+        const d = distanceToSegment(c, trail[i], trail[i + 1]);
+        const allowed = SOURCE_HEAT_BASE_RADIUS_KM + SOURCE_HEAT_DISPERSION_KM_H * (i + 1) * (6 / trail.length);
+        if (d <= allowed) {
+          score += 1 - (d / allowed); // closer counts more than a near-miss at the edge of tolerance
+          break; // count each trail at most once per candidate point
+        }
+      }
+    });
+    if (score > 0) points.push([c.lat, c.lon, score]);
   });
+
   return points;
 }
 
 // (Re)builds the heat layer from the given active reports. Safe to call
 // even when the heatmap is currently hidden -- it just won't be added to
-// the map until toggleSourceHeat() turns it on.
-function renderSourceHeatLayer(reports) {
-  const points = computeSourceHeatPoints(reports || globalActiveData);
+// the map until toggleSourceHeat() turns it on. Async and can take a
+// moment on a large active set (it's walking every report's full trail),
+// so it's guarded against a stale, slower call clobbering a newer one.
+async function renderSourceHeatLayer(reports) {
+  const requestId = ++sourceHeatRequestId;
+  const points = await computeSourceHeatPoints(reports || globalActiveData, requestId);
+  if (points === null || requestId !== sourceHeatRequestId) return; // superseded
+
   if (sourceHeatLayer) {
     sourceHeatLayer.setLatLngs(points);
   } else {
     sourceHeatLayer = L.heatLayer(points, {
-      radius: 28,
-      blur: 22,
+      radius: 26,
+      blur: 20,
       maxZoom: 17,
-      minOpacity: 0.25,
-      gradient: { 0.2: '#2a682a', 0.45: '#d4c600', 0.7: '#f5a623', 1.0: '#c41e27' }
+      minOpacity: 0.2,
+      gradient: { 0.15: '#2a682a', 0.4: '#d4c600', 0.65: '#f5a623', 1.0: '#c41e27' }
     });
   }
   if (sourceHeatVisible && !map.hasLayer(sourceHeatLayer)) {
