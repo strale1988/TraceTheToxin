@@ -1944,6 +1944,27 @@ const STATION_TRAIL_MATCH_RADIUS_KM = 5;
 // definition even though the wind never carried anything toward it.
 const MIN_TRAIL_MATCH_PATH_KM = 1.0;
 
+// If the standard TRAIL_WINDOW_HOURS trail doesn't pass within
+// STATION_TRAIL_MATCH_RADIUS_KM of any station, the wind may simply have
+// come from further away than that window covers (e.g. a report near Novi
+// Sad whose wind actually originated south past Obrenovac, ~90km away) —
+// so station MATCHING (never the map's drawn trail, which stays a fixed
+// TRAIL_WINDOW_HOURS) retries with progressively longer backward windows
+// before giving up and falling back to plain-nearest. Purely an in-memory
+// lookup (see buildExtendedRawTrailForStationMatch) -- never touches the
+// report's backfilled fields or the persisted historic_wind_json cache
+// that the standard window uses.
+const STATION_MATCH_EXTENDED_HOURS_STEPS = [24, 48];
+
+// Stations the wind passed on its way OUT, after the report -- just as
+// real a corroborating data point as one it passed on the way in. Symmetric
+// with the backward window (12h); the km cap is deliberately generous
+// (rather than the short 5km used for the visual forward-tail elsewhere)
+// since here we actually want to know how far the wind carried it, same as
+// the backward trail's effectively-uncapped distance.
+const STATION_MATCH_FORWARD_HOURS = TRAIL_WINDOW_HOURS;
+const STATION_MATCH_FORWARD_MAX_KM = 300;
+
 /* ═══════════════════════════════════════════════════
    SUPABASE
 ═══════════════════════════════════════════════════ */
@@ -1985,6 +2006,9 @@ const T = {
   nearestStationDist: { en: 'away',                      sr: 'udaljena' },
   windTravelTime:      { en: 'Wind travel time',           sr: 'Vreme putovanja vetra' },
   windTravelDist:      { en: 'Wind travel distance',       sr: 'Pređena razdaljina vetra' },
+  windArrivedAfter:    { en: 'Wind reached here after',    sr: 'Vetar je ovde stigao posle' },
+  windUpwindTag:       { en: 'upwind',                     sr: 'uz vetar' },
+  windDownwindTag:     { en: 'downwind',                   sr: 'niz vetar' },
   stationDataAsOf:     { en: 'Station data as of',         sr: 'Podaci stanice od' },
   stationDataLoading:  { en: 'Loading station data...',    sr: 'Učitavanje podataka stanice...' },
   stationNoneNearby:   { en: 'No stations nearby',         sr: 'Nema stanica u blizini' },
@@ -3435,33 +3459,87 @@ async function getStationReadingNear(stationId, targetIso) {
   }
 }
 
-// Returns every station a report's wind trail passed within
-// STATION_TRAIL_MATCH_RADIUS_KM of — sorted most-recent-to-the-report
-// first — instead of a single best guess.
-// Falls back to plain nearest-station (a 1-item list) when there isn't
-// enough wind history yet (report younger than TRAIL_MIN_HOURS).
+// Core station-matching logic, shared by getStationsAlongWindTrailForReport
+// (which then fetches each match's reading individually) and the CSV
+// export (which batches all its reading fetches together for performance)
+// — kept as one function so the two can never quietly drift apart. Returns
+// raw matches only (no station reading fetched yet), sorted chronologically
+// oldest-upwind to furthest-downwind. Empty array (not a fallback) if
+// nothing matched — callers decide what "nothing matched" means for them.
+async function findStationMatchesForReport(report, stations, maxDistanceKm = STATION_TRAIL_MATCH_RADIUS_KM) {
+  if (!stations?.length) return [];
+
+  const trailResult = await buildWindTrailForReport(report);
+  let matches = trailResult?.rawTrail?.length
+    ? findAllStationsAlongWindTrail(trailResult.rawTrail, stations, maxDistanceKm)
+        .map(m => ({ ...m, direction: 'before' }))
+    : [];
+
+  // Standard TRAIL_WINDOW_HOURS window came up empty — the wind may simply
+  // have travelled from further back than that window covers. Try
+  // progressively longer backward windows before giving up on this
+  // direction.
+  if (!matches.length) {
+    for (const extendedHours of STATION_MATCH_EXTENDED_HOURS_STEPS) {
+      const extendedRaw = await buildExtendedRawTrailForStationMatch(report, extendedHours);
+      if (!extendedRaw) continue;
+      const extendedMatches = findAllStationsAlongWindTrail(extendedRaw, stations, maxDistanceKm);
+      if (extendedMatches.length) {
+        console.info(`[station-match] report #${report.id}: found ${extendedMatches.length} station(s) only after extending the backward search to ${extendedHours}h`);
+        matches = extendedMatches.map(m => ({ ...m, direction: 'before' }));
+        break;
+      }
+    }
+  }
+
+  // Downwind: stations the plume would have reached AFTER passing the
+  // report — just as real a corroborating data point as an upwind one.
+  try {
+    const forwardTail = await computeForwardWindExtension(report, STATION_MATCH_FORWARD_MAX_KM, STATION_MATCH_FORWARD_HOURS);
+    if (forwardTail.length) {
+      const forwardRaw = [
+        { lat: parseFloat(report.latitude), lon: parseFloat(report.longitude), time: report.created_at },
+        ...forwardTail
+      ];
+      const forwardMatches = findAllStationsAlongWindTrail(forwardRaw, stations, maxDistanceKm)
+        .map(m => ({ ...m, direction: 'after' }));
+      if (forwardMatches.length) matches = matches.concat(forwardMatches);
+    }
+  } catch (e) {
+    console.warn('Downwind station match failed for report', report.id, e);
+  }
+
+  // Chronological order: oldest upwind station first, through the report's
+  // own time, out to the furthest-reached downwind station last.
+  matches.sort((a, b) => new Date(a.atTime) - new Date(b.atTime));
+  return matches;
+}
+
+// Returns every station a report's wind actually passed near — both
+// upwind and downwind (see findStationMatchesForReport) — each with its
+// station reading fetched. Falls back to plain nearest-station (a 1-item
+// list, matchType: 'nearest-fallback') only if nothing matched at all.
 async function getStationsAlongWindTrailForReport(report, maxDistanceKm = STATION_TRAIL_MATCH_RADIUS_KM) {
   if (!airQualityStationsCache.length) return null;
 
   const reportAgeHoursDbg = (Date.now() - new Date(report.created_at).getTime()) / 3600000;
-  const trailResult = await buildWindTrailForReport(report);
-
-  let matches = trailResult?.rawTrail?.length
-    ? findAllStationsAlongWindTrail(trailResult.rawTrail, airQualityStationsCache, maxDistanceKm)
-    : [];
+  let matches = await findStationMatchesForReport(report, airQualityStationsCache, maxDistanceKm);
 
   if (!matches.length) {
     console.warn(
       `[station-match] report #${report.id}: using plain-nearest fallback ` +
-      `(age ${reportAgeHoursDbg.toFixed(1)}h, trail points: ${trailResult?.rawTrail?.length || 0})`
+      `(age ${reportAgeHoursDbg.toFixed(1)}h)`
     );
     const nearest = findNearestStation(report.latitude, report.longitude);
     if (!nearest) return null;
-    matches = [{ station: nearest.station, distanceKm: nearest.distanceKm, atTime: report.created_at, pathDistanceKm: null }];
+    matches = [{
+      station: nearest.station, distanceKm: nearest.distanceKm, atTime: report.created_at,
+      pathDistanceKm: null, direction: null, matchType: 'nearest-fallback'
+    }];
   } else {
     console.info(
       `[station-match] report #${report.id}: matched ${matches.length} station(s) via wind trail ` +
-      matches.map(m => `"${m.station.name}" (${m.distanceKm.toFixed(1)}km at ${m.atTime})`).join(', ')
+      matches.map(m => `"${m.station.name}" (${m.distanceKm.toFixed(1)}km, ${m.direction} report, ${m.atTime})`).join(', ')
     );
   }
 
@@ -3472,6 +3550,8 @@ async function getStationsAlongWindTrailForReport(report, maxDistanceKm = STATIO
       distanceKm: match.distanceKm,
       pathDistanceKm: match.pathDistanceKm,
       targetTime: new Date(match.atTime),
+      direction: match.direction ?? 'before',
+      matchType: match.matchType ?? 'trail',
       reading
     };
   }));
@@ -3959,6 +4039,48 @@ async function renderHistoricSplineTrailForReport(report) {
   return result ? result.spline : null;
 }
 
+// Builds a raw backward wind trail for STATION MATCHING ONLY, looking back
+// up to `maxHours` instead of the map's fixed TRAIL_WINDOW_HOURS. Used when
+// the standard window's trail doesn't pass near any station -- the wind may
+// simply have travelled from further away than that window covers. Kept
+// entirely separate from buildWindTrailForReport: this never backfills the
+// report's wind_speed/direction/pressure fields (those represent conditions
+// AT the report's own time, unrelated to how far back we search here) and
+// never touches the persisted historic_wind_json cache (that column is
+// specifically the standard window, reused for fast reloads of the map
+// trail) -- just a plain in-memory Open-Meteo fetch via fetchHistoricWind.
+async function buildExtendedRawTrailForStationMatch(report, maxHours) {
+  const reportTime = new Date(report.created_at);
+  const reportAgeHours = (Date.now() - reportTime.getTime()) / 3600000;
+  const availableHours = Math.min(reportAgeHours, maxHours);
+  if (availableHours < TRAIL_MIN_HOURS) return null;
+
+  const startTime = new Date(reportTime.getTime() - availableHours * 3600000);
+  const hourly = await fetchHistoricWind(report.latitude, report.longitude, startTime.toISOString(), reportTime.toISOString());
+  if (!hourly?.time?.length) return null;
+
+  const steps = [];
+  for (let i = 0; i < hourly.time.length; i++) {
+    const ts = Date.parse(hourly.time[i] + 'Z');
+    if (ts < startTime.getTime() || ts > reportTime.getTime()) continue;
+    const spd = hourly.wind_speed_10m[i];
+    const dir = hourly.wind_direction_10m[i];
+    if (spd == null || dir == null) continue;
+    steps.push({ spd, dir, ts });
+  }
+  if (!steps.length) return null;
+
+  steps.reverse(); // walk backwards from report time toward the source
+  const rawTrail = buildRawVectorTrail(report.latitude, report.longitude, steps);
+  rawTrail[0].time = reportTime.toISOString();
+  rawTrail[0].spd = steps[0]?.spd ?? report.wind_speed ?? null;
+  for (let i = 1; i < rawTrail.length; i++) {
+    rawTrail[i].time = new Date(steps[i - 1].ts).toISOString();
+    rawTrail[i].spd = steps[i - 1].spd;
+  }
+  return rawTrail;
+}
+
 // Projects roughly maxKm forward from a report's own location using
 // hourly wind readings for the hours right AFTER it was made -- i.e.
 // where the smell likely continued drifting once someone noticed and
@@ -3981,7 +4103,7 @@ async function computeForwardWindExtension(report, maxKm = 5, maxHoursForward = 
   for (let i = 0; i < hourly.time.length; i++) {
     const ts = new Date(hourly.time[i] + 'Z');
     if (ts > reportTime && ts <= forwardEnd) {
-      steps.push({ spd: hourly.wind_speed_10m[i], dir: hourly.wind_direction_10m[i] });
+      steps.push({ spd: hourly.wind_speed_10m[i], dir: hourly.wind_direction_10m[i], ts: ts.getTime() });
     }
   }
   if (!steps.length) return [];
@@ -3995,37 +4117,12 @@ async function computeForwardWindExtension(report, maxKm = 5, maxHoursForward = 
     const m = moveDownwind(cLat, cLon, s.dir, stepKm);
     cLat = m.lat; cLon = m.lon;
     travelled += stepKm;
-    points.push({ lat: cLat, lon: cLon, spd: s.spd });
+    points.push({ lat: cLat, lon: cLon, spd: s.spd, time: new Date(s.ts).toISOString() });
   }
   return points;
 }
 
-// Finds the single station a report's backtracked wind trail is most
-// relevant to. Thin wrapper around findAllStationsAlongWindTrail (defined
-// below) — just takes its first (most-recent-to-the-report) result.
-//
-// This used to run its own separate search: scan every (trail-point,
-// station) pair and keep whichever single pair had the smallest straight-
-// line distance, with no distance cap at all. Two problems with that:
-//   1. It picked the globally closest PAIR, not the closest approach PER
-//      STATION — so a station passed extremely close very early in the
-//      12h trail could beat out a different station passed much more
-//      recently but a bit further away, even though the more recent one
-//      is almost always the more useful match.
-//   2. No maxDistanceKm meant it always returned *some* station, even one
-//      50+ km from anywhere the trail actually went, mislabeling it as
-//      "the wind passed through it" when really nothing qualified.
-// findAllStationsAlongWindTrail already fixes both (per-station closest
-// approach, sorted most-recent-first, capped at maxDistanceKm) — so this
-// is now just its top result, guaranteeing the CSV export and the popup
-// can never disagree about which station "the" match is.
-function findStationAlongWindTrail(rawTrail, stations, maxDistanceKm = STATION_TRAIL_MATCH_RADIUS_KM) {
-  const matches = findAllStationsAlongWindTrail(rawTrail, stations, maxDistanceKm);
-  return matches.length ? matches[0] : null;
-}
-
-// Like findStationAlongWindTrail, but returns EVERY station the trail's
-// actual path comes within maxDistanceKm of — not just the single closest
+// Like findAllStationsAlongWindTrail's per-station closest-approach search,
 // one — each matched to its own closest approach along the path (using
 // distanceToTrailPolyline, so it catches close approaches between hourly
 // points too, not just at the hourly vertices). Sorted with the station
@@ -4722,13 +4819,21 @@ function pollutantSummaryRowHtml(reading, dark = false) {
 }
 
 // Averages pollutant values across however many station readings are
-// passed in (nulls/missing values are ignored per-pollutant). Shared by
-// handleSplineClick's upwind-average popup and the report popup's own
-// average-at-time-and-place row, so both compute it identically.
-function averagePollutantReadings(readings) {
+// passed in (nulls/missing values are ignored per-pollutant). Optional
+// `weights` (same length/order as readings) lets a station the wind
+// passed very close to count for more than one it only barely grazed at
+// the edge of the match radius -- defaults to an equal, unweighted mean
+// when omitted. Shared by handleSplineClick's upwind-average popup and
+// the report popup's own average-at-time-and-place row, so both compute
+// it identically.
+function averagePollutantReadings(readings, weights = null) {
+  const w = (weights && weights.length === readings.length) ? weights : readings.map(() => 1);
   const avg = (vals) => {
-    const nums = vals.filter(v => v != null && !isNaN(v)).map(Number);
-    return nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : null;
+    let sum = 0, wsum = 0;
+    vals.forEach((v, i) => {
+      if (v != null && !isNaN(v)) { sum += Number(v) * w[i]; wsum += w[i]; }
+    });
+    return wsum ? sum / wsum : null;
   };
   return {
     pm10: avg(readings.map(r => r?.pm10)),
@@ -4739,9 +4844,9 @@ function averagePollutantReadings(readings) {
   };
 }
 
-// Renders every station the report's wind trail actually passed through
-// directly inline — no more separate "see all" link/modal, since with the
-// popup widened to fit one pollutant row each, a full list fits fine.
+// Renders every station the report's wind actually passed near — upwind
+// (before reaching the report) and downwind (after it), plus an extended
+// backward search if the standard window found nothing — directly inline.
 function buildReportStationSectionHtml(stationList, reportCreatedAt, reportId) {
   if (stationList === undefined) {
     return `<div style="font-size:9px;color:#bbb;font-style:italic;margin-top:2px;">${t('stationDataLoading')}</div>`;
@@ -4754,25 +4859,40 @@ function buildReportStationSectionHtml(stationList, reportCreatedAt, reportId) {
   // report itself was made — a single at-a-glance number in addition to
   // the per-station breakdown below, since with more than one matched
   // station no single one of them best represents "what it was like here".
-  const readings = stationList.map(s => s.reading).filter(Boolean);
+  // Weighted by proximity: a station the wind passed within half a km of
+  // says more about actual conditions there than one only barely inside
+  // the match radius, so it counts for more in this average.
+  const withReadings = stationList.filter(s => s.reading);
+  const readings = withReadings.map(s => s.reading);
+  const weights = withReadings.map(s => 1 / (1 + (s.distanceKm ?? 0)));
   const avgSectionHtml = readings.length ? `
     <div style="margin-top:2px;">
       <span style="font-size:9px;color:#bbb;text-transform:uppercase;">${t('avgAtReportTime')}</span>
-      <div style="margin-top:2px;">${pollutantSummaryRowHtml(averagePollutantReadings(readings))}</div>
+      <div style="margin-top:2px;">${pollutantSummaryRowHtml(averagePollutantReadings(readings, weights))}</div>
     </div>
     <div style="height:1px;background:#eee;margin:6px 0;"></div>` : '';
 
-  const header = `<span style="font-size:9px;color:#bbb;text-transform:uppercase;">${stationList.length > 1 ? t('stationsAlongTrail') : t('nearestStation')}</span>`;
+  const isFallback = stationList.length === 1 && stationList[0].matchType === 'nearest-fallback';
+  const header = `<span style="font-size:9px;color:#bbb;text-transform:uppercase;">${isFallback ? t('nearestStation') : t('stationsAlongTrail')}</span>`;
 
-  const rows = stationList.map(({ station, pathDistanceKm, targetTime, reading }, i) => {
-    const hoursBefore = reportCreatedAt
-      ? (new Date(reportCreatedAt).getTime() - targetTime.getTime()) / 3600000
+  // Only worth tagging upwind/downwind on each row when the list actually
+  // mixes both directions — with everything on one side it's just noise.
+  const hasMixedDirections = !isFallback && stationList.some(s => s.direction === 'before') && stationList.some(s => s.direction === 'after');
+
+  const rows = stationList.map(({ station, pathDistanceKm, targetTime, reading, direction }, i) => {
+    const isAfter = direction === 'after';
+    const hoursDiff = reportCreatedAt
+      ? Math.abs((isAfter ? targetTime.getTime() - new Date(reportCreatedAt).getTime() : new Date(reportCreatedAt).getTime() - targetTime.getTime())) / 3600000
       : null;
     const dateLabel = formatStationTime(reading ? reading.recorded_at : targetTime);
+    const directionTag = hasMixedDirections
+      ? ` <span style="font-weight:400;color:#bbb;">(${isAfter ? t('windDownwindTag') : t('windUpwindTag')})</span>`
+      : '';
+    const travelLabel = isAfter ? t('windArrivedAfter') : t('windTravelTime');
     return `
       <div style="margin-top:${i > 0 ? '7px' : '2px'};${i > 0 ? 'padding-top:6px;border-top:1px solid var(--border-color);' : ''}">
-        <span style="font-size:10px;color:#555;font-weight:600;">${station.name}${dateLabel ? ` <span style="font-weight:400;color:#999;">(${dateLabel})</span>` : ''}</span>
-        ${hoursBefore != null && hoursBefore > 0.05 ? `<div style="font-size:9px;color:#999;">${t('windTravelTime')}: ~${hoursBefore.toFixed(1)}h${pathDistanceKm != null ? ` · ${t('windTravelDist')}: ~${pathDistanceKm.toFixed(1)} km` : ''}</div>` : ''}
+        <span style="font-size:10px;color:#555;font-weight:600;">${station.name}${directionTag}${dateLabel ? ` <span style="font-weight:400;color:#999;">(${dateLabel})</span>` : ''}</span>
+        ${hoursDiff != null && hoursDiff > 0.05 ? `<div style="font-size:9px;color:#999;">${travelLabel}: ~${hoursDiff.toFixed(1)}h${pathDistanceKm != null ? ` · ${t('windTravelDist')}: ~${pathDistanceKm.toFixed(1)} km` : ''}</div>` : ''}
         <div style="margin-top:2px;">${pollutantSummaryRowHtml(reading)}</div>
       </div>`;
   }).join('');
@@ -5475,14 +5595,19 @@ async function downloadCSVInner() {
     }
   }
 
-  // For each report, find the station its actual (backtracked) wind history
-  // passed closest to, and the real hour that happened — same logic as the
-  // report popup, so the CSV and the UI never disagree. Falls back to plain
-  // nearest-station-at-report-time only when there's no wind history yet.
+  // For each report, find the station its actual wind (upwind or downwind,
+  // extending the backward search further if needed) passed closest to in
+  // time, and the real hour that happened — same matching logic as the
+  // report popup (findStationMatchesForReport), so the CSV and the UI never
+  // disagree. Falls back to plain nearest-station-at-report-time only when
+  // nothing matched at all.
   const perReport = await Promise.all(visible.map(async (r) => {
-    const trailResult = await buildWindTrailForReport(r);
-    let match = trailResult?.rawTrail?.length
-      ? findStationAlongWindTrail(trailResult.rawTrail, stationsForExport)
+    const matches = await findStationMatchesForReport(r, stationsForExport);
+    // One row per report in a CSV, so pick the single match closest in time
+    // to the report itself as "the" representative station for this row.
+    let match = matches.length
+      ? matches.reduce((best, m) =>
+          Math.abs(new Date(m.atTime) - new Date(r.created_at)) < Math.abs(new Date(best.atTime) - new Date(r.created_at)) ? m : best)
       : null;
 
     if (!match) {
