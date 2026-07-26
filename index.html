@@ -319,7 +319,14 @@ button{
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
 }
-.leaflet-popup-content{ margin:0 !important; width:auto !important; }
+.leaflet-popup-content{
+  margin:0 !important;
+  width:auto !important;
+  max-height:70vh;
+  overflow-y:auto;
+  overflow-x:hidden;
+  -webkit-overflow-scrolling:touch;
+}
 
 .popup-inner{
   font-family:-apple-system,BlinkMacSystemFont,sans-serif;
@@ -1956,12 +1963,14 @@ const MIN_TRAIL_MATCH_PATH_KM = 1.0;
 // that the standard window uses.
 const STATION_MATCH_EXTENDED_HOURS_STEPS = [24, 48];
 
-// Stations the wind passed on its way OUT, after the report -- just as
-// real a corroborating data point as one it passed on the way in. Symmetric
-// with the backward window (12h); the km cap is deliberately generous
-// (rather than the short 5km used for the visual forward-tail elsewhere)
-// since here we actually want to know how far the wind carried it, same as
-// the backward trail's effectively-uncapped distance.
+// Window used to search for a single downwind "next station" -- the one
+// the plume would reach just after passing the report. Only the single
+// closest match within this window is kept (see findStationMatchesForReport)
+// so the station list stays dominated by where the wind came FROM
+// (upwind/backward matches) rather than everywhere it might still be
+// going; the km cap stays generous (rather than the short 5km used for the
+// visual forward-tail elsewhere) purely so that one next-station lookup
+// isn't missed just because the nearest downwind station happens to be far.
 const STATION_MATCH_FORWARD_HOURS = TRAIL_WINDOW_HOURS;
 const STATION_MATCH_FORWARD_MAX_KM = 300;
 
@@ -2621,15 +2630,19 @@ setInterval(startWatching, 5000);
 
 function initGps() {
   if (!navigator.geolocation) {
-    enableManualPinMode();
+    showGpsModal();
     return;
   }
 
   // Check permission state directly
   navigator.permissions.query({ name: 'geolocation' }).then(result => {
     if (result.state === 'denied') {
+      // Don't auto-switch into manual pin mode just because GPS is
+      // denied/unavailable -- that used to silently flip the map into
+      // pin-drop mode without the user asking for it. Just show the "GPS
+      // Not Enabled" modal (which itself points at the pin button) and
+      // let the user opt into manual mode themselves by tapping it.
       showGpsModal();
-      enableManualPinMode();
     } else {
       startWatching();
     }
@@ -3492,8 +3505,15 @@ async function findStationMatchesForReport(report, stations, maxDistanceKm = STA
     }
   }
 
-  // Downwind: stations the plume would have reached AFTER passing the
-  // report — just as real a corroborating data point as an upwind one.
+  // Downwind: at most ONE station the plume would have reached just AFTER
+  // passing the report. This list should mainly answer "where did the wind
+  // come from" (upwind/backward, matched above) -- a single next-station
+  // downwind is included for context, but we deliberately don't pile on
+  // every station within the generous 300km forward window, which used to
+  // make it look like the list favored where the wind was GOING over where
+  // it had BEEN. findAllStationsAlongWindTrail already sorts its matches by
+  // pathDistanceKm ascending, so [0] is the closest/first one the plume
+  // would reach after the report -- the actual "next station".
   try {
     const forwardTail = await computeForwardWindExtension(report, STATION_MATCH_FORWARD_MAX_KM, STATION_MATCH_FORWARD_HOURS);
     if (forwardTail.length) {
@@ -3503,7 +3523,7 @@ async function findStationMatchesForReport(report, stations, maxDistanceKm = STA
       ];
       const forwardMatches = findAllStationsAlongWindTrail(forwardRaw, stations, maxDistanceKm)
         .map(m => ({ ...m, direction: 'after' }));
-      if (forwardMatches.length) matches = matches.concat(forwardMatches);
+      if (forwardMatches.length) matches = matches.concat(forwardMatches[0]);
     }
   } catch (e) {
     console.warn('Downwind station match failed for report', report.id, e);
