@@ -1799,6 +1799,17 @@ const TRAIL_SETTLED_GATE_HOURS = TRAIL_WINDOW_HOURS + 1;
 // hour, up to the full TRAIL_WINDOW_HOURS.
 const TRAIL_MIN_HOURS = 1;
 
+// Shared by filterPinsBySourceTrajectory (does this report's trail match
+// the tracer at all?) and generateAllBackgroundTrails (how far along the
+// trail to draw before cutting it off, once it does match) -- kept as one
+// pair of constants so the two can't silently drift out of sync.
+// A trail point counts as "reaching" the tracer if it comes within
+// BASE_RADIUS_KM, growing by DISPERSION_RATE_KM_H per hour further back
+// (further back = more time for the plume to have spread/wandered, so a
+// looser radius is allowed there).
+const TRACER_BASE_RADIUS_KM = 2.0;
+const TRACER_DISPERSION_RATE_KM_H = 2.0;
+
 // How close (km) a station has to come to any point along a report's
 // backtracked wind trail to count as "passed through" for the popup's
 // station list. Measured as perpendicular distance to the trail's actual
@@ -3899,6 +3910,58 @@ function clearBackgroundTrails() {
   bgTrailLayers = [];
 }
 
+// Color stops for the Trace Possible Source spline gradient (only used
+// when tracerCoords is set): the backtrail reads purple (at the presumed
+// source, farthest back) -> red (mid-trail) -> orange (arriving at the
+// report), then a short forward tail continues orange -> pale yellow for
+// the ~1h of real wind data right after the report was made.
+const TRACE_SPLINE_BACK_STOPS = [
+  [0.0, [245, 124, 0]],   // f57c00 orange -- at the report
+  [0.5, [196, 30, 39]],   // c41e27 red -- mid-trail
+  [1.0, [142, 36, 170]]   // 8e24aa purple -- at the presumed source
+];
+const TRACE_SPLINE_FORWARD_STOPS = [
+  [0.0, [245, 124, 0]],   // f57c00 orange -- at the report
+  [1.0, [255, 245, 157]]  // fff59d pale yellow -- ~1h past the report
+];
+function traceGradientColor(stops, t) {
+  t = Math.max(0, Math.min(1, t));
+  for (let i = 0; i < stops.length - 1; i++) {
+    const [t0, c0] = stops[i], [t1, c1] = stops[i + 1];
+    if (t >= t0 && t <= t1) {
+      const f = t1 === t0 ? 0 : (t - t0) / (t1 - t0);
+      const r = Math.round(c0[0] + (c1[0] - c0[0]) * f);
+      const g = Math.round(c0[1] + (c1[1] - c0[1]) * f);
+      const b = Math.round(c0[2] + (c1[2] - c0[2]) * f);
+      return `rgb(${r},${g},${b})`;
+    }
+  }
+  const last = stops[stops.length - 1][1];
+  return `rgb(${last[0]},${last[1]},${last[2]})`;
+}
+// Draws one logical trail as a series of short colored segments (Leaflet
+// polylines can only take a single color each, so a gradient means many
+// small ones) -- returns the array of layers added to the map.
+function drawGradientSpline(points, stops, report, tracerCoords) {
+  const layers = [];
+  for (let i = 0; i < points.length - 1; i++) {
+    const t = points.length > 2 ? (i + 0.5) / (points.length - 1) : 0.5;
+    const segment = L.polyline([points[i], points[i + 1]], {
+      color: traceGradientColor(stops, t),
+      weight: 2,
+      opacity: 0.85,
+      dashArray: '4, 7',
+      lineCap: 'round',
+      lineJoin: 'round',
+      className: `spline-report-${report.id}${tracerCoords ? ' trace-pulse-spline' : ''}`,
+      interactive: false,
+      pane: 'splinePane'
+    }).addTo(map);
+    layers.push(segment);
+  }
+  return layers;
+}
+
 async function generateAllBackgroundTrails(reports, tracerCoords = null) {
   clearBackgroundTrails();
 
@@ -4049,29 +4112,48 @@ async function generateAllBackgroundTrails(reports, tracerCoords = null) {
     let splineLatLngs = smoothedTrail.map(p => [p.lat, p.lon]);
 
     // If called from tracer, clip the spline a short buffer distance PAST
-    // whichever point on the trail actually passes closest to the tracer.
-    // (Previously this used straight-line distance from the source pin to
-    // the tracer, budgeted as an arc-length travel distance. That only works
-    // for roughly-straight trails; for winding/looping trails the arc-length
-    // needed to reach the point nearest the tracer can be much shorter or
-    // longer than the straight-line distance, causing the trail to cut off
-    // way too early or way too late. Finding the actual closest vertex fixes
-    // this regardless of how much the trail curves.)
+    // wherever the trail last falls within the tracer-match tolerance
+    // envelope (same growing radius used to confirm the match in
+    // filterPinsBySourceTrajectory) -- i.e. the FARTHEST-back point that
+    // still counts as "reaching" the tracer, not just the single nearest
+    // vertex. (Straight-line "nearest vertex" sounds equivalent but isn't:
+    // a winding/looping trail can swing briefly close to the tracer early
+    // on -- geometrically nearer than its real, later approach -- and
+    // cutting there chopped off the rest of a perfectly good trail well
+    // before it actually reached the source area. Reusing the matching
+    // envelope and walking from the far end in finds the true full extent
+    // instead.)
     if (tracerCoords) {
-      let closestIdx = 0;
-      let closestDist = Infinity;
-      for (let i = 0; i < splineLatLngs.length; i++) {
+      let matchIdx = -1;
+      for (let i = splineLatLngs.length - 1; i >= 0; i--) {
         const d = getHaversineDistance(
           splineLatLngs[i][0], splineLatLngs[i][1],
           tracerCoords.lat, tracerCoords.lon
         );
-        if (d < closestDist) {
-          closestDist = d;
-          closestIdx = i;
+        const maxAllowedDistance = TRACER_BASE_RADIUS_KM +
+          (TRACER_DISPERSION_RATE_KM_H * (i + 1) * (6 / splineLatLngs.length));
+        if (d <= maxAllowedDistance) { matchIdx = i; break; }
+      }
+
+      let closestIdx;
+      if (matchIdx >= 0) {
+        closestIdx = matchIdx;
+      } else {
+        // Shouldn't normally happen -- this report only got here because
+        // it already matched the tracer once in filterPinsBySourceTrajectory
+        // -- but fall back to the plain nearest-vertex if it ever does.
+        closestIdx = 0;
+        let closestDist = Infinity;
+        for (let i = 0; i < splineLatLngs.length; i++) {
+          const d = getHaversineDistance(
+            splineLatLngs[i][0], splineLatLngs[i][1],
+            tracerCoords.lat, tracerCoords.lon
+          );
+          if (d < closestDist) { closestDist = d; closestIdx = i; }
         }
       }
 
-      // Walk a small fixed buffer past the closest point so the line visibly
+      // Walk a small fixed buffer past that point so the line visibly
       // passes through the trace point rather than stopping dead on it.
       const bufferPastPointKm = 1.0;
       let cumDist = 0;
@@ -4093,22 +4175,45 @@ async function generateAllBackgroundTrails(reports, tracerCoords = null) {
     trailsToRender.push({ report, trailResult, splineLatLngs });
   });
 
-  trailsToRender.forEach(({ report, trailResult, splineLatLngs }) => {
-    const baseColor = categoryColor(report.category);
+  // Trace mode only: one more hour of REAL forward wind data past each
+  // report, for the yellow continuation past the orange report point.
+  const forwardTails = tracerCoords
+    ? await Promise.all(trailsToRender.map(({ report }) => computeForwardWindExtension(report, 5, 1).catch(() => [])))
+    : [];
 
-    const dottedSpline = L.polyline(splineLatLngs, {
-      color: baseColor,
-      weight: 2,
-      opacity: 0.75,
-      dashArray: '4, 7',
-      lineCap: 'round',
-      lineJoin: 'round',
-      className: `spline-report-${report.id}${tracerCoords ? ' trace-pulse-spline' : ''}`,
-      interactive: false,
-      pane: 'splinePane'
-    }).addTo(map);
-    bgTrailLayers.push(dottedSpline);
-    splineByReport[report.id] = dottedSpline;
+  trailsToRender.forEach(({ report, trailResult, splineLatLngs }, idx) => {
+    const baseColor = categoryColor(report.category);
+    let segments;
+
+    if (tracerCoords) {
+      // Backtrail: index 0 (report, orange) -> last index (presumed
+      // source, purple). Points are already ordered report-to-source.
+      segments = drawGradientSpline(splineLatLngs, TRACE_SPLINE_BACK_STOPS, report, tracerCoords);
+
+      // Forward tail: continues from the report itself (orange) out to
+      // ~1h of real wind data past it (pale yellow).
+      const tail = forwardTails[idx];
+      if (tail && tail.length) {
+        const reportLatLng = splineLatLngs[0];
+        const tailLatLngs = [reportLatLng, ...tail.map(p => [p.lat, p.lon])];
+        segments = segments.concat(drawGradientSpline(tailLatLngs, TRACE_SPLINE_FORWARD_STOPS, report, tracerCoords));
+      }
+    } else {
+      segments = [L.polyline(splineLatLngs, {
+        color: baseColor,
+        weight: 2,
+        opacity: 0.75,
+        dashArray: '4, 7',
+        lineCap: 'round',
+        lineJoin: 'round',
+        className: `spline-report-${report.id}`,
+        interactive: false,
+        pane: 'splinePane'
+      }).addTo(map)];
+    }
+
+    bgTrailLayers.push(...segments);
+    splineByReport[report.id] = segments;
   });
 
   // Splines default to hidden (Settings toggle, off by default) — apply
@@ -4512,13 +4617,15 @@ function renderPin(report, index = 0){
     // used anywhere (dead code) — it just fired an extra Open-Meteo request
     // on every popup open, competing with the real wind-trail fetch below
     // and making it more likely to get rate-limited into a silent fallback.
-    const spline = splineByReport[report.id];
-    if (spline) {
-      const el = spline.getElement();
-      if (el) {
-        clearTimeout(el._animTimer);
-        el.classList.add('bg-trail-animated');
-      }
+    const splines = splineByReport[report.id];
+    if (splines) {
+      splines.forEach(spline => {
+        const el = spline.getElement();
+        if (el) {
+          clearTimeout(el._animTimer);
+          el.classList.add('bg-trail-animated');
+        }
+      });
     }
 
     // Refresh nearest-station data on every open, same pattern as the AQ
@@ -4532,12 +4639,14 @@ function renderPin(report, index = 0){
     });
   });
   marker.on('popupclose', () => {
-    const spline = splineByReport[report.id];
-    if (spline) {
-      const el = spline.getElement();
-      if (el) {
-        el._animTimer = setTimeout(() => el.classList.remove('bg-trail-animated'), 5000);
-      }
+    const splines = splineByReport[report.id];
+    if (splines) {
+      splines.forEach(spline => {
+        const el = spline.getElement();
+        if (el) {
+          el._animTimer = setTimeout(() => el.classList.remove('bg-trail-animated'), 5000);
+        }
+      });
     }
   });
   reportMarkers.push(marker);
@@ -4731,8 +4840,8 @@ async function renderTraceHeatLayer(tracerCoords, matchedReports) {
 
 
 async function filterPinsBySourceTrajectory(tracerCoords) {
-  const BASE_RADIUS_KM = 2.0;
-  const DISPERSION_RATE_KM_H = 2.0;
+  const BASE_RADIUS_KM = TRACER_BASE_RADIUS_KM;
+  const DISPERSION_RATE_KM_H = TRACER_DISPERSION_RATE_KM_H;
   const currentRequestId = ++activeTraceRequestId;
 
   clearMarkers();
