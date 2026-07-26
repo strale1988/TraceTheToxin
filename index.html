@@ -365,6 +365,18 @@ button{
 .trace-pulse-spline {
   animation: traceFlowDash 0.9s linear infinite;
 }
+/* Forward tail (past the report) continues the same outward spread, so its
+   dash flow runs the opposite direction from the backtrail above --
+   otherwise it reads as flowing backward, toward the report, instead of
+   continuing on past it. */
+@keyframes traceFlowDashReverse {
+  from { stroke-dashoffset: 22; }
+  to   { stroke-dashoffset: 0; }
+}
+.trace-pulse-spline-forward path,
+.trace-pulse-spline-forward {
+  animation: traceFlowDashReverse 0.9s linear infinite;
+}
   
 .generic-modal-overlay{
   position:fixed; inset:0;
@@ -3942,7 +3954,7 @@ function traceGradientColor(stops, t) {
 // Draws one logical trail as a series of short colored segments (Leaflet
 // polylines can only take a single color each, so a gradient means many
 // small ones) -- returns the array of layers added to the map.
-function drawGradientSpline(points, stops, report, tracerCoords) {
+function drawGradientSpline(points, stops, report, tracerCoords, animationClass = 'trace-pulse-spline') {
   const layers = [];
   for (let i = 0; i < points.length - 1; i++) {
     const t = points.length > 2 ? (i + 0.5) / (points.length - 1) : 0.5;
@@ -3953,13 +3965,45 @@ function drawGradientSpline(points, stops, report, tracerCoords) {
       dashArray: '4, 7',
       lineCap: 'round',
       lineJoin: 'round',
-      className: `spline-report-${report.id}${tracerCoords ? ' trace-pulse-spline' : ''}`,
+      className: `spline-report-${report.id}${tracerCoords ? ' ' + animationClass : ''}`,
       interactive: false,
       pane: 'splinePane'
     }).addTo(map);
     layers.push(segment);
   }
   return layers;
+}
+
+// The backtrail (report->source) and forward tail (report->future) are
+// built from two different data sources and were previously just stuck
+// together at the report point, leaving a visible kink there. This joins
+// them into one continuous raw path, runs one more Chaikin pass across
+// the whole thing so the seam rounds off like the rest of the curve, then
+// splits it back into the two portions (sharing their shared point) so
+// each can still get its own gradient.
+function smoothTraceJoin(backLatLngs, tailPoints) {
+  if (!tailPoints || !tailPoints.length) {
+    return { backSmoothed: backLatLngs, forwardSmoothed: [] };
+  }
+
+  const sourceToReport = [...backLatLngs].reverse().map(([lat, lon]) => ({ lat, lon }));
+  const future = tailPoints.map(p => ({ lat: p.lat, lon: p.lon }));
+  const combinedRaw = sourceToReport.concat(future);
+  const reportLatLng = backLatLngs[0]; // exact report coordinate, pre-smoothing
+
+  const combinedSmoothed = smoothPathChaikin(combinedRaw, 1);
+
+  // Whichever point in the freshly-smoothed path now sits closest to the
+  // report's real coordinates is the back/forward split point.
+  let splitIdx = 0, splitDist = Infinity;
+  combinedSmoothed.forEach((p, i) => {
+    const d = getHaversineDistance(p.lat, p.lon, reportLatLng[0], reportLatLng[1]);
+    if (d < splitDist) { splitDist = d; splitIdx = i; }
+  });
+
+  const backSmoothed = combinedSmoothed.slice(0, splitIdx + 1).reverse().map(p => [p.lat, p.lon]);
+  const forwardSmoothed = combinedSmoothed.slice(splitIdx).map(p => [p.lat, p.lon]);
+  return { backSmoothed, forwardSmoothed };
 }
 
 async function generateAllBackgroundTrails(reports, tracerCoords = null) {
@@ -4186,17 +4230,18 @@ async function generateAllBackgroundTrails(reports, tracerCoords = null) {
     let segments;
 
     if (tracerCoords) {
-      // Backtrail: index 0 (report, orange) -> last index (presumed
-      // source, purple). Points are already ordered report-to-source.
-      segments = drawGradientSpline(splineLatLngs, TRACE_SPLINE_BACK_STOPS, report, tracerCoords);
-
-      // Forward tail: continues from the report itself (orange) out to
-      // ~1h of real wind data past it (pale yellow).
+      // Backtrail + forward tail, smoothed together across the report
+      // point so the whole thing reads as one continuous curve instead of
+      // a smooth backtrail stuck to a straight little forward stub.
       const tail = forwardTails[idx];
-      if (tail && tail.length) {
-        const reportLatLng = splineLatLngs[0];
-        const tailLatLngs = [reportLatLng, ...tail.map(p => [p.lat, p.lon])];
-        segments = segments.concat(drawGradientSpline(tailLatLngs, TRACE_SPLINE_FORWARD_STOPS, report, tracerCoords));
+      const { backSmoothed, forwardSmoothed } = smoothTraceJoin(splineLatLngs, tail);
+
+      segments = drawGradientSpline(backSmoothed, TRACE_SPLINE_BACK_STOPS, report, tracerCoords, 'trace-pulse-spline');
+
+      if (forwardSmoothed.length >= 2) {
+        segments = segments.concat(
+          drawGradientSpline(forwardSmoothed, TRACE_SPLINE_FORWARD_STOPS, report, tracerCoords, 'trace-pulse-spline-forward')
+        );
       }
     } else {
       segments = [L.polyline(splineLatLngs, {
