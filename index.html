@@ -1065,7 +1065,7 @@ span.flatpickr-weekday {
           <span class="toggle-switch-track"><span class="toggle-switch-thumb"></span></span>
         </span>
       </label>
-      <p class="detail-export-hint" id="traceHeatmapHint">While using Trace Possible Source: red at the source, fading to orange toward each matched report, then a yellow tail continuing ~5km further along the wind past the report -- brightening back toward orange wherever it crosses another report's trail.</p>
+      <p class="detail-export-hint" id="traceHeatmapHint">While using Trace Possible Source: purple at the tracer pin, fading to red then orange toward each matched report, then a yellow tail continuing ~5km further along the wind past the report -- brightening back toward orange wherever it crosses another report's trail.</p>
     </div>
 
     <div class="detail-section" id="sourceHeatScienceSettingsSection">
@@ -4642,18 +4642,21 @@ function distanceToSegment(p, p1, p2) {
    TRACE-SOURCE HEATMAP
    Optional overlay (Settings toggle) shown alongside the normal dashed
    trails while using Trace Possible Source. One shared Leaflet.heat
-   layer, built from three kinds of weighted points per matched report:
-     - A cluster right at the tracer pin itself -- highest weight, reddest.
+   layer, built from three kinds of weighted points per matched report,
+   reading as a single gradient from the tracer pin outward:
+     - The tracer pin itself -- highest weight, purple.
      - Points along that report's own backtrajectory, from the report out
        to wherever it passes closest to the tracer -- weight ramps up
        from "orange near the report" to "red near the source", so it
-       reads as one continuous gradient with the source cluster above.
+       reads as one continuous purple -> red -> orange gradient with the
+       tracer cluster above.
      - A short tail continuing ~5km past the report, using REAL wind data
        for the hours after the report was made (computeForwardWindExtension)
-       -- low weight, yellow. Where two reports' tails (or a tail and
-       another report's backtrajectory) happen to cross, Leaflet.heat just
-       adds the weights together automatically -- no extra intersection
-       math needed -- which is what pushes that overlap up into orange.
+       -- low weight, fading from orange into yellow. Where two reports'
+       tails (or a tail and another report's backtrajectory) happen to
+       cross, Leaflet.heat just adds the weights together automatically --
+       no extra intersection math needed -- which is what pushes that
+       overlap up into a hotter color.
 ═══════════════════════════════════════════════════ */
 let traceHeatLayer = null;
 let lastTraceTracerCoords = null;
@@ -4662,9 +4665,9 @@ let lastTraceMatchedReports = [];
 async function buildTraceHeatPoints(tracerCoords, matchedReports) {
   const points = [];
 
-  // Source cluster -- reddest point on the map.
-  points.push([tracerCoords.lat, tracerCoords.lon, 3]);
-  points.push([tracerCoords.lat, tracerCoords.lon, 3]);
+  // Tracer pin -- highest weight, purple end of the gradient.
+  points.push([tracerCoords.lat, tracerCoords.lon, 4]);
+  points.push([tracerCoords.lat, tracerCoords.lon, 4]);
 
   const trails = await Promise.all(matchedReports.map(r => renderHistoricSplineTrailForReport(r)));
   const forwardTails = await Promise.all(matchedReports.map(r => computeForwardWindExtension(r)));
@@ -4681,8 +4684,8 @@ async function buildTraceHeatPoints(tracerCoords, matchedReports) {
         if (d < closestDist) { closestDist = d; closestIdx = i; }
       });
       for (let i = 0; i <= closestIdx; i++) {
-        const t = closestIdx > 0 ? i / closestIdx : 1; // 0 at the report, 1 at the source
-        const weight = 1.0 + t * 2.0; // 1.0 (report end) ramping to 3.0 (source end)
+        const t = closestIdx > 0 ? i / closestIdx : 1; // 0 at the report (orange), 1 at the source (red)
+        const weight = 1.4 + t * 2.0; // 1.4 (report end, orange) ramping to 3.4 (source end, red, just under the tracer's purple)
         points.push([trail[i].lat, trail[i].lon, weight]);
       }
     }
@@ -4690,7 +4693,7 @@ async function buildTraceHeatPoints(tracerCoords, matchedReports) {
     const tail = forwardTails[idx];
     if (tail && tail.length) {
       tail.forEach((pt, i) => {
-        const weight = Math.max(0.3, 0.9 - 0.5 * (i / tail.length)); // low + fading -> yellow
+        const weight = Math.max(0.3, 1.0 - 0.7 * (i / tail.length)); // starts near the report's orange, fades down into yellow
         points.push([pt.lat, pt.lon, weight]);
       });
     }
@@ -4708,15 +4711,24 @@ async function renderTraceHeatLayer(tracerCoords, matchedReports) {
       radius: 24,
       blur: 18,
       maxZoom: 17,
-      max: 3.2, // fixed scale so a lone yellow tail can't get renormalized into orange just because nothing brighter is on screen
+      max: 4.2, // fixed scale so the tracer pin reliably reaches full purple regardless of how many reports are on screen
       minOpacity: 0.25,
-      gradient: { 0.1: '#fff59d', 0.3: '#ffca28', 0.55: '#f57c00', 0.8: '#e64a19', 1.0: '#c41e27' }
+      gradient: {
+        0.05: '#fff59d', // pale yellow -- far end of the forward tail
+        0.20: '#ffca28', // yellow-orange -- tail approaching the report
+        0.35: '#f57c00', // orange -- at/near the report
+        0.55: '#e64a19', // red-orange -- partway back along the trail
+        0.75: '#c41e27', // red -- approaching the source
+        0.92: '#8e24aa', // purple -- right at the tracer pin
+        1.0: '#6a1b9a'
+      }
     });
   }
   if (traceHeatmapEnabled && !map.hasLayer(traceHeatLayer)) {
     traceHeatLayer.addTo(map);
   }
 }
+
 
 async function filterPinsBySourceTrajectory(tracerCoords) {
   const BASE_RADIUS_KM = 2.0;
