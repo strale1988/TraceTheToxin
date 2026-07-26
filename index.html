@@ -544,6 +544,25 @@ span.flatpickr-weekday {
 #pinMapBtn{ position:fixed; bottom:calc(var(--legend-bar-h) + 148px); right:12px; }
 #mapFilterBtn{ position:fixed; bottom:calc(var(--legend-bar-h) + 202px); right:12px; }
 #sourceHeatBtn{ position:fixed; bottom:calc(var(--legend-bar-h) + 256px); right:12px; }
+.source-heat-confidence-badge{
+  position:fixed; bottom:calc(var(--legend-bar-h) + 300px); right:12px;
+  z-index:800;
+  display:flex; align-items:center; gap:6px;
+  background:var(--bg-surface); color:var(--text-primary);
+  border:1px solid var(--border-color-strong);
+  border-radius:999px;
+  padding:6px 12px;
+  font-size:12px; font-weight:var(--fw-medium, 500);
+  box-shadow:0 2px 8px rgba(0,0,0,.25);
+  white-space:nowrap;
+  max-width:calc(100vw - 24px);
+}
+.source-heat-confidence-dot{
+  width:8px; height:8px; border-radius:50%;
+  background:var(--confidence-color, #888);
+  flex-shrink:0;
+}
+.source-heat-confidence-sub{ color:var(--text-secondary); font-weight:var(--fw-regular,400); }
 .source-heat-btn{
   background:var(--floating-bg);
   border:1px solid var(--floating-border);
@@ -960,6 +979,7 @@ span.flatpickr-weekday {
       <path d="M8.5 13.5A3.5 3.5 0 0 0 12 20a3.5 3.5 0 0 0 3.5-6.5"/>
     </svg>
   </div>
+  <div id="sourceHeatConfidenceBadge" class="source-heat-confidence-badge" style="display:none"></div>
 </div>
 <input type="text" id="mapDateRangePicker" style="display:none">
 
@@ -1048,6 +1068,67 @@ span.flatpickr-weekday {
       <p class="detail-export-hint" id="traceHeatmapHint">While using Trace Possible Source: red at the source, fading to orange toward each matched report, then a yellow tail continuing ~5km further along the wind past the report -- brightening back toward orange wherever it crosses another report's trail.</p>
     </div>
 
+    <div class="detail-section" id="sourceHeatScienceSettingsSection">
+      <div class="filter-title" style="margin-bottom:10px;">Source Heatmap Science</div>
+      <p class="detail-export-hint" style="margin-top:-4px;margin-bottom:12px;">Each of these refines the probable-source heatmap (the flame button). All are on by default; turn any off to compare against the simpler behavior it replaces.</p>
+
+      <label class="settings-toggle-row" for="heatMonteCarloToggle">
+        <span>Monte Carlo ensemble spread</span>
+        <span class="toggle-switch">
+          <input type="checkbox" id="heatMonteCarloToggle" onchange="setSourceHeatOption('monteCarlo', this.checked)">
+          <span class="toggle-switch-track"><span class="toggle-switch-thumb"></span></span>
+        </span>
+      </label>
+      <p class="detail-export-hint">Scatters extra randomized "ensemble member" points around each trail leg, approximating uncertainty in the wind forecast instead of a single fixed line.</p>
+
+      <label class="settings-toggle-row" for="heatStabilityToggle">
+        <span>Atmospheric stability classes</span>
+        <span class="toggle-switch">
+          <input type="checkbox" id="heatStabilityToggle" onchange="setSourceHeatOption('stability', this.checked)">
+          <span class="toggle-switch-track"><span class="toggle-switch-thumb"></span></span>
+        </span>
+      </label>
+      <p class="detail-export-hint">Widens or narrows the plume based on a Pasquill-Gifford-style stability estimate from wind speed and time of day (calm sunny air spreads a lot more than a calm clear night).</p>
+
+      <label class="settings-toggle-row" for="heatDecayLawToggle">
+        <span>Concentration decay law</span>
+        <span class="toggle-switch">
+          <input type="checkbox" id="heatDecayLawToggle" onchange="setSourceHeatOption('decayLaw', this.checked)">
+          <span class="toggle-switch-track"><span class="toggle-switch-thumb"></span></span>
+        </span>
+      </label>
+      <p class="detail-export-hint">Fades color/weight based on the same dispersion math as the spread width (roughly 1/sigma, like a real plume's centerline concentration) instead of a flat linear ramp.</p>
+
+      <label class="settings-toggle-row" for="heatClusteringToggle">
+        <span>Incident clustering</span>
+        <span class="toggle-switch">
+          <input type="checkbox" id="heatClusteringToggle" onchange="setSourceHeatOption('clustering', this.checked)">
+          <span class="toggle-switch-track"><span class="toggle-switch-thumb"></span></span>
+        </span>
+      </label>
+      <p class="detail-export-hint">Groups reports into separate incidents by location and time first, so two unrelated events don't get triangulated or confidence-boosted together.</p>
+
+      <label class="settings-toggle-row" for="heatTemporalGateToggle">
+        <span>Temporal gating for triangulation</span>
+        <span class="toggle-switch">
+          <input type="checkbox" id="heatTemporalGateToggle" onchange="setSourceHeatOption('temporalGate', this.checked)">
+          <span class="toggle-switch-track"><span class="toggle-switch-thumb"></span></span>
+        </span>
+      </label>
+      <p class="detail-export-hint">Only lets two reports' trails "confirm" each other if they were made within a few hours of each other.</p>
+
+      <label class="settings-toggle-row" for="heatConfidenceToggle">
+        <span>Confidence scoring</span>
+        <span class="toggle-switch">
+          <input type="checkbox" id="heatConfidenceToggle" onchange="setSourceHeatOption('confidence', this.checked)">
+          <span class="toggle-switch-track"><span class="toggle-switch-thumb"></span></span>
+        </span>
+      </label>
+      <p class="detail-export-hint">Scores how much evidence backs each estimate (report count + station corroboration), dims low-confidence areas, and drives the confidence badge shown on the map.</p>
+
+      <button class="export-btn" style="width:100%;margin-top:4px;" onclick="showHeatMethodologyModal()">How the source heatmap works</button>
+    </div>
+
     <div class="detail-section" style="padding:0;overflow:hidden;">
       <div class="filter-label-row" style="border-radius:0;">
         <span class="filter-title" id="filterTitleLabel">Time Window Filter</span>
@@ -1090,6 +1171,28 @@ span.flatpickr-weekday {
       <!-- Filled programmatically via standard state language rules -->
     </div>
     <button class="generic-modal-close" onclick="hideHelpModal()" id="helpModalBtn" style="margin-top:14px;">Close</button>
+  </div>
+</div>
+
+<div id="heatMethodologyModal" class="generic-modal-overlay" style="display:none">
+  <div class="generic-modal" style="max-width: 420px;">
+    <h2 style="margin-top: 6px;">How the source heatmap works</h2>
+    <div style="max-height: 55vh; overflow-y: auto; padding-right: 4px; font-size: 14px; line-height: 1.5;">
+      <p>For every active report, we pull its historic wind data (from <a href="https://open-meteo.com" target="_blank" rel="noopener">Open-Meteo</a>) and walk backward hour by hour to estimate where the plume likely came from -- the same method used for nearest-station matching, extended with a forward continuation and several statistical refinements:</p>
+      <ul style="padding-left: 18px; margin: 10px 0;">
+        <li style="margin-bottom:8px;"><strong>Dispersion spread</strong> widens with elapsed travel time and narrows with wind speed, so the plume is drawn tight near its presumed source and wider as it travels.</li>
+        <li style="margin-bottom:8px;"><strong>Stability classes</strong> (a simplified Pasquill-Gifford estimate from wind speed and time of day) scale that spread further -- calm daytime air disperses much more than a calm, clear night.</li>
+        <li style="margin-bottom:8px;"><strong>Monte Carlo spread</strong> scatters extra points at randomized positions within the dispersion envelope, approximating the uncertainty a full forecast ensemble would show.</li>
+        <li style="margin-bottom:8px;"><strong>Concentration decay</strong> fades weight based on the same dispersion math as the spread width, similar to how a real plume's concentration falls off with distance.</li>
+        <li style="margin-bottom:8px;"><strong>Intensity &amp; time-decay</strong> weight stronger, more recent reports more heavily.</li>
+        <li style="margin-bottom:8px;"><strong>Station corroboration</strong> boosts weight where a report's trail passes an air-quality station that measured elevated pollution nearby in time.</li>
+        <li style="margin-bottom:8px;"><strong>Incident clustering</strong> groups reports by location and time so unrelated events aren't combined.</li>
+        <li style="margin-bottom:8px;"><strong>Triangulation</strong> gives an extra boost where two or more independent reports' trails converge on roughly the same spot -- stronger evidence than any single trail.</li>
+        <li><strong>Confidence scoring</strong> rates how much evidence backs each estimate and dims low-confidence areas rather than showing everything at full brightness.</li>
+      </ul>
+      <p style="color: var(--text-secondary, #888);">This is a heuristic estimate built from real wind and station data, not a certified atmospheric dispersion model -- treat it as a starting point for investigation, not a verified source location. Every piece above can be turned on or off in Settings to compare against simpler behavior.</p>
+    </div>
+    <button class="generic-modal-close" onclick="hideHeatMethodologyModal()" style="margin-top:14px;">Close</button>
   </div>
 </div>
 
@@ -1577,9 +1680,23 @@ function showSettingsModal() {
   if (splineToggle) splineToggle.checked = splinesVisible;
   const traceHeatToggle = document.getElementById('traceHeatmapToggle');
   if (traceHeatToggle) traceHeatToggle.checked = traceHeatmapEnabled;
+
+  [['heatMonteCarloToggle', 'monteCarlo'], ['heatStabilityToggle', 'stability'],
+   ['heatDecayLawToggle', 'decayLaw'], ['heatClusteringToggle', 'clustering'],
+   ['heatTemporalGateToggle', 'temporalGate'], ['heatConfidenceToggle', 'confidence']]
+    .forEach(([elId, key]) => {
+      const toggle = document.getElementById(elId);
+      if (toggle) toggle.checked = !!sourceHeatOptions[key];
+    });
 }
 function hideSettingsModal() {
   document.getElementById('settingsModal').style.display = 'none';
+}
+function showHeatMethodologyModal() {
+  document.getElementById('heatMethodologyModal').style.display = 'flex';
+}
+function hideHeatMethodologyModal() {
+  document.getElementById('heatMethodologyModal').style.display = 'none';
 }
 
 /* ═══════════════════════════════════════════════════
