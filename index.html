@@ -3516,6 +3516,26 @@ async function fetchHistoricWindForReport(report, isoStart, isoEnd) {
   const reportAgeHours = (Date.now() - reportTime.getTime()) / 3600000;
   const isSettled = reportAgeHours >= TRAIL_SETTLED_GATE_HOURS;
 
+  // 0. historic_wind_json is deliberately left out of the bulk list query
+  // (fetchAll) — it's a multi-KB blob per report and most loaded reports
+  // never have their trail built, so shipping it for all of them wastes
+  // bandwidth on every page load. `undefined` means "not fetched yet" (vs.
+  // `null`, which would mean "fetched, and there's genuinely nothing
+  // cached"), so lazily pull just this one report's column the first time
+  // its trail is actually needed.
+  if (isSettled && report.historic_wind_json === undefined) {
+    try {
+      const { data, error } = await sb
+        .from('air_reports')
+        .select('historic_wind_json')
+        .eq('id', report.id)
+        .maybeSingle();
+      report.historic_wind_json = (!error && data) ? data.historic_wind_json : null;
+    } catch (e) {
+      report.historic_wind_json = null;
+    }
+  }
+
   // 1. Try the persisted column first (instant, no network call at all)
   if (isSettled && report.historic_wind_json) {
     try {
@@ -4908,8 +4928,23 @@ function renderPin(report, index = 0){
 /* ═══════════════════════════════════════════════════
    CORE DATA RETRIEVAL
 ═══════════════════════════════════════════════════ */
+// historic_wind_json is deliberately excluded here: it's a multi-KB
+// Open-Meteo hourly blob per report (avg ~6KB, up to ~7.4KB as of this
+// writing), and this query loads EVERY report on EVERY page load
+// regardless of which ones are ever traced. Most loaded reports never
+// have their trail built, so shipping that blob for all of them wasted
+// the majority of this query's payload for nothing. Reports needing it
+// (buildWindTrailForReport → fetchHistoricWindForReport) now lazily pull
+// just that one column, just for that one report, the first time it's
+// actually needed.
+const AIR_REPORTS_LIST_COLUMNS = [
+  'id', 'created_at', 'latitude', 'longitude', 'wind_speed', 'wind_direction',
+  'sea_level_pressure', 'comment', 'category', 'duration', 'intensity',
+  'formatted_id', 'manual_wind_direction', 'updated_at', 'confidence', 'location_name'
+].join(',');
+
 async function fetchAll(){
-  const {data,error}=await sb.from('air_reports').select('*').order('created_at',{ascending:false});
+  const {data,error}=await sb.from('air_reports').select(AIR_REPORTS_LIST_COLUMNS).order('created_at',{ascending:false});
   if(error){ console.error(error); return []; }
   return data;
 }
