@@ -556,6 +556,22 @@ span.flatpickr-weekday {
 #pinMapBtn{ position:fixed; bottom:calc(var(--legend-bar-h) + 148px); right:12px; }
 #mapFilterBtn{ position:fixed; bottom:calc(var(--legend-bar-h) + 202px); right:12px; }
 #sourceHeatBtn{ position:fixed; bottom:calc(var(--legend-bar-h) + 256px); right:12px; }
+#mapKeyBtn{ position:fixed; bottom:calc(var(--legend-bar-h) + 310px); right:12px; }
+.map-key-btn{
+  background:var(--floating-bg);
+  border:1px solid var(--floating-border);
+  border-radius:50%;
+  width:44px; height:44px;
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer; font-size:22px;
+  box-shadow:0 2px 8px var(--floating-shadow);
+  transition:background .15s ease, transform .12s ease, box-shadow .15s ease;
+  user-select:none;
+  -webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;
+}
+.map-key-btn:active{ transform:scale(.9); }
+.map-key-btn svg{ stroke:var(--text-secondary); transition:stroke .15s ease; }
 .source-heat-confidence-badge{
   position:fixed; bottom:calc(var(--legend-bar-h) + 300px); right:12px;
   z-index:800;
@@ -666,6 +682,15 @@ span.flatpickr-weekday {
 #map.zooming-hide-reports .marker-cluster{
   opacity:0 !important;
   transition:none !important;
+}
+
+/* Solo/focus mode (setTrailFocus): smooth fade when a report's trail
+   dims/undims as other popups open and close, rather than an abrupt cut. */
+.leaflet-splinePane-pane path{
+  transition: stroke-opacity .25s ease;
+}
+.report-pin-icon{
+  transition: opacity .25s ease;
 }
 
 /* ═══════════════════════════════════════════════════
@@ -992,6 +1017,13 @@ span.flatpickr-weekday {
     </svg>
   </div>
   <div id="sourceHeatConfidenceBadge" class="source-heat-confidence-badge" style="display:none"></div>
+  <div id="mapKeyBtn" class="map-key-btn" title="Map key" onclick="showMapKeyModal()">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="10"/>
+      <line x1="12" y1="10.5" x2="12" y2="16.5"/>
+      <circle cx="12" cy="7.2" r="1.15" fill="currentColor" stroke="none"/>
+    </svg>
+  </div>
 </div>
 <input type="text" id="mapDateRangePicker" style="display:none">
 
@@ -1145,6 +1177,70 @@ span.flatpickr-weekday {
       <p style="color: var(--text-secondary, #888);">Treat it as a quick visual summary of where reports are clustering, not a verified pollution-source location.</p>
     </div>
     <button class="generic-modal-close" onclick="hideHeatMethodologyModal()" style="margin-top:14px;">Close</button>
+  </div>
+</div>
+
+<div id="mapKeyModal" class="generic-modal-overlay" style="display:none">
+  <div class="generic-modal" style="max-width: 440px;">
+    <h2 style="margin-top: 6px;">Map key</h2>
+    <div style="max-height: 65vh; overflow-y: auto; padding-right: 4px; font-size: 13px; line-height: 1.5;">
+
+      <div style="font-weight:600; margin-bottom:4px;">Report pins</div>
+      <p style="color:var(--text-secondary,#888); margin-top:0;">Fill color = how long ago the report was made; the small ring accent = category. Full colors for both are in the bar at the bottom of the map.</p>
+
+      <div style="height:1px;background:var(--border-color,#eee);margin:12px 0;"></div>
+
+      <div style="font-weight:600; margin-bottom:6px;">Wind direction &amp; speed</div>
+      <div style="display:flex; align-items:center; gap:14px; margin-bottom:6px;">
+        <svg width="70" height="60" viewBox="0 0 70 60">
+          <circle cx="20" cy="30" r="11" fill="#a32222" stroke="#fff" stroke-width="2"/>
+          <line x1="20" y1="24" x2="20" y2="12" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
+          <polygon points="20,9 17,15 23,15" fill="#fff"/>
+          <circle cx="52" cy="30" r="11" fill="#a32222" stroke="#fff" stroke-width="2"/>
+          <line x1="52" y1="24" x2="52" y2="19" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
+          <polygon points="52,16 49.5,20.5 54.5,20.5" fill="#fff"/>
+        </svg>
+        <p style="color:var(--text-secondary,#888); margin:0;">Arrow points where the wind was blowing toward at the time of the report. <strong>Longer arrow = stronger wind</strong> (left: strong, right: calm).</p>
+      </div>
+
+      <div style="height:1px;background:var(--border-color,#eee);margin:12px 0;"></div>
+
+      <div style="font-weight:600; margin-bottom:6px;">Wind trails</div>
+      <svg width="100%" height="26" viewBox="0 0 300 26" preserveAspectRatio="none" style="display:block; margin-bottom:4px;">
+        <line x1="6" y1="13" x2="294" y2="13" stroke="#7a7a7a" stroke-linecap="round" stroke-dasharray="2,7">
+          <animate attributeName="stroke-width" values="1.5;5;1.5" dur="1s" repeatCount="indefinite"/>
+        </line>
+      </svg>
+      <p style="color:var(--text-secondary,#888); margin:0 0 10px;">Each dashed trail is that report's estimated wind history. <strong>Thicker sections = faster wind</strong> at that point in time; thinner = calmer.</p>
+      <p style="color:var(--text-secondary,#888); margin:0;">Tap a report to spotlight its trail -- every other trail and pin dims so it's easy to follow. Close the popup (or tap elsewhere) to bring everything back.</p>
+
+      <div style="height:1px;background:var(--border-color,#eee);margin:12px 0;"></div>
+
+      <div style="font-weight:600; margin-bottom:6px;">Source heatmap (flame button)</div>
+      <div style="height:14px; border-radius:7px; margin-bottom:4px; background:linear-gradient(to right, #fff59d, #ffca28, #f57c00, #c41e27);"></div>
+      <p style="color:var(--text-secondary,#888); margin:0 0 4px;">Brighter/redder = more (and stronger, more recent) reports clustered in that area. <a href="#" onclick="showHeatMethodologyModal(); return false;">How it's calculated</a></p>
+
+      <div style="height:1px;background:var(--border-color,#eee);margin:12px 0;"></div>
+
+      <div style="font-weight:600; margin-bottom:6px;">Trace Possible Source</div>
+      <div style="height:14px; border-radius:7px; margin-bottom:4px; background:linear-gradient(to right, #8e24aa, #c41e27, #f57c00, #fff59d);"></div>
+      <p style="color:var(--text-secondary,#888); margin:0;">Purple at the tracer pin, fading to red then orange as each matched report's trail arrives, then a yellow tail continuing ~1h further along the wind past the report.</p>
+
+      <div style="height:1px;background:var(--border-color,#eee);margin:12px 0;"></div>
+
+      <div style="font-weight:600; margin-bottom:6px;">Air-quality stations</div>
+      <div style="display:flex; flex-wrap:wrap; gap:8px 14px; margin-bottom:2px;">
+        <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;background:#4CAF50;display:inline-block;transform:rotate(45deg);"></span><span style="color:var(--text-secondary,#888);">Dobar (good)</span></span>
+        <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;background:#8BC34A;display:inline-block;transform:rotate(45deg);"></span><span style="color:var(--text-secondary,#888);">Prihvatljiv (acceptable)</span></span>
+        <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;background:#FFC107;display:inline-block;transform:rotate(45deg);"></span><span style="color:var(--text-secondary,#888);">Umeren (moderate)</span></span>
+        <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;background:#FF9800;display:inline-block;transform:rotate(45deg);"></span><span style="color:var(--text-secondary,#888);">Zagađen (polluted)</span></span>
+        <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;background:#F44336;display:inline-block;transform:rotate(45deg);"></span><span style="color:var(--text-secondary,#888);">Veoma zagađen (very polluted)</span></span>
+        <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;background:#9C27B0;display:inline-block;transform:rotate(45deg);"></span><span style="color:var(--text-secondary,#888);">Izuzetno zagađen (extremely polluted)</span></span>
+      </div>
+      <p style="color:var(--text-secondary,#888); margin:6px 0 0;">Diamond markers are official government air-quality stations, colored by their current reading.</p>
+
+    </div>
+    <button class="generic-modal-close" onclick="hideMapKeyModal()" style="margin-top:14px;">Close</button>
   </div>
 </div>
 
@@ -1657,6 +1753,12 @@ function showHeatMethodologyModal() {
 }
 function hideHeatMethodologyModal() {
   document.getElementById('heatMethodologyModal').style.display = 'none';
+}
+function showMapKeyModal() {
+  document.getElementById('mapKeyModal').style.display = 'flex';
+}
+function hideMapKeyModal() {
+  document.getElementById('mapKeyModal').style.display = 'none';
 }
 
 /* ═══════════════════════════════════════════════════
@@ -2945,6 +3047,64 @@ function computeCumulativePathDistances(rawTrail) {
   return cum;
 }
 
+// Builds a {t, spd} profile (t = 0..1 fraction of the way along the
+// path by distance) from a raw point array carrying a `.spd` field.
+function buildTrailSpeedProfile(points) {
+  if (!points || points.length < 2) return null;
+  const cum = computeCumulativePathDistances(points);
+  const total = cum[cum.length - 1];
+  if (!total) return null;
+  return points.map((p, i) => ({ t: cum[i] / total, spd: p.spd ?? 0 }));
+}
+function speedAtT(profile, t) {
+  if (!profile || !profile.length) return null;
+  if (t <= profile[0].t) return profile[0].spd;
+  for (let i = 1; i < profile.length; i++) {
+    if (t <= profile[i].t) {
+      const a = profile[i - 1], b = profile[i];
+      const span = b.t - a.t;
+      const f = span > 0 ? (t - a.t) / span : 0;
+      return a.spd + (b.spd - a.spd) * f;
+    }
+  }
+  return profile[profile.length - 1].spd;
+}
+// Maps real historical wind speed onto a (possibly Chaikin-smoothed,
+// clipped, and/or rejoined) curve, by walking the curve's own arc length
+// and looking up the raw trail's speed profile at the matching distance
+// fraction. Computed fresh against whatever the FINAL rendered points
+// are, so it stays correct no matter how much smoothing/clipping/joining
+// happened to get there -- no index bookkeeping needed through those
+// steps. Assumes rawPoints and finalLatLngs start at (roughly) the same
+// place, which holds for every trail/tail built in this file.
+function mapSpeedsOntoPoints(rawPoints, finalLatLngs) {
+  const profile = buildTrailSpeedProfile(rawPoints);
+  if (!profile || !finalLatLngs || !finalLatLngs.length) return null;
+  const rawTotal = computeCumulativePathDistances(rawPoints).pop() || 0;
+  if (!rawTotal) return null;
+  const speeds = [speedAtT(profile, 0)];
+  let cum = 0;
+  for (let i = 1; i < finalLatLngs.length; i++) {
+    cum += getHaversineDistance(
+      finalLatLngs[i - 1][0], finalLatLngs[i - 1][1],
+      finalLatLngs[i][0], finalLatLngs[i][1]
+    );
+    speeds.push(speedAtT(profile, Math.min(1, cum / rawTotal)));
+  }
+  return speeds;
+}
+// Wind-speed -> line-weight mapping shared by every trail render. Calm air
+// still reads as a visible line (TRAIL_MIN_WEIGHT); anything at or above
+// TRAIL_SPEED_FOR_MAX_WEIGHT km/h reads as the thickest the line gets.
+const TRAIL_MIN_WEIGHT = 1.5;
+const TRAIL_MAX_WEIGHT = 5;
+const TRAIL_SPEED_FOR_MAX_WEIGHT_KMH = 40;
+function speedToWeight(spd) {
+  if (spd == null) return 2;
+  const clamped = Math.max(0, Math.min(TRAIL_SPEED_FOR_MAX_WEIGHT_KMH, spd));
+  return TRAIL_MIN_WEIGHT + (clamped / TRAIL_SPEED_FOR_MAX_WEIGHT_KMH) * (TRAIL_MAX_WEIGHT - TRAIL_MIN_WEIGHT);
+}
+
 // Finds the closest a wind trail's actual path (interpolated between hourly
 // points, not just the hourly vertices) comes to an arbitrary point — used
 // both for station-matching and for figuring out where along the trail a
@@ -3039,7 +3199,7 @@ function smoothPathChaikin(points, iterations = 3) {
 }
 
 
-function makeIcon(color, windDeg, catColor, category) {
+function makeIcon(color, windDeg, catColor, category, windSpeed) {
   const rotation = (windDeg !== undefined) ? parseFloat(windDeg) : 0;
   const accent = catColor || 'white';
   const isCleanAir = category === 'Clean Air';
@@ -3050,6 +3210,13 @@ function makeIcon(color, windDeg, catColor, category) {
   const size = isCleanAir ? 40 : 26;
   const cx = size / 2, cy = size / 2;
   const circleR = 11;
+
+  // Arrow length scales with wind speed (calm ~8px, 40+ km/h ~15px) so
+  // strength is visible at a glance, not just direction.
+  const spd = windSpeed != null ? parseFloat(windSpeed) : null;
+  const arrowLen = spd != null ? 8 + Math.min(40, Math.max(0, spd)) / 40 * 7 : 8;
+  const arrowTipY = cy - arrowLen - 3;
+  const arrowShoulderY = cy - arrowLen;
 
   let petals = '';
   if (isCleanAir) {
@@ -3070,8 +3237,8 @@ function makeIcon(color, windDeg, catColor, category) {
       ${petals}
       <circle cx="${cx}" cy="${cy}" r="${circleR}" fill="${color}" stroke="#fff" stroke-width="2"/>
       <g transform="rotate(${rotation + 180} ${cx} ${cy})">
-        <line x1="${cx}" y1="${cy - 8}" x2="${cx}" y2="${cy}" stroke="${accent}" stroke-width="3" stroke-linecap="round"/>
-        <polygon points="${cx},${cy - 11} ${cx - 3},${cy - 6} ${cx + 3},${cy - 6}" fill="${accent}"/>
+        <line x1="${cx}" y1="${arrowShoulderY}" x2="${cx}" y2="${cy}" stroke="${accent}" stroke-width="3" stroke-linecap="round"/>
+        <polygon points="${cx},${arrowTipY} ${cx - 3},${arrowShoulderY + 2} ${cx + 3},${arrowShoulderY + 2}" fill="${accent}"/>
       </g>
     </svg>`;
 
@@ -3117,7 +3284,7 @@ function pickReportIcon(report) {
     return makeDotIcon(catCol);
   }
   const color = ageColor(report.created_at);
-  return makeIcon(color, report.manual_wind_direction ?? report.wind_direction, catCol, report.category);
+  return makeIcon(color, report.manual_wind_direction ?? report.wind_direction, catCol, report.category, report.wind_speed);
 }
 
 // Small diamond marker for government AQ stations — visually distinct
@@ -3317,6 +3484,32 @@ let btLayers    = [];
 let bgTrailLayers = [];
 const splineByReport = {}; 
 let btAnimFrame = null;
+
+// "Solo" focus mode: while a report's popup is open, every OTHER report's
+// trail (and marker) dims down so the one you're actually looking at
+// isn't lost in a tangle of dozens of overlapping dashed lines. Cleared
+// automatically when that popup closes (see renderPin's popupopen/close).
+let focusedTrailReportId = null;
+const TRAIL_DIMMED_OPACITY = 0.08;
+const MARKER_DIMMED_OPACITY = 0.35;
+function setTrailFocus(reportId) {
+  focusedTrailReportId = reportId;
+  Object.keys(splineByReport).forEach(id => {
+    const isFocused = reportId == null || String(id) === String(reportId);
+    (splineByReport[id] || []).forEach(seg => {
+      seg.setStyle({ opacity: isFocused ? (seg._baseOpacity ?? 0.85) : TRAIL_DIMMED_OPACITY });
+    });
+  });
+  Object.keys(markerByReportId).forEach(id => {
+    const m = markerByReportId[id];
+    if (!m) return;
+    const isFocused = reportId == null || String(id) === String(reportId);
+    m.setOpacity(isFocused ? 1 : MARKER_DIMMED_OPACITY);
+  });
+}
+function clearTrailFocus() {
+  setTrailFocus(null);
+}
 
 function clearBacktrack(){
   btLayers.forEach(l=>map.removeLayer(l));
@@ -3727,10 +3920,13 @@ async function buildWindTrailForReport(report) {
     );
 
     // rawTrail[0] is the report's own point/time; rawTrail[i] (i>=1) comes
-    // from steps[i-1] (post-reverse), so it inherits that step's real hour.
+    // from steps[i-1] (post-reverse), so it inherits that step's real hour
+    // and wind speed (used to vary trail thickness on the map).
     rawTrail[0].time = reportTime.toISOString();
+    rawTrail[0].spd = steps[0]?.spd ?? report.wind_speed ?? null;
     for (let i = 1; i < rawTrail.length; i++) {
       rawTrail[i].time = new Date(steps[i - 1].ts).toISOString();
+      rawTrail[i].spd = steps[i - 1].spd;
     }
 
     const spline = smoothPathChaikin(rawTrail, 2);
@@ -3799,7 +3995,7 @@ async function computeForwardWindExtension(report, maxKm = 5, maxHoursForward = 
     const m = moveDownwind(cLat, cLon, s.dir, stepKm);
     cLat = m.lat; cLon = m.lon;
     travelled += stepKm;
-    points.push({ lat: cLat, lon: cLon });
+    points.push({ lat: cLat, lon: cLon, spd: s.spd });
   }
   return points;
 }
@@ -3951,17 +4147,26 @@ function traceGradientColor(stops, t) {
   const last = stops[stops.length - 1][1];
   return `rgb(${last[0]},${last[1]},${last[2]})`;
 }
-// Draws one logical trail as a series of short colored segments (Leaflet
-// polylines can only take a single color each, so a gradient means many
-// small ones) -- returns the array of layers added to the map.
-function drawGradientSpline(points, stops, report, tracerCoords, animationClass = 'trace-pulse-spline') {
+// Draws one logical trail as a series of short segments (Leaflet
+// polylines can only take a single color/weight each, so a gradient --
+// or wind-speed-varying thickness -- means many small ones). `stops` is
+// optional (omit for a single fixedColor); `speedProfile` is optional
+// (omit to keep a flat default weight). Returns the array of layers added.
+function drawGradientSpline(points, stops, report, tracerCoords, animationClass = 'trace-pulse-spline', opts = {}) {
+  const { fixedColor, pointSpeeds, baseOpacity = 0.85 } = opts;
   const layers = [];
   for (let i = 0; i < points.length - 1; i++) {
     const t = points.length > 2 ? (i + 0.5) / (points.length - 1) : 0.5;
+    const color = stops ? traceGradientColor(stops, t) : fixedColor;
+    let weight = 2;
+    if (pointSpeeds) {
+      const a = pointSpeeds[i], b = pointSpeeds[i + 1] ?? a;
+      weight = speedToWeight(a != null && b != null ? (a + b) / 2 : null);
+    }
     const segment = L.polyline([points[i], points[i + 1]], {
-      color: traceGradientColor(stops, t),
-      weight: 2,
-      opacity: 0.85,
+      color,
+      weight,
+      opacity: baseOpacity,
       dashArray: '4, 7',
       lineCap: 'round',
       lineJoin: 'round',
@@ -3969,6 +4174,10 @@ function drawGradientSpline(points, stops, report, tracerCoords, animationClass 
       interactive: false,
       pane: 'splinePane'
     }).addTo(map);
+    // Focus mode (see setTrailFocus) dims every trail except the one
+    // whose popup is open, then needs to restore this exact opacity --
+    // stash it here since setStyle() overwrites options.opacity itself.
+    segment._baseOpacity = baseOpacity;
     layers.push(segment);
   }
   return layers;
@@ -4144,12 +4353,15 @@ async function generateAllBackgroundTrails(reports, tracerCoords = null) {
     // line can visibly reach the source point, even if that's further back
     // than the display setting.
     let smoothedTrail;
+    let rawPointsUsed;
     if (tracerCoords) {
       smoothedTrail = trailResult.spline;
+      rawPointsUsed = trailResult.rawTrail;
     } else {
       const cutoffMs = new Date(report.created_at).getTime() - displayHours * 3600000;
       const trimmedRaw = trailResult.rawTrail.filter(p => new Date(p.time).getTime() >= cutoffMs);
       smoothedTrail = trimmedRaw.length >= 2 ? smoothPathChaikin(trimmedRaw, 2) : trimmedRaw;
+      rawPointsUsed = trimmedRaw;
     }
     if (!smoothedTrail || smoothedTrail.length < 2) return;
 
@@ -4216,7 +4428,7 @@ async function generateAllBackgroundTrails(reports, tracerCoords = null) {
       splineLatLngs = splineLatLngs.slice(0, cutIdx + 1);
     }
 
-    trailsToRender.push({ report, trailResult, splineLatLngs });
+    trailsToRender.push({ report, trailResult, splineLatLngs, rawPointsUsed });
   });
 
   // Trace mode only: one more hour of REAL forward wind data past each
@@ -4225,7 +4437,7 @@ async function generateAllBackgroundTrails(reports, tracerCoords = null) {
     ? await Promise.all(trailsToRender.map(({ report }) => computeForwardWindExtension(report, 5, 1).catch(() => [])))
     : [];
 
-  trailsToRender.forEach(({ report, trailResult, splineLatLngs }, idx) => {
+  trailsToRender.forEach(({ report, trailResult, splineLatLngs, rawPointsUsed }, idx) => {
     const baseColor = categoryColor(report.category);
     let segments;
 
@@ -4236,25 +4448,22 @@ async function generateAllBackgroundTrails(reports, tracerCoords = null) {
       const tail = forwardTails[idx];
       const { backSmoothed, forwardSmoothed } = smoothTraceJoin(splineLatLngs, tail);
 
-      segments = drawGradientSpline(backSmoothed, TRACE_SPLINE_BACK_STOPS, report, tracerCoords, 'trace-pulse-spline');
+      const backSpeeds = mapSpeedsOntoPoints(rawPointsUsed, backSmoothed);
+      segments = drawGradientSpline(backSmoothed, TRACE_SPLINE_BACK_STOPS, report, tracerCoords, 'trace-pulse-spline', { pointSpeeds: backSpeeds });
 
       if (forwardSmoothed.length >= 2) {
+        const tailRawWithReport = [
+          { lat: splineLatLngs[0][0], lon: splineLatLngs[0][1], spd: tail?.[0]?.spd },
+          ...(tail || [])
+        ];
+        const forwardSpeeds = mapSpeedsOntoPoints(tailRawWithReport, forwardSmoothed);
         segments = segments.concat(
-          drawGradientSpline(forwardSmoothed, TRACE_SPLINE_FORWARD_STOPS, report, tracerCoords, 'trace-pulse-spline-forward')
+          drawGradientSpline(forwardSmoothed, TRACE_SPLINE_FORWARD_STOPS, report, tracerCoords, 'trace-pulse-spline-forward', { pointSpeeds: forwardSpeeds })
         );
       }
     } else {
-      segments = [L.polyline(splineLatLngs, {
-        color: baseColor,
-        weight: 2,
-        opacity: 0.75,
-        dashArray: '4, 7',
-        lineCap: 'round',
-        lineJoin: 'round',
-        className: `spline-report-${report.id}`,
-        interactive: false,
-        pane: 'splinePane'
-      }).addTo(map)];
+      const speeds = mapSpeedsOntoPoints(rawPointsUsed, splineLatLngs);
+      segments = drawGradientSpline(splineLatLngs, null, report, tracerCoords, undefined, { fixedColor: baseColor, pointSpeeds: speeds, baseOpacity: 0.75 });
     }
 
     bgTrailLayers.push(...segments);
@@ -4673,6 +4882,10 @@ function renderPin(report, index = 0){
       });
     }
 
+    // Solo mode: dim every other report's trail/marker while this one's
+    // popup is open, so it's not lost in a tangle of overlapping trails.
+    setTrailFocus(report.id);
+
     // Refresh nearest-station data on every open, same pattern as the AQ
     // station markers themselves — the numbers shown are never older than
     // the click that revealed them.
@@ -4693,6 +4906,11 @@ function renderPin(report, index = 0){
         }
       });
     }
+
+    // Only clear solo focus if this report is still the focused one --
+    // if a different marker's popup already took over focus, its own
+    // popupclose (not this stale one) is what should eventually clear it.
+    if (focusedTrailReportId === report.id) clearTrailFocus();
   });
   reportMarkers.push(marker);
 }
