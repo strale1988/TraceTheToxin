@@ -315,7 +315,8 @@ button{
   padding:0 !important;
   overflow:hidden;
   min-width:200px;
-  background: rgba(255,255,255,0.82) !important;
+  background: var(--floating-bg) !important;
+  box-shadow: 0 3px 14px var(--floating-shadow);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
 }
@@ -327,17 +328,26 @@ button{
   overflow-x:hidden;
   -webkit-overflow-scrolling:touch;
 }
+.leaflet-popup-tip{
+  background: var(--floating-bg) !important;
+  box-shadow: 0 3px 14px var(--floating-shadow);
+}
+.leaflet-popup-close-button{
+  color: var(--text-secondary) !important;
+  font-size: 18px !important;
+}
+.leaflet-popup-close-button:hover{ color: var(--text-primary) !important; }
 
 .popup-inner{
   font-family:-apple-system,BlinkMacSystemFont,sans-serif;
   font-size:13px;
   line-height:1.65;
-  color:#111;
+  color:var(--text-primary);
   padding:12px 14px;
   min-width:200px;
 }
-.popup-inner b{ color:#222; }
-.popup-title{ font-size:14px; font-weight:700; margin-bottom:8px; color:#111; }
+.popup-inner b{ color:var(--text-primary); }
+.popup-title{ font-size:14px; font-weight:700; margin-bottom:8px; color:var(--text-primary); }
 
 .bg-trail-teal {
   pointer-events: none;
@@ -394,20 +404,20 @@ button{
   -webkit-overflow-scrolling:touch;
 }
 .generic-modal{
-  background:#1e1e1e; color:white;
+  background:var(--bg-surface); color:var(--text-primary);
   border-radius:18px;
   padding:24px 20px;
   max-width:340px; width:100%;
   text-align:center;
-  box-shadow:0 16px 48px rgba(0,0,0,.8);
+  box-shadow:0 16px 48px var(--floating-shadow);
   max-height:85vh; overflow-y:auto;
   pointer-events:all;
 }
 .generic-modal h2{ font-size:18px; font-weight:700; margin-bottom:12px; }
-.generic-modal p{ font-size:13px; line-height:1.6; color:#bbb; margin-bottom:12px; text-align:left; }
+.generic-modal p{ font-size:13px; line-height:1.6; color:var(--text-secondary); margin-bottom:12px; text-align:left; }
 .generic-modal-close{
-  background:#333; color:#eee;
-  border:1px solid #555; border-radius:10px;
+  background:var(--bg-surface-alt); color:var(--text-primary);
+  border:1px solid var(--border-color-strong); border-radius:10px;
   padding:12px 20px;
   font-size:14px; font-weight:600;
   cursor:pointer; width:100%;
@@ -415,7 +425,7 @@ button{
   touch-action:manipulation;
   min-height:44px;
 }
-.generic-modal-close:active{ background:#444; }
+.generic-modal-close:active{ background:var(--border-color-strong); }
 
 
 /* ==========================================================================
@@ -563,22 +573,6 @@ span.flatpickr-weekday {
 #pinMapBtn{ position:fixed; bottom:calc(var(--legend-bar-h) + 148px); right:12px; }
 #mapFilterBtn{ position:fixed; bottom:calc(var(--legend-bar-h) + 202px); right:12px; }
 #sourceHeatBtn{ position:fixed; bottom:calc(var(--legend-bar-h) + 256px); right:12px; }
-#mapKeyBtn{ position:fixed; bottom:calc(var(--legend-bar-h) + 310px); right:12px; }
-.map-key-btn{
-  background:var(--floating-bg);
-  border:1px solid var(--floating-border);
-  border-radius:50%;
-  width:44px; height:44px;
-  display:flex; align-items:center; justify-content:center;
-  cursor:pointer; font-size:22px;
-  box-shadow:0 2px 8px var(--floating-shadow);
-  transition:background .15s ease, transform .12s ease, box-shadow .15s ease;
-  user-select:none;
-  -webkit-tap-highlight-color:transparent;
-  touch-action:manipulation;
-}
-.map-key-btn:active{ transform:scale(.9); }
-.map-key-btn svg{ stroke:var(--text-secondary); transition:stroke .15s ease; }
 .source-heat-confidence-badge{
   position:fixed; bottom:calc(var(--legend-bar-h) + 300px); right:12px;
   z-index:800;
@@ -1024,13 +1018,6 @@ span.flatpickr-weekday {
     </svg>
   </div>
   <div id="sourceHeatConfidenceBadge" class="source-heat-confidence-badge" style="display:none"></div>
-  <div id="mapKeyBtn" class="map-key-btn" title="Map key" onclick="showMapKeyModal()">
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <circle cx="12" cy="12" r="10"/>
-      <line x1="12" y1="10.5" x2="12" y2="16.5"/>
-      <circle cx="12" cy="7.2" r="1.15" fill="currentColor" stroke="none"/>
-    </svg>
-  </div>
 </div>
 <input type="text" id="mapDateRangePicker" style="display:none">
 
@@ -1061,9 +1048,18 @@ span.flatpickr-weekday {
 
     <div class="detail-section" id="helpSettingsSection">
       <div class="detail-section-title" id="helpSectionTitle">Help</div>
-      <button type="button" class="settings-btn" style="width:100%;" onclick="showHelpModal()" id="settingsHelpBtn">
-        <img class="icon-img icon-img-inline" src="icons/help.png" alt=""> How to use TraceTheToxin
-      </button>
+      <div style="display:flex; gap:8px;">
+        <button type="button" class="settings-btn" style="flex:1;" onclick="showHelpModal()" id="settingsHelpBtn">
+          <img class="icon-img icon-img-inline" src="icons/help.png" alt=""> How to use TraceTheToxin
+        </button>
+        <button type="button" class="settings-btn" style="flex:1;" onclick="showMapKeyModal()" id="settingsMapKeyBtn">
+          <svg class="icon-img-inline" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin:0 4px -3px 0;flex-shrink:0;">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="10.5" x2="12" y2="16.5"/>
+            <circle cx="12" cy="7.2" r="1.15" fill="currentColor" stroke="none"/>
+          </svg> Map key
+        </button>
+      </div>
     </div>
 
     <div class="detail-section" id="languageSettingsSection">
@@ -1120,9 +1116,9 @@ span.flatpickr-weekday {
     </div>
 
     <div class="detail-section" id="sourceHeatScienceSettingsSection">
-      <div class="filter-title" style="margin-bottom:10px;">Source Heatmap</div>
-      <p class="detail-export-hint" style="margin-top:-4px;margin-bottom:12px;">The flame button shows a plain concentration heatmap: one weighted point per report, so brighter/redder areas simply mean more (and stronger, more recent) reports nearby.</p>
-      <button class="export-btn" style="width:100%;margin-top:4px;" onclick="showHeatMethodologyModal()">How the source heatmap works</button>
+      <div class="filter-title" style="margin-bottom:10px;" id="sourceHeatSectionTitle">Source Heatmap</div>
+      <p class="detail-export-hint" style="margin-top:-4px;margin-bottom:12px;" id="sourceHeatSectionBody">The flame button shows a plain concentration heatmap: one weighted point per report, so brighter/redder areas simply mean more (and stronger, more recent) reports nearby.</p>
+      <button class="export-btn" style="width:100%;margin-top:4px;" onclick="showHeatMethodologyModal()" id="sourceHeatMethBtn">How the source heatmap works</button>
     </div>
 
     <div class="detail-section" style="padding:0;overflow:hidden;">
@@ -1154,7 +1150,7 @@ span.flatpickr-weekday {
     <div class="generic-modal-icon"><img src="icons/pin.png" alt="Pin" style="width:18px;height:18px;vertical-align:middle;"></div>
     <h2 id="gpsModalTitle">GPS Not Enabled</h2>
     <p id="gpsModalBody">Location access is turned off. To report bad air at your location, enable it in your settings.</p>
-    <p id="gpsModalAlt" style="font-size:12px;color:#999;margin-bottom:16px;">Or use the <img src="icons/pin.png" alt="Pin" style="width:18px;height:18px;vertical-align:middle;"> button on the map to drop a pin manually.</p>
+    <p id="gpsModalAlt" style="font-size:12px;color:var(--text-secondary);margin-bottom:16px;">Or use the <img src="icons/pin.png" alt="Pin" style="width:18px;height:18px;vertical-align:middle;"> button on the map to drop a pin manually.</p>
     <button class="generic-modal-close" onclick="hideGpsModal()" id="gpsModalBtn">Got it</button>
   </div>
 </div>
@@ -1172,82 +1168,21 @@ span.flatpickr-weekday {
 
 <div id="heatMethodologyModal" class="generic-modal-overlay" style="display:none">
   <div class="generic-modal" style="max-width: 420px;">
-    <h2 style="margin-top: 6px;">How the source heatmap works</h2>
-    <div style="max-height: 55vh; overflow-y: auto; padding-right: 4px; font-size: 14px; line-height: 1.5;">
-      <p>The flame button shows where reports are concentrated -- it's not a wind or dispersion model, just a weighted density map of active reports:</p>
-      <ul style="padding-left: 18px; margin: 10px 0;">
-        <li style="margin-bottom:8px;">Every active report contributes one point at its own location.</li>
-        <li style="margin-bottom:8px;"><strong>Intensity &amp; time-decay</strong> weight stronger, more recent reports more heavily than older or milder ones.</li>
-        <li style="margin-bottom:8px;"><strong>Station corroboration</strong> gives a small boost where the nearest air-quality station measured elevated pollution around the same time as the report.</li>
-        <li>Overlapping reports simply add together, so areas with more (and stronger) reports read brighter and redder.</li>
-      </ul>
-      <p style="color: var(--text-secondary, #888);">Treat it as a quick visual summary of where reports are clustering, not a verified pollution-source location.</p>
+    <h2 style="margin-top: 6px;" id="heatMethModalTitle">How the source heatmap works</h2>
+    <div id="heatMethModalContent" style="max-height: 55vh; overflow-y: auto; padding-right: 4px; font-size: 14px; line-height: 1.5;">
+      <!-- Filled programmatically via buildHeatMethodologyContent() -->
     </div>
-    <button class="generic-modal-close" onclick="hideHeatMethodologyModal()" style="margin-top:14px;">Close</button>
+    <button class="generic-modal-close" onclick="hideHeatMethodologyModal()" id="heatMethModalBtn" style="margin-top:14px;">Close</button>
   </div>
 </div>
 
 <div id="mapKeyModal" class="generic-modal-overlay" style="display:none">
   <div class="generic-modal" style="max-width: 440px;">
-    <h2 style="margin-top: 6px;">Map key</h2>
-    <div style="max-height: 65vh; overflow-y: auto; padding-right: 4px; font-size: 13px; line-height: 1.5;">
-
-      <div style="font-weight:600; margin-bottom:4px;">Report pins</div>
-      <p style="color:var(--text-secondary,#888); margin-top:0;">Fill color = how long ago the report was made; the small ring accent = category. Full colors for both are in the bar at the bottom of the map.</p>
-
-      <div style="height:1px;background:var(--border-color,#eee);margin:12px 0;"></div>
-
-      <div style="font-weight:600; margin-bottom:6px;">Wind direction &amp; speed</div>
-      <div style="display:flex; align-items:center; gap:14px; margin-bottom:6px;">
-        <svg width="70" height="60" viewBox="0 0 70 60">
-          <circle cx="20" cy="30" r="11" fill="#a32222" stroke="#fff" stroke-width="2"/>
-          <line x1="20" y1="24" x2="20" y2="12" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
-          <polygon points="20,9 17,15 23,15" fill="#fff"/>
-          <circle cx="52" cy="30" r="11" fill="#a32222" stroke="#fff" stroke-width="2"/>
-          <line x1="52" y1="24" x2="52" y2="19" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
-          <polygon points="52,16 49.5,20.5 54.5,20.5" fill="#fff"/>
-        </svg>
-        <p style="color:var(--text-secondary,#888); margin:0;">Arrow points where the wind was blowing toward at the time of the report. <strong>Longer arrow = stronger wind</strong> (left: strong, right: calm).</p>
-      </div>
-
-      <div style="height:1px;background:var(--border-color,#eee);margin:12px 0;"></div>
-
-      <div style="font-weight:600; margin-bottom:6px;">Wind trails</div>
-      <svg width="100%" height="26" viewBox="0 0 300 26" preserveAspectRatio="none" style="display:block; margin-bottom:4px;">
-        <line x1="6" y1="13" x2="294" y2="13" stroke="#7a7a7a" stroke-linecap="round" stroke-dasharray="2,7">
-          <animate attributeName="stroke-width" values="1.5;5;1.5" dur="1s" repeatCount="indefinite"/>
-        </line>
-      </svg>
-      <p style="color:var(--text-secondary,#888); margin:0 0 10px;">Each dashed trail is that report's estimated wind history. <strong>Thicker sections = faster wind</strong> at that point in time; thinner = calmer.</p>
-      <p style="color:var(--text-secondary,#888); margin:0;">Tap a report to spotlight its trail -- every other trail and pin dims so it's easy to follow. Close the popup (or tap elsewhere) to bring everything back.</p>
-
-      <div style="height:1px;background:var(--border-color,#eee);margin:12px 0;"></div>
-
-      <div style="font-weight:600; margin-bottom:6px;">Source heatmap (flame button)</div>
-      <div style="height:14px; border-radius:7px; margin-bottom:4px; background:linear-gradient(to right, #fff59d, #ffca28, #f57c00, #c41e27);"></div>
-      <p style="color:var(--text-secondary,#888); margin:0 0 4px;">Brighter/redder = more (and stronger, more recent) reports clustered in that area. <a href="#" onclick="showHeatMethodologyModal(); return false;">How it's calculated</a></p>
-
-      <div style="height:1px;background:var(--border-color,#eee);margin:12px 0;"></div>
-
-      <div style="font-weight:600; margin-bottom:6px;">Trace Possible Source</div>
-      <div style="height:14px; border-radius:7px; margin-bottom:4px; background:linear-gradient(to right, #8e24aa, #c41e27, #f57c00, #fff59d);"></div>
-      <p style="color:var(--text-secondary,#888); margin:0;">Purple at the tracer pin, fading to red then orange as each matched report's trail arrives, then a yellow tail continuing ~1h further along the wind past the report.</p>
-
-      <div style="height:1px;background:var(--border-color,#eee);margin:12px 0;"></div>
-
-      <div style="font-weight:600; margin-bottom:6px;">Air-quality stations</div>
-      <div style="display:flex; flex-wrap:wrap; gap:8px 14px; margin-bottom:2px;">
-        <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;background:#4CAF50;display:inline-block;transform:rotate(45deg);"></span><span style="color:var(--text-secondary,#888);">Dobar (good)</span></span>
-        <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;background:#8BC34A;display:inline-block;transform:rotate(45deg);"></span><span style="color:var(--text-secondary,#888);">Prihvatljiv (acceptable)</span></span>
-        <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;background:#FFC107;display:inline-block;transform:rotate(45deg);"></span><span style="color:var(--text-secondary,#888);">Umeren (moderate)</span></span>
-        <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;background:#FF9800;display:inline-block;transform:rotate(45deg);"></span><span style="color:var(--text-secondary,#888);">Zagađen (polluted)</span></span>
-        <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;background:#F44336;display:inline-block;transform:rotate(45deg);"></span><span style="color:var(--text-secondary,#888);">Veoma zagađen (very polluted)</span></span>
-        <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;background:#9C27B0;display:inline-block;transform:rotate(45deg);"></span><span style="color:var(--text-secondary,#888);">Izuzetno zagađen (extremely polluted)</span></span>
-      </div>
-      <p style="color:var(--text-secondary,#888); margin:6px 0 0;">Diamond markers are official government air-quality stations, colored by their current reading.</p>
-
+    <h2 style="margin-top: 6px;" id="mapKeyModalTitle">Map key</h2>
+    <div id="mapKeyModalContent" style="max-height: 65vh; overflow-y: auto; padding-right: 4px; font-size: 13px; line-height: 1.5;">
+      <!-- Filled programmatically via buildMapKeyModalContent() -->
     </div>
-    <button class="generic-modal-close" onclick="hideMapKeyModal()" style="margin-top:14px;">Close</button>
+    <button class="generic-modal-close" onclick="hideMapKeyModal()" id="mapKeyModalBtn" style="margin-top:14px;">Close</button>
   </div>
 </div>
 
@@ -1756,16 +1691,111 @@ function hideSettingsModal() {
   document.getElementById('settingsModal').style.display = 'none';
 }
 function showHeatMethodologyModal() {
+  buildHeatMethodologyContent();
   document.getElementById('heatMethodologyModal').style.display = 'flex';
 }
 function hideHeatMethodologyModal() {
   document.getElementById('heatMethodologyModal').style.display = 'none';
 }
 function showMapKeyModal() {
+  buildMapKeyModalContent();
   document.getElementById('mapKeyModal').style.display = 'flex';
 }
 function hideMapKeyModal() {
   document.getElementById('mapKeyModal').style.display = 'none';
+}
+
+// Builds the "How the source heatmap works" modal content from the
+// translation dictionary, the same pattern buildHelpModalContent() uses --
+// so it stays in sync with the active language both when first opened and
+// if the user switches language while it's already open.
+function buildHeatMethodologyContent() {
+  const titleEl = document.getElementById('heatMethModalTitle');
+  const btnEl = document.getElementById('heatMethModalBtn');
+  if (titleEl) titleEl.textContent = t('heatMethTitle');
+  if (btnEl) btnEl.textContent = t('helpClose');
+
+  const contentEl = document.getElementById('heatMethModalContent');
+  if (!contentEl) return;
+  contentEl.innerHTML = `
+    <p>${t('heatMethIntro')}</p>
+    <ul style="padding-left: 18px; margin: 10px 0;">
+      <li style="margin-bottom:8px;">${t('heatMethLi1')}</li>
+      <li style="margin-bottom:8px;">${t('heatMethLi2')}</li>
+      <li style="margin-bottom:8px;">${t('heatMethLi3')}</li>
+      <li>${t('heatMethLi4')}</li>
+    </ul>
+    <p style="color: var(--text-secondary);">${t('heatMethFooter')}</p>
+  `;
+}
+
+// Builds the "Map key" modal content from the translation dictionary --
+// same pattern as buildHelpModalContent()/buildHeatMethodologyContent().
+// The illustrative SVGs/gradients themselves aren't language-dependent, so
+// only the surrounding labels and captions are pulled through t().
+function buildMapKeyModalContent() {
+  const titleEl = document.getElementById('mapKeyModalTitle');
+  const btnEl = document.getElementById('mapKeyModalBtn');
+  if (titleEl) titleEl.textContent = t('mapKeyTitle');
+  if (btnEl) btnEl.textContent = t('helpClose');
+
+  const contentEl = document.getElementById('mapKeyModalContent');
+  if (!contentEl) return;
+  contentEl.innerHTML = `
+    <div style="font-weight:600; margin-bottom:4px;">${t('mapKeyReportPinsTitle')}</div>
+    <p style="color:var(--text-secondary); margin-top:0;">${t('mapKeyReportPinsBody')}</p>
+
+    <div style="height:1px;background:var(--border-color);margin:12px 0;"></div>
+
+    <div style="font-weight:600; margin-bottom:6px;">${t('mapKeyWindTitle')}</div>
+    <div style="display:flex; align-items:center; gap:14px; margin-bottom:6px;">
+      <svg width="70" height="60" viewBox="0 0 70 60">
+        <circle cx="20" cy="30" r="11" fill="#a32222" stroke="#fff" stroke-width="2"/>
+        <line x1="20" y1="24" x2="20" y2="12" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
+        <polygon points="20,9 17,15 23,15" fill="#fff"/>
+        <circle cx="52" cy="30" r="11" fill="#a32222" stroke="#fff" stroke-width="2"/>
+        <line x1="52" y1="24" x2="52" y2="19" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
+        <polygon points="52,16 49.5,20.5 54.5,20.5" fill="#fff"/>
+      </svg>
+      <p style="color:var(--text-secondary); margin:0;">${t('mapKeyWindBody')}</p>
+    </div>
+
+    <div style="height:1px;background:var(--border-color);margin:12px 0;"></div>
+
+    <div style="font-weight:600; margin-bottom:6px;">${t('mapKeyTrailsTitle')}</div>
+    <svg width="100%" height="26" viewBox="0 0 300 26" preserveAspectRatio="none" style="display:block; margin-bottom:4px;">
+      <line x1="6" y1="13" x2="294" y2="13" stroke="#7a7a7a" stroke-linecap="round" stroke-dasharray="2,7">
+        <animate attributeName="stroke-width" values="1.5;5;1.5" dur="1s" repeatCount="indefinite"/>
+      </line>
+    </svg>
+    <p style="color:var(--text-secondary); margin:0 0 10px;">${t('mapKeyTrailsBody1')}</p>
+    <p style="color:var(--text-secondary); margin:0;">${t('mapKeyTrailsBody2')}</p>
+
+    <div style="height:1px;background:var(--border-color);margin:12px 0;"></div>
+
+    <div style="font-weight:600; margin-bottom:6px;">${t('mapKeySourceHeatTitle')}</div>
+    <div style="height:14px; border-radius:7px; margin-bottom:4px; background:linear-gradient(to right, #fff59d, #ffca28, #f57c00, #c41e27);"></div>
+    <p style="color:var(--text-secondary); margin:0 0 4px;">${t('mapKeySourceHeatBody')} <a href="#" onclick="showHeatMethodologyModal(); return false;">${t('mapKeyHowCalculated')}</a></p>
+
+    <div style="height:1px;background:var(--border-color);margin:12px 0;"></div>
+
+    <div style="font-weight:600; margin-bottom:6px;">${t('mapKeyTraceTitle')}</div>
+    <div style="height:14px; border-radius:7px; margin-bottom:4px; background:linear-gradient(to right, #8e24aa, #c41e27, #f57c00, #fff59d);"></div>
+    <p style="color:var(--text-secondary); margin:0;">${t('mapKeyTraceBody')}</p>
+
+    <div style="height:1px;background:var(--border-color);margin:12px 0;"></div>
+
+    <div style="font-weight:600; margin-bottom:6px;">${t('mapKeyStationsTitle')}</div>
+    <div style="display:flex; flex-wrap:wrap; gap:8px 14px; margin-bottom:2px;">
+      <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;background:#4CAF50;display:inline-block;transform:rotate(45deg);"></span><span style="color:var(--text-secondary);">Dobar (good)</span></span>
+      <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;background:#8BC34A;display:inline-block;transform:rotate(45deg);"></span><span style="color:var(--text-secondary);">Prihvatljiv (acceptable)</span></span>
+      <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;background:#FFC107;display:inline-block;transform:rotate(45deg);"></span><span style="color:var(--text-secondary);">Umeren (moderate)</span></span>
+      <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;background:#FF9800;display:inline-block;transform:rotate(45deg);"></span><span style="color:var(--text-secondary);">Zagađen (polluted)</span></span>
+      <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;background:#F44336;display:inline-block;transform:rotate(45deg);"></span><span style="color:var(--text-secondary);">Veoma zagađen (very polluted)</span></span>
+      <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;background:#9C27B0;display:inline-block;transform:rotate(45deg);"></span><span style="color:var(--text-secondary);">Izuzetno zagađen (extremely polluted)</span></span>
+    </div>
+    <p style="color:var(--text-secondary); margin:6px 0 0;">${t('mapKeyStationsBody')}</p>
+  `;
 }
 
 /* ═══════════════════════════════════════════════════
@@ -2086,6 +2116,66 @@ const T = {
 
   splineVisibilityLabel: { en:'Show historical wind trails', sr:'Prikaži istorijske tragove vetra' },
   splineVisibilityHint:  { en:'Show the dashed wind-trail lines behind each pin. Off by default to keep the map uncluttered.', sr:'Prikaži isprekidane linije traga vetra iza svake oznake. Podrazumevano isključeno radi preglednosti mape.' },
+
+  settingsMapKeyBtn: { en:'Map key', sr:'Legenda mape' },
+
+  traceHeatmapLabel: { en:'Show heatmap when tracing possible source', sr:'Prikaži toplotnu mapu prilikom traženja mogućeg izvora' },
+  traceHeatmapHint:  {
+    en:'While using Trace Possible Source: purple at the tracer pin, fading to red then orange toward each matched report, then a yellow tail continuing ~5km further along the wind past the report -- brightening back toward orange wherever it crosses another report\'s trail.',
+    sr:'Prilikom korišćenja funkcije Traži mogući izvor: ljubičasta boja kod oznake za traženje, prelazi u crvenu pa narandžastu ka svakoj podudarnoj prijavi, zatim žuti rep koji se nastavlja ~5km dalje niz vetar posle prijave -- ponovo posvetljava ka narandžastoj gde god preseca trag druge prijave.' },
+
+  sourceHeatSectionTitle: { en:'Source Heatmap', sr:'Toplotna mapa izvora' },
+  sourceHeatSectionBody:  {
+    en:'The flame button shows a plain concentration heatmap: one weighted point per report, so brighter/redder areas simply mean more (and stronger, more recent) reports nearby.',
+    sr:'Dugme plamen prikazuje jednostavnu toplotnu mapu koncentracije: jedna ponderisana tačka po prijavi, tako da svetlije/crvenije oblasti jednostavno znače više (i jačih, skorijih) prijava u blizini.' },
+
+  heatMethTitle: { en:'How the source heatmap works', sr:'Kako funkcioniše toplotna mapa izvora' },
+  heatMethIntro: {
+    en:'The flame button shows where reports are concentrated -- it\'s not a wind or dispersion model, just a weighted density map of active reports:',
+    sr:'Dugme plamen prikazuje gde su prijave koncentrisane -- to nije model vetra ili disperzije, već samo ponderisana mapa gustine aktivnih prijava:' },
+  heatMethLi1: { en:'Every active report contributes one point at its own location.', sr:'Svaka aktivna prijava doprinosi jednom tačkom na svojoj lokaciji.' },
+  heatMethLi2: {
+    en:'<strong>Intensity &amp; time-decay</strong> weight stronger, more recent reports more heavily than older or milder ones.',
+    sr:'<strong>Jačina i vremensko opadanje</strong> daju veću težinu jačim i skorijim prijavama u odnosu na starije ili blaže.' },
+  heatMethLi3: {
+    en:'<strong>Station corroboration</strong> gives a small boost where the nearest air-quality station measured elevated pollution around the same time as the report.',
+    sr:'<strong>Potvrda stanice</strong> daje mali dodatak tamo gde je najbliža stanica za kvalitet vazduha izmerila povišeno zagađenje otprilike u vreme prijave.' },
+  heatMethLi4: {
+    en:'Overlapping reports simply add together, so areas with more (and stronger) reports read brighter and redder.',
+    sr:'Preklapajuće prijave se jednostavno sabiraju, tako da područja sa više (i jačih) prijava izgledaju svetlije i crvenije.' },
+  heatMethFooter: {
+    en:'Treat it as a quick visual summary of where reports are clustering, not a verified pollution-source location.',
+    sr:'Posmatrajte ovo kao brzi vizuelni prikaz gde se prijave grupišu, a ne kao potvrđenu lokaciju izvora zagađenja.' },
+
+  mapKeyTitle: { en:'Map key', sr:'Legenda mape' },
+  mapKeyReportPinsTitle: { en:'Report pins', sr:'Oznake prijava' },
+  mapKeyReportPinsBody: {
+    en:'Fill color = how long ago the report was made; the small ring accent = category. Full colors for both are in the bar at the bottom of the map.',
+    sr:'Boja popune = koliko je vremena prošlo od prijave; mali prsten oko oznake = kategorija. Pune boje za oboje se nalaze u traci na dnu mape.' },
+  mapKeyWindTitle: { en:'Wind direction &amp; speed', sr:'Smer i brzina vetra' },
+  mapKeyWindBody: {
+    en:'Arrow points where the wind was blowing toward at the time of the report. <strong>Longer arrow = stronger wind</strong> (left: strong, right: calm).',
+    sr:'Strelica pokazuje u kom pravcu je vetar duvao u trenutku prijave. <strong>Duža strelica = jači vetar</strong> (levo: jak, desno: slab).' },
+  mapKeyTrailsTitle: { en:'Wind trails', sr:'Tragovi vetra' },
+  mapKeyTrailsBody1: {
+    en:'Each dashed trail is that report\'s estimated wind history. <strong>Thicker sections = faster wind</strong> at that point in time; thinner = calmer.',
+    sr:'Svaka isprekidana linija predstavlja procenjenu istoriju vetra za tu prijavu. <strong>Deblji delovi = brži vetar</strong> u tom trenutku; tanji = slabiji.' },
+  mapKeyTrailsBody2: {
+    en:'Tap a report to spotlight its trail -- every other trail and pin dims so it\'s easy to follow. Close the popup (or tap elsewhere) to bring everything back.',
+    sr:'Dodirnite prijavu da istaknete njen trag -- svi ostali tragovi i oznake se zatamne radi lakšeg praćenja. Zatvorite iskačući prozor (ili dodirnite negde drugde) da vratite sve na prikaz.' },
+  mapKeySourceHeatTitle: { en:'Source heatmap (flame button)', sr:'Toplotna mapa izvora (dugme plamen)' },
+  mapKeySourceHeatBody: {
+    en:'Brighter/redder = more (and stronger, more recent) reports clustered in that area.',
+    sr:'Svetlije/crvenije = više (i jačih, skorijih) prijava grupisanih u tom području.' },
+  mapKeyHowCalculated: { en:'How it\'s calculated', sr:'Kako se izračunava' },
+  mapKeyTraceTitle: { en:'Trace Possible Source', sr:'Traži mogući izvor' },
+  mapKeyTraceBody: {
+    en:'Purple at the tracer pin, fading to red then orange as each matched report\'s trail arrives, then a yellow tail continuing ~1h further along the wind past the report.',
+    sr:'Ljubičasta boja kod oznake za traženje, prelazi u crvenu pa narandžastu kako pristižu tragovi podudarnih prijava, zatim žuti rep koji se nastavlja ~1č dalje niz vetar posle prijave.' },
+  mapKeyStationsTitle: { en:'Air-quality stations', sr:'Stanice za kvalitet vazduha' },
+  mapKeyStationsBody: {
+    en:'Diamond markers are official government air-quality stations, colored by their current reading.',
+    sr:'Dijamantske oznake predstavljaju zvanične državne stanice za kvalitet vazduha, obojene prema trenutnom očitavanju.' },
 };
 
 function t(k){ return T[k]?.[lang] ?? k; }
@@ -2172,6 +2262,7 @@ function applyLang(){
   if (el('settingsModalTitle')) el('settingsModalTitle').textContent = t('settingsTitle');
   if (el('helpSectionTitle'))   el('helpSectionTitle').textContent = t('helpSectionTitle');
   if (el('settingsHelpBtn'))    el('settingsHelpBtn').innerHTML = `<img class="icon-img icon-img-inline" src="icons/help.png" alt=""> ${t('settingsHelpBtn')}`;
+  if (el('settingsMapKeyBtn'))  el('settingsMapKeyBtn').innerHTML = `<svg class="icon-img-inline" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin:0 4px -3px 0;flex-shrink:0;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="10.5" x2="12" y2="16.5"/><circle cx="12" cy="7.2" r="1.15" fill="currentColor" stroke="none"/></svg> ${t('settingsMapKeyBtn')}`;
   if (el('languageSectionTitle')) el('languageSectionTitle').textContent = t('languageSectionTitle');
   if (el('langAutoHint'))       el('langAutoHint').textContent = t('langAutoHint');
   if (el('langBtnAutoLabel'))   el('langBtnAutoLabel').textContent = t('langBtnAutoLabel');
@@ -2185,6 +2276,11 @@ function applyLang(){
   if (el('trailHoursHint'))         el('trailHoursHint').textContent = t('trailHoursHint');
   if (el('splineVisibilityLabel')) el('splineVisibilityLabel').textContent = t('splineVisibilityLabel');
   if (el('splineVisibilityHint'))  el('splineVisibilityHint').textContent = t('splineVisibilityHint');
+  if (el('traceHeatmapLabel'))     el('traceHeatmapLabel').textContent = t('traceHeatmapLabel');
+  if (el('traceHeatmapHint'))      el('traceHeatmapHint').textContent = t('traceHeatmapHint');
+  if (el('sourceHeatSectionTitle')) el('sourceHeatSectionTitle').textContent = t('sourceHeatSectionTitle');
+  if (el('sourceHeatSectionBody'))  el('sourceHeatSectionBody').textContent = t('sourceHeatSectionBody');
+  if (el('sourceHeatMethBtn'))      el('sourceHeatMethBtn').textContent = t('heatMethTitle');
   if (el('pullRefreshLabel'))      el('pullRefreshLabel').textContent = t('pullToRefresh');
   if (lastKnownReportCount !== null) updateReportCountUI(lastKnownReportCount, lastKnownReportTotal);
 
@@ -2200,6 +2296,12 @@ function applyLang(){
 
   const gm = document.getElementById('gpsModal');
   if(gm && gm.style.display!=='none') updateGpsModalText();
+
+  const hmm = document.getElementById('heatMethodologyModal');
+  if (hmm && hmm.style.display !== 'none') buildHeatMethodologyContent();
+
+  const mkm = document.getElementById('mapKeyModal');
+  if (mkm && mkm.style.display !== 'none') buildMapKeyModalContent();
 
   buildHelpModalContent();
 }
@@ -3375,13 +3477,13 @@ function buildStationPopupHtml(station, reading) {
       ${reading ? `
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
           <span style="font-size:10px;font-weight:700;" title="${reading.category || ''}">${reading.category || '–'}</span>
-          <span style="font-size:9px;color:#999;">${t('aqUpdated')} ${formatStationTime(reading.recorded_at)}</span>
+          <span style="font-size:9px;color:var(--text-secondary);">${t('aqUpdated')} ${formatStationTime(reading.recorded_at)}</span>
         </div>
-        <div style="height:1px;background:#eee;margin:2px 0;"></div>
+        <div style="height:1px;background:var(--border-color);margin:2px 0;"></div>
         ${pollutantSummaryRowHtml(reading)}
-      ` : `<span style="font-size:11px;color:#999;">${t('aqNoData')}</span>`}
+      ` : `<span style="font-size:11px;color:var(--text-secondary);">${t('aqNoData')}</span>`}
       ${station.precision === 'city' ? `
-        <div style="font-size:9px;color:#bbb;font-style:italic;margin-top:2px;">${t('aqApprox')}</div>
+        <div style="font-size:9px;color:var(--text-secondary);font-style:italic;margin-top:2px;">${t('aqApprox')}</div>
       ` : ''}
     </div>
   </div>`;
@@ -4820,11 +4922,8 @@ function translateCategory(category) {
 // number pairs separated by dots) instead of a stacked list, reused by the
 // station popup, the report-details modal, and the spline-click average
 // popup so all three stay visually consistent and compact.
-function pollutantSummaryRowHtml(reading, dark = false) {
-  if (!reading) return `<span style="font-size:10px;color:#999;">${t('aqNoData')}</span>`;
-  const labelColor = dark ? '#999' : '#888';
-  const valueColor = dark ? '#fff' : '#111';
-  const dotColor = dark ? '#555' : '#ccc';
+function pollutantSummaryRowHtml(reading) {
+  if (!reading) return `<span style="font-size:10px;color:var(--text-secondary);">${t('aqNoData')}</span>`;
   const entries = [
     ['PM10', reading.pm10],
     ['PM2.5', reading.pm25],
@@ -4834,9 +4933,9 @@ function pollutantSummaryRowHtml(reading, dark = false) {
   ];
   const parts = entries.map(([label, val]) => {
     const display = (val != null && !isNaN(val)) ? Number(val).toFixed(1) : '–';
-    return `<span style="white-space:nowrap;"><span style="color:${labelColor};">${label}</span> <span style="font-weight:700;color:${valueColor};">${display}</span></span>`;
+    return `<span style="white-space:nowrap;"><span style="color:var(--text-secondary);">${label}</span> <span style="font-weight:700;color:var(--text-primary);">${display}</span></span>`;
   });
-  return `<div style="display:flex;flex-wrap:nowrap;gap:5px 8px;font-size:10px;align-items:baseline;overflow-x:auto;">${parts.join(`<span style="color:${dotColor};">·</span>`)}</div>`;
+  return `<div style="display:flex;flex-wrap:nowrap;gap:5px 8px;font-size:10px;align-items:baseline;overflow-x:auto;">${parts.join(`<span style="color:var(--border-color-strong);">·</span>`)}</div>`;
 }
 
 // Averages pollutant values across however many station readings are
@@ -4844,9 +4943,8 @@ function pollutantSummaryRowHtml(reading, dark = false) {
 // `weights` (same length/order as readings) lets a station the wind
 // passed very close to count for more than one it only barely grazed at
 // the edge of the match radius -- defaults to an equal, unweighted mean
-// when omitted. Shared by handleSplineClick's upwind-average popup and
-// the report popup's own average-at-time-and-place row, so both compute
-// it identically.
+// when omitted. Used by the report popup's average-at-time-and-place row
+// (buildReportStationSectionHtml).
 function averagePollutantReadings(readings, weights = null) {
   const w = (weights && weights.length === readings.length) ? weights : readings.map(() => 1);
   const avg = (vals) => {
@@ -4870,10 +4968,10 @@ function averagePollutantReadings(readings, weights = null) {
 // backward search if the standard window found nothing — directly inline.
 function buildReportStationSectionHtml(stationList, reportCreatedAt, reportId) {
   if (stationList === undefined) {
-    return `<div style="font-size:9px;color:#bbb;font-style:italic;margin-top:2px;">${t('stationDataLoading')}</div>`;
+    return `<div style="font-size:9px;color:var(--text-secondary);font-style:italic;margin-top:2px;">${t('stationDataLoading')}</div>`;
   }
   if (stationList === null || !stationList.length) {
-    return `<div style="font-size:9px;color:#bbb;font-style:italic;margin-top:2px;">${t('stationNoneNearby')}</div>`;
+    return `<div style="font-size:9px;color:var(--text-secondary);font-style:italic;margin-top:2px;">${t('stationNoneNearby')}</div>`;
   }
 
   // Averaged reading across every matched station, at the time/place the
@@ -4888,13 +4986,13 @@ function buildReportStationSectionHtml(stationList, reportCreatedAt, reportId) {
   const weights = withReadings.map(s => 1 / (1 + (s.distanceKm ?? 0)));
   const avgSectionHtml = readings.length ? `
     <div style="margin-top:2px;">
-      <span style="font-size:9px;color:#bbb;text-transform:uppercase;">${t('avgAtReportTime')}</span>
+      <span style="font-size:9px;color:var(--text-secondary);text-transform:uppercase;">${t('avgAtReportTime')}</span>
       <div style="margin-top:2px;">${pollutantSummaryRowHtml(averagePollutantReadings(readings, weights))}</div>
     </div>
-    <div style="height:1px;background:#eee;margin:6px 0;"></div>` : '';
+    <div style="height:1px;background:var(--border-color);margin:6px 0;"></div>` : '';
 
   const isFallback = stationList.length === 1 && stationList[0].matchType === 'nearest-fallback';
-  const header = `<span style="font-size:9px;color:#bbb;text-transform:uppercase;">${isFallback ? t('nearestStation') : t('stationsAlongTrail')}</span>`;
+  const header = `<span style="font-size:9px;color:var(--text-secondary);text-transform:uppercase;">${isFallback ? t('nearestStation') : t('stationsAlongTrail')}</span>`;
 
   // Only worth tagging upwind/downwind on each row when the list actually
   // mixes both directions — with everything on one side it's just noise.
@@ -4907,13 +5005,13 @@ function buildReportStationSectionHtml(stationList, reportCreatedAt, reportId) {
       : null;
     const dateLabel = formatStationTime(reading ? reading.recorded_at : targetTime);
     const directionTag = hasMixedDirections
-      ? ` <span style="font-weight:400;color:#bbb;">(${isAfter ? t('windDownwindTag') : t('windUpwindTag')})</span>`
+      ? ` <span style="font-weight:400;color:var(--text-secondary);">(${isAfter ? t('windDownwindTag') : t('windUpwindTag')})</span>`
       : '';
     const travelLabel = isAfter ? t('windArrivedAfter') : t('windTravelTime');
     return `
       <div style="margin-top:${i > 0 ? '7px' : '2px'};${i > 0 ? 'padding-top:6px;border-top:1px solid var(--border-color);' : ''}">
-        <span style="font-size:10px;color:#555;font-weight:600;">${station.name}${directionTag}${dateLabel ? ` <span style="font-weight:400;color:#999;">(${dateLabel})</span>` : ''}</span>
-        ${hoursDiff != null && hoursDiff > 0.05 ? `<div style="font-size:9px;color:#999;">${travelLabel}: ~${hoursDiff.toFixed(1)}h${pathDistanceKm != null ? ` · ${t('windTravelDist')}: ~${pathDistanceKm.toFixed(1)} km` : ''}</div>` : ''}
+        <span style="font-size:10px;color:var(--text-primary);font-weight:600;">${station.name}${directionTag}${dateLabel ? ` <span style="font-weight:400;color:var(--text-secondary);">(${dateLabel})</span>` : ''}</span>
+        ${hoursDiff != null && hoursDiff > 0.05 ? `<div style="font-size:9px;color:var(--text-secondary);">${travelLabel}: ~${hoursDiff.toFixed(1)}h${pathDistanceKm != null ? ` · ${t('windTravelDist')}: ~${pathDistanceKm.toFixed(1)} km` : ''}</div>` : ''}
         <div style="margin-top:2px;">${pollutantSummaryRowHtml(reading)}</div>
       </div>`;
   }).join('');
@@ -4948,44 +5046,44 @@ function buildReportPopupHtml(report, stationSectionHtml) {
 
   <div style="padding:5px 8px;display:flex;flex-direction:column;gap:2px;">
     <div style="display:flex;justify-content:space-between;align-items:center;">
-      <span style="font-size:9px;color:#888;text-transform:uppercase;">${t('popupInt')}</span>
-      <span style="font-size:11px;font-weight:600;color:#111;">${report.intensity}/10</span>
+      <span style="font-size:9px;color:var(--text-secondary);text-transform:uppercase;">${t('popupInt')}</span>
+      <span style="font-size:11px;font-weight:600;color:var(--text-primary);">${report.intensity}/10</span>
     </div>
 
     <div style="display:flex;justify-content:space-between;align-items:center;">
-      <span style="font-size:9px;color:#888;text-transform:uppercase;">${t('popupDuration')}</span>
-      <span style="font-size:11px;font-weight:600;color:#111;">${report.duration || 1}${t('hours')}</span>
+      <span style="font-size:9px;color:var(--text-secondary);text-transform:uppercase;">${t('popupDuration')}</span>
+      <span style="font-size:11px;font-weight:600;color:var(--text-primary);">${report.duration || 1}${t('hours')}</span>
     </div>
 
-    <div style="height:1px;background:#eee;margin:2px 0;"></div>
+    <div style="height:1px;background:var(--border-color);margin:2px 0;"></div>
 
     <div style="display:flex;justify-content:space-between;align-items:center;">
-      <span style="font-size:9px;color:#888;text-transform:uppercase;">${t('popupDir')}</span>
-      <span style="font-size:11px;font-weight:600;color:#111;white-space:nowrap;">
+      <span style="font-size:9px;color:var(--text-secondary);text-transform:uppercase;">${t('popupDir')}</span>
+      <span style="font-size:11px;font-weight:600;color:var(--text-primary);white-space:nowrap;">
         ${report.manual_wind_direction != null ? report.manual_wind_direction + '°' : '–'}
       </span>
     </div>
 
     <div style="display:flex;justify-content:space-between;align-items:center;">
-      <span style="font-size:9px;color:#999;" title="${t('historical')}">${t('historical')}</span>
-      <span style="font-size:10px;font-weight:400;color:#999;white-space:nowrap;">
+      <span style="font-size:9px;color:var(--text-secondary);" title="${t('historical')}">${t('historical')}</span>
+      <span style="font-size:10px;font-weight:400;color:var(--text-secondary);white-space:nowrap;">
         ${report.wind_direction != null ? Math.round(report.wind_direction) + '°' + (card ? ` ${card}` : '') : '–'}
       </span>
     </div>
 
     <div style="display:flex;justify-content:flex-end;align-items:center;margin-top:1px;">
-      <span style="font-size:10px;color:#999;white-space:nowrap;">
+      <span style="font-size:10px;color:var(--text-secondary);white-space:nowrap;">
         ${report.wind_speed != null ? report.wind_speed + ' km/h' : '–'} •
         ${report.sea_level_pressure != null ? Number(report.sea_level_pressure).toFixed(1) + ' hPa' : '–'}
       </span>
     </div>
 
-    <div style="height:1px;background:#eee;margin:2px 0;"></div>
+    <div style="height:1px;background:var(--border-color);margin:2px 0;"></div>
     ${stationSectionHtml}
 
     ${report.comment ? `
-    <div style="height:1px;background:#eee;margin:2px 0;"></div>
-    <div style="font-size:10px;color:#555;font-style:italic;line-height:1.2;">
+    <div style="height:1px;background:var(--border-color);margin:2px 0;"></div>
+    <div style="font-size:10px;color:var(--text-secondary);font-style:italic;line-height:1.2;">
       ${report.comment}
     </div>` : ''}
   </div>
