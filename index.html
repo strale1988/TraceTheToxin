@@ -3976,20 +3976,21 @@ async function buildWindTrailForReport(report) {
       }
     }
     const historicalDir = closestStep != null ? hourly.wind_direction_10m[closestStep] : null;
-    if (historicalDir != null && report.wind_direction !== historicalDir) {
+    // Only ever set this once -- a DB trigger enforces write-once semantics
+    // on these backfill fields (rejects the update with a 400 otherwise),
+    // so recomputing a slightly different value on a later call (different
+    // window, revised Open-Meteo data, floating-point drift, etc.) must
+    // never attempt to overwrite whatever's already stored.
+    if (historicalDir != null && report.wind_direction == null) {
       report.wind_direction = historicalDir;
       await backfillWindDirection(report.id, historicalDir);
     }
 
     const validPres = steps.filter(s => s.pres != null);
-    if (validPres.length) {
+    if (validPres.length && report.sea_level_pressure == null) {
       const avgPressure = validPres.reduce((sum, s) => sum + s.pres, 0) / validPres.length;
-      const alreadyStored = report.sea_level_pressure != null &&
-        Math.abs(report.sea_level_pressure - avgPressure) < 0.05;
-      if (!alreadyStored) {
-        report.sea_level_pressure = avgPressure;
-        await backfillPressure(report.id, avgPressure);
-      }
+      report.sea_level_pressure = avgPressure;
+      await backfillPressure(report.id, avgPressure);
     }
 
     steps.reverse(); // walk backwards from report time toward the source
