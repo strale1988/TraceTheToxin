@@ -2077,9 +2077,11 @@ const FIRMS_MAP_KEY = 'YOUR_FIRMS_MAP_KEY_HERE';
 // VIIRS_SNPP_NRT = 375m resolution, ~3hr latency, good default. Other valid
 // values: VIIRS_NOAA20_NRT, VIIRS_NOAA21_NRT, MODIS_NRT (1km, older sensor).
 const WILDFIRE_SOURCE = 'VIIRS_SNPP_NRT';
-// west,south,east,north -- a Balkans-wide box so smoke sources just outside
-// Serbia's borders still show up, not just fires inside the country.
-const WILDFIRE_BBOX = '15,40,26,47';
+// Fires are fetched in a box around the user's current position (GPS if
+// available, else the manual pin, else the fixed fallback -- same
+// precedence as activeWizLocation()), not a fixed region or the whole
+// world. See computeWildfireBbox()/loadWildfireData() below.
+const WILDFIRE_RADIUS_KM = 100;
 // Detections older than this are dropped from the FIRMS request entirely
 // (the API's own day-range granularity is whole days, so 1 = "today").
 const WILDFIRE_DAY_RANGE = 1;
@@ -2095,6 +2097,11 @@ let wildfireVisible = (function () {
 })();
 let wildfireLayer = null;
 let wildfireLastFetchedAt = 0;
+// {lat, lon} the currently-loaded wildfireLayer was centered on -- lets
+// toggleWildfireLayer() refetch when the user has moved far enough that the
+// old 100km box no longer covers their surroundings, even if the
+// time-based refresh window (WILDFIRE_REFRESH_MS) hasn't elapsed yet.
+let wildfireLastFetchedAround = null;
 
 /* ═══════════════════════════════════════════════════
    i18n
@@ -5132,6 +5139,21 @@ function buildWildfirePopupHtml(row) {
     </div>`;
 }
 
+// Builds a "west,south,east,north" box (the format FIRMS' Area API expects)
+// covering at least `radiusKm` in every direction from (lat, lon). It's a
+// rectangle, not a circle, so it always over-covers slightly at the
+// corners -- loadWildfireData() trims those corner points back out with an
+// exact haversine check after the fetch.
+function computeWildfireBbox(lat, lon, radiusKm) {
+  const latDelta = radiusKm / 111; // ~111 km per degree of latitude everywhere
+  // A degree of longitude shrinks toward the poles by cos(latitude); guard
+  // against dividing by ~0 right at the poles (never realistic here, but cheap to guard).
+  const lonDelta = radiusKm / (111 * Math.max(Math.cos(lat * Math.PI / 180), 0.01));
+  const west = lon - lonDelta, east = lon + lonDelta;
+  const south = lat - latDelta, north = lat + latDelta;
+  return `${west.toFixed(4)},${south.toFixed(4)},${east.toFixed(4)},${north.toFixed(4)}`;
+}
+
 function renderWildfireMarkers(rows) {
   if (wildfireLayer) map.removeLayer(wildfireLayer);
   wildfireLayer = L.layerGroup();
@@ -5157,13 +5179,23 @@ async function loadWildfireData(silent) {
     return false;
   }
   try {
-    const url = `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${FIRMS_MAP_KEY}/${WILDFIRE_SOURCE}/${WILDFIRE_BBOX}/${WILDFIRE_DAY_RANGE}`;
+    const { lat, lon } = activeWizLocation();
+    const bbox = computeWildfireBbox(lat, lon, WILDFIRE_RADIUS_KM);
+    const url = `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${FIRMS_MAP_KEY}/${WILDFIRE_SOURCE}/${bbox}/${WILDFIRE_DAY_RANGE}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const text = await res.text();
-    const rows = parseFirmsCsv(text);
+    // The bbox is a rectangle, so its corners reach slightly past
+    // WILDFIRE_RADIUS_KM -- drop those so what's shown really is "fires
+    // within 100km", not "fires within a box that's roughly 100km".
+    const rows = parseFirmsCsv(text).filter(row => {
+      const flat = parseFloat(row.latitude), flon = parseFloat(row.longitude);
+      return !isNaN(flat) && !isNaN(flon) &&
+        getHaversineDistance(lat, lon, flat, flon) <= WILDFIRE_RADIUS_KM;
+    });
     renderWildfireMarkers(rows);
     wildfireLastFetchedAt = Date.now();
+    wildfireLastFetchedAround = { lat, lon };
     return true;
   } catch (e) {
     console.warn('[wildfire] failed to load FIRMS data', e);
@@ -5178,7 +5210,14 @@ async function toggleWildfireLayer() {
 
   if (turningOn) {
     wildfireVisible = true; // set before fetching so renderWildfireMarkers() adds the layer once data arrives
-    const stale = !wildfireLayer || (Date.now() - wildfireLastFetchedAt) > WILDFIRE_REFRESH_MS;
+    const { lat, lon } = activeWizLocation();
+    // Re-center the 100km box once the user has moved roughly a third of
+    // its radius, rather than waiting on the time-based window -- otherwise
+    // walking/driving away from where the layer was first loaded would
+    // leave fires near the old spot on screen and miss new ones nearby.
+    const movedFar = wildfireLastFetchedAround &&
+      getHaversineDistance(lat, lon, wildfireLastFetchedAround.lat, wildfireLastFetchedAround.lon) > WILDFIRE_RADIUS_KM / 3;
+    const stale = !wildfireLayer || movedFar || (Date.now() - wildfireLastFetchedAt) > WILDFIRE_REFRESH_MS;
     let ok = true;
     if (stale) {
       ok = await loadWildfireData();
