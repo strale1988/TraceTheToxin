@@ -1311,19 +1311,31 @@ function closeReportWizard() {
 }
 
 function wizGoBack() {
-  if (wizState.step > 0) { wizState.step -= 1; renderWizStep(); }
-  else closeReportWizard();
+  if (wizState.step > 0) {
+    if (wizState.category === 'Clean Air' && wizState.step === 2) {
+      // Clean Air skipped step 1 (intensity) on the way in, so skip it on
+      // the way back out too.
+      wizState.step = 0;
+    } else {
+      wizState.step -= 1;
+    }
+    renderWizStep();
+  } else closeReportWizard();
 }
 
-function renderWizProgress(totalSteps) {
+function renderWizProgress() {
+  // Clean Air skips the intensity step, so its wizard is only 2 steps long.
+  const isCleanAir = wizState.category === 'Clean Air';
+  const totalSteps = isCleanAir ? 2 : 3;
+  const currentIndex = isCleanAir ? (wizState.step === 2 ? 1 : 0) : wizState.step;
   const el = document.getElementById('wizProgress');
   el.innerHTML = Array.from({ length: totalSteps }, (_, i) =>
-    `<span class="${i <= wizState.step ? 'done' : ''}"></span>`).join('');
+    `<span class="${i <= currentIndex ? 'done' : ''}"></span>`).join('');
   document.getElementById('wizBackBtn').style.visibility = wizState.step === 0 ? 'hidden' : 'visible';
 }
 
 function renderWizStep() {
-  renderWizProgress(3);
+  renderWizProgress();
   if (wizState.step === 0) renderWizCategoryStep();
   else if (wizState.step === 1) renderWizIntensityStep();
   else renderWizDetailsStep();
@@ -1346,7 +1358,14 @@ function renderWizCategoryStep() {
 
 function wizSelectCategory(value) {
   wizState.category = value;
-  wizState.step = 1;
+  if (value === 'Clean Air') {
+    // Clean Air has no meaningful "intensity" — always maxed, and the
+    // slider step is skipped entirely.
+    wizState.intensity = 10;
+    wizState.step = 2;
+  } else {
+    wizState.step = 1;
+  }
   renderWizStep();
 }
 
@@ -1389,7 +1408,7 @@ function wizGoToDetails() {
 function renderWizDetailsStep() {
   const body = document.getElementById('wizBody');
   body.innerHTML = `
-    <p class="wiz-step-label">${t('wizStepLabel')} 3</p>
+    <p class="wiz-step-label">${t('wizStepLabel')} ${wizState.category === 'Clean Air' ? 2 : 3}</p>
     <h3 class="wiz-step-title">${t('wizDetailsTitle')}</h3>
     <div class="wiz-details-three-col">
       <div class="wiz-details-row">
@@ -2365,12 +2384,14 @@ function initCalendarFilter(optionalDefaultDates) {
 // On-map filter, opened via the round filter button (category-filter.png
 // icon). Scopes ONLY which report pins are rendered on the map — entirely
 // independent from the Settings CSV filter above.
+// Intentionally NOT persisted to localStorage — always opens defaulted to
+// the last 7 days, regardless of what the user picked in a previous session.
 function initMapCalendarFilter(optionalDefaultDates) {
-  let initialDates = optionalDefaultDates || loadDateRange('ttt_map_filter_dates');
+  let initialDates = optionalDefaultDates;
 
   if (!initialDates || initialDates.length === 0) {
     const defaultStart = new Date();
-    defaultStart.setDate(defaultStart.getDate() - 3);
+    defaultStart.setDate(defaultStart.getDate() - 7);
     const defaultEnd = new Date();
     initialDates = [defaultStart, defaultEnd];
   }
@@ -2384,7 +2405,6 @@ function initMapCalendarFilter(optionalDefaultDates) {
     positionElement: document.getElementById('mapFilterBtn'),
     onClose: async function(selectedDates) {
       if (selectedDates.length === 2) {
-        saveDateRange('ttt_map_filter_dates', selectedDates);
         await loadPinsByWindow();
 
         if (traceMode && tracerMarker) {
