@@ -573,6 +573,7 @@ span.flatpickr-weekday {
 #pinMapBtn{ position:fixed; bottom:calc(var(--legend-bar-h) + 148px); right:12px; }
 #mapFilterBtn{ position:fixed; bottom:calc(var(--legend-bar-h) + 202px); right:12px; }
 #sourceHeatBtn{ position:fixed; bottom:calc(var(--legend-bar-h) + 256px); right:12px; }
+#wildfireBtn{ position:fixed; bottom:calc(var(--legend-bar-h) + 322px); right:12px; }
 .source-heat-confidence-badge{
   position:fixed; bottom:calc(var(--legend-bar-h) + 300px); right:12px;
   z-index:800;
@@ -609,6 +610,23 @@ span.flatpickr-weekday {
 .source-heat-btn.active{ background:#f5a623; border-color:#f5a623; }
 .source-heat-btn .icon-img{ filter:var(--icon-tint-filter); }
 .source-heat-btn.active .icon-img{ filter:none; }
+.wildfire-btn{
+  background:var(--floating-bg);
+  border:1px solid var(--floating-border);
+  border-radius:50%;
+  width:44px; height:44px;
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer;
+  box-shadow:0 2px 8px var(--floating-shadow);
+  transition:background .15s ease, transform .12s ease, box-shadow .15s ease;
+  user-select:none;
+  -webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;
+}
+.wildfire-btn:active{ transform:scale(.9); }
+.wildfire-btn.active{ background:#d84315; border-color:#d84315; }
+.wildfire-btn svg{ stroke:var(--text-secondary); transition:stroke .15s ease; }
+.wildfire-btn.active svg{ stroke:#fff; }
 .map-filter-btn{
   background:var(--floating-bg);
   border:1px solid var(--floating-border);
@@ -1015,6 +1033,12 @@ span.flatpickr-weekday {
     <img class="icon-img" src="icons/fire.png" alt="Fire">
   </div>
   <div id="sourceHeatConfidenceBadge" class="source-heat-confidence-badge" style="display:none"></div>
+  <div id="wildfireBtn" class="wildfire-btn" style="display:none" title="Show active wildfires (NASA satellite data)" onclick="toggleWildfireLayer()">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="9"/>
+      <path d="M12 7.5c-1.1 1.9-2.6 3.4-2.6 5.4a2.6 2.6 0 0 0 5.2 0c0-.6-.2-1.1-.5-1.6.5.2 1 .6 1.2 1.1-.2-1.7-1.1-3-3.3-4.9z"/>
+    </svg>
+  </div>
 </div>
 <input type="text" id="mapDateRangePicker" style="display:none">
 
@@ -1811,6 +1835,16 @@ function buildMapKeyModalContent() {
       <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;background:#9C27B0;display:inline-block;transform:rotate(45deg);"></span><span style="color:var(--text-secondary);">Izuzetno zagađen (extremely polluted)</span></span>
     </div>
     <p style="color:var(--text-secondary); margin:6px 0 0;">${t('mapKeyStationsBody')}</p>
+
+    <div style="height:1px;background:var(--border-color);margin:12px 0;"></div>
+
+    <div style="font-weight:600; margin-bottom:6px;">${t('mapKeyWildfireTitle')}</div>
+    <div style="display:flex; flex-wrap:wrap; gap:8px 14px; margin-bottom:2px;">
+      <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;border-radius:50%;background:#ffca28;display:inline-block;"></span><span style="color:var(--text-secondary);">${t('wildfireConfLow')}</span></span>
+      <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;border-radius:50%;background:#f57c00;display:inline-block;"></span><span style="color:var(--text-secondary);">${t('wildfireConfNominal')}</span></span>
+      <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;border-radius:50%;background:#c41e27;display:inline-block;"></span><span style="color:var(--text-secondary);">${t('wildfireConfHigh')}</span></span>
+    </div>
+    <p style="color:var(--text-secondary); margin:6px 0 0;">${t('mapKeyWildfireBody')}</p>
   `;
 }
 
@@ -2028,6 +2062,31 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 /* ═══════════════════════════════════════════════════
+   WILDFIRES (NASA FIRMS)
+   firemap.live itself isn't a public API -- it's a consumer product built
+   on top of NASA FIRMS + national fire agencies, with no documented
+   integration endpoint of its own. We go straight to the same underlying
+   open data source it uses: NASA's Fire Information for Resource
+   Management System (FIRMS), which has a free, official Area API.
+   Get a MAP_KEY (takes ~1 minute, no cost) at:
+     https://firms.modaps.eosdis.nasa.gov/api/map_key/
+   and paste it below. Without a real key the button will still appear but
+   will show a message instead of data when tapped.
+═══════════════════════════════════════════════════ */
+const FIRMS_MAP_KEY = 'YOUR_FIRMS_MAP_KEY_HERE';
+// VIIRS_SNPP_NRT = 375m resolution, ~3hr latency, good default. Other valid
+// values: VIIRS_NOAA20_NRT, VIIRS_NOAA21_NRT, MODIS_NRT (1km, older sensor).
+const WILDFIRE_SOURCE = 'VIIRS_SNPP_NRT';
+// west,south,east,north -- a Balkans-wide box so smoke sources just outside
+// Serbia's borders still show up, not just fires inside the country.
+const WILDFIRE_BBOX = '15,40,26,47';
+// Detections older than this are dropped from the FIRMS request entirely
+// (the API's own day-range granularity is whole days, so 1 = "today").
+const WILDFIRE_DAY_RANGE = 1;
+// Re-fetch at most this often while the layer stays toggled on.
+const WILDFIRE_REFRESH_MS = 15 * 60 * 1000;
+
+/* ═══════════════════════════════════════════════════
    i18n
 ═══════════════════════════════════════════════════ */
 const T = {
@@ -2192,6 +2251,26 @@ const T = {
   mapKeyStationsBody: {
     en:'Diamond markers are official government air-quality stations, colored by their current reading.',
     sr:'Dijamantske oznake predstavljaju zvanične državne stanice za kvalitet vazduha, obojene prema trenutnom očitavanju.' },
+  mapKeyWildfireTitle: { en:'Active wildfires (satellite)', sr:'Aktivni požari (satelit)' },
+  mapKeyWildfireBody: {
+    en:'Dots show wildfire hotspots detected by NASA satellites in roughly the last day. Color reflects detection confidence; tap a dot for details.',
+    sr:'Tačke prikazuju žarišta požara koje su NASA sateliti otkrili u poslednjih otprilike dan. Boja odražava pouzdanost detekcije; dodirnite tačku za detalje.' },
+  wildfirePopupTitle: { en:'Wildfire hotspot', sr:'Žarište požara' },
+  wildfireAcquired:   { en:'Detected', sr:'Otkriveno' },
+  wildfireConfidence: { en:'Confidence', sr:'Pouzdanost' },
+  wildfireConfLow:     { en:'Low', sr:'Niska' },
+  wildfireConfNominal: { en:'Medium', sr:'Srednja' },
+  wildfireConfHigh:    { en:'High', sr:'Visoka' },
+  wildfireBrightness: { en:'Brightness', sr:'Osvetljenost' },
+  wildfireFrp:        { en:'Radiative power', sr:'Radijativna snaga' },
+  wildfireSatellite:  { en:'Satellite', sr:'Satelit' },
+  wildfireSource:     { en:'Source: NASA FIRMS', sr:'Izvor: NASA FIRMS' },
+  wildfireNoKeyMsg: {
+    en:'The wildfire layer needs a free NASA FIRMS key to work. Get one at firms.modaps.eosdis.nasa.gov/api/map_key and add it to the app\'s FIRMS_MAP_KEY setting.',
+    sr:'Sloju sa požarima je potreban besplatan NASA FIRMS ključ. Preuzmite ga na firms.modaps.eosdis.nasa.gov/api/map_key i dodajte ga u podešavanje FIRMS_MAP_KEY u aplikaciji.' },
+  wildfireLoadError: {
+    en:'Could not load wildfire data right now. Please try again shortly.',
+    sr:'Trenutno nije moguće učitati podatke o požarima. Pokušajte ponovo uskoro.' },
 };
 
 function t(k){ return T[k]?.[lang] ?? k; }
@@ -2575,7 +2654,7 @@ function buildWindAppLinksHtml() {
        style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--text-secondary);
               text-decoration:none;padding:5px 10px;border-radius:999px;background:var(--bg-surface-alt);
               white-space:nowrap;">
-      ${app.icon ? `<img src="${app.icon}" style="width:14px;height:14px;object-fit:contain;">` : ''}
+      ${app.icon ? `<img src="${app.icon}" alt="" style="width:14px;height:14px;object-fit:contain;">` : ''}
       ${app.label}
     </a>`).join('');
 }
@@ -2821,6 +2900,33 @@ const SourceHeatControl = L.Control.extend({
 });
 new SourceHeatControl().addTo(map);
 document.getElementById('sourceHeatBtn').style.display = 'flex';
+
+const WildfireControl = L.Control.extend({
+  options:{ position:'bottomleft' },
+  onAdd(){
+    const btn = document.getElementById('wildfireBtn');
+    L.DomEvent.disableClickPropagation(btn);
+    return btn;
+  }
+});
+new WildfireControl().addTo(map);
+document.getElementById('wildfireBtn').style.display = 'flex';
+// Restore last session's on/off state. Unlike the other toggles above this
+// one needs a live network fetch, not just a local re-render, so this
+// deliberately calls loadWildfireData() directly rather than routing
+// through toggleWildfireLayer() (which would flip wildfireVisible from the
+// true value we just loaded from storage back to false).
+if (wildfireVisible) {
+  loadWildfireData(true).then(ok => {
+    const btn = document.getElementById('wildfireBtn');
+    if (ok) {
+      if (btn) btn.classList.add('active');
+    } else {
+      wildfireVisible = false;
+      try { localStorage.setItem('ttt_wildfire_visible', 'false'); } catch (e) {}
+    }
+  });
+}
 
 function togglePinMode() {
   pinMode = !pinMode;
@@ -4952,6 +5058,136 @@ function toggleSourceHeat() {
   } else {
     if (sourceHeatLayer && map.hasLayer(sourceHeatLayer)) map.removeLayer(sourceHeatLayer);
     updateSourceHeatBadge(globalActiveData);
+  }
+}
+
+/* ═══════════════════════════════════════════════════
+   WILDFIRES (NASA FIRMS) -- satellite-detected hotspot dots,
+   toggled via the button just above the source-heat flame button.
+   See the FIRMS_MAP_KEY/WILDFIRE_* constants near the Supabase config
+   for setup and region/source tuning.
+═══════════════════════════════════════════════════ */
+let wildfireVisible = (function () {
+  try { return localStorage.getItem('ttt_wildfire_visible') === 'true'; } catch (e) { return false; }
+})();
+let wildfireLayer = null;
+let wildfireLastFetchedAt = 0;
+
+// FIRMS returns plain CSV (no quoted/escaped commas in its own columns),
+// so a straightforward split is enough -- no need to pull in a CSV library
+// just for this one feed.
+function parseFirmsCsv(text) {
+  const lines = text.trim().split('\n').map(l => l.trim()).filter(Boolean);
+  if (lines.length < 2) return [];
+  const headers = lines[0].split(',').map(h => h.trim());
+  if (!headers.includes('latitude') || !headers.includes('longitude')) return [];
+  return lines.slice(1).map(line => {
+    const cols = line.split(',');
+    const row = {};
+    headers.forEach((h, i) => { row[h] = cols[i]; });
+    return row;
+  });
+}
+
+// VIIRS reports confidence as a letter (l/n/h); MODIS reports it as 0-100.
+// Normalize either into the same 3-tier color scale.
+function wildfireConfidenceInfo(row) {
+  const raw = String(row.confidence || '').trim().toLowerCase();
+  let tier;
+  if (raw === 'h' || raw === 'high') tier = 'high';
+  else if (raw === 'l' || raw === 'low') tier = 'low';
+  else if (raw === 'n' || raw === 'nominal') tier = 'nominal';
+  else {
+    const num = parseFloat(raw);
+    tier = !isNaN(num) ? (num >= 80 ? 'high' : num >= 30 ? 'nominal' : 'low') : 'nominal';
+  }
+  const colors = { low: '#ffca28', nominal: '#f57c00', high: '#c41e27' };
+  const labelKeys = { low: 'wildfireConfLow', nominal: 'wildfireConfNominal', high: 'wildfireConfHigh' };
+  return { tier, color: colors[tier], label: t(labelKeys[tier]) };
+}
+
+function buildWildfirePopupHtml(row) {
+  const { color, label } = wildfireConfidenceInfo(row);
+  const time = String(row.acq_time || '').padStart(4, '0');
+  const timeDisplay = time.length === 4 ? `${time.slice(0, 2)}:${time.slice(2)} UTC` : '';
+  const brightness = parseFloat(row.bright_ti4 ?? row.brightness);
+  const frp = parseFloat(row.frp);
+  return `
+    <div style="min-width:190px;font-size:12px;line-height:1.5;">
+      <div style="font-weight:700;margin-bottom:4px;display:flex;align-items:center;gap:6px;">
+        <span style="width:10px;height:10px;border-radius:50%;background:${color};display:inline-block;flex-shrink:0;"></span>
+        ${t('wildfirePopupTitle')}
+      </div>
+      <div>${t('wildfireAcquired')}: ${row.acq_date || ''} ${timeDisplay}</div>
+      <div>${t('wildfireConfidence')}: ${label}</div>
+      ${!isNaN(brightness) ? `<div>${t('wildfireBrightness')}: ${brightness.toFixed(1)} K</div>` : ''}
+      ${!isNaN(frp) ? `<div>${t('wildfireFrp')}: ${frp.toFixed(1)} MW</div>` : ''}
+      ${row.satellite ? `<div>${t('wildfireSatellite')}: ${row.satellite}</div>` : ''}
+      <div style="margin-top:4px;color:var(--text-secondary);font-size:10px;">${t('wildfireSource')}</div>
+    </div>`;
+}
+
+function renderWildfireMarkers(rows) {
+  if (wildfireLayer) map.removeLayer(wildfireLayer);
+  wildfireLayer = L.layerGroup();
+  rows.forEach(row => {
+    const lat = parseFloat(row.latitude), lon = parseFloat(row.longitude);
+    if (isNaN(lat) || isNaN(lon)) return;
+    const { color } = wildfireConfidenceInfo(row);
+    L.circleMarker([lat, lon], {
+      radius: 6, weight: 1, color: '#fff', fillColor: color, fillOpacity: 0.9
+    }).bindPopup(buildWildfirePopupHtml(row)).addTo(wildfireLayer);
+  });
+  if (wildfireVisible) wildfireLayer.addTo(map);
+}
+
+// Returns true on success, false on failure (missing key or fetch/parse
+// error) so toggleWildfireLayer() knows whether to revert the toggle.
+// `silent` skips the user-facing alert (used when restoring a previously
+// on-state at page load, so a stale key doesn't nag on every visit --
+// the button just quietly won't light up).
+async function loadWildfireData(silent) {
+  if (!FIRMS_MAP_KEY || FIRMS_MAP_KEY === 'YOUR_FIRMS_MAP_KEY_HERE') {
+    if (!silent) alert(t('wildfireNoKeyMsg'));
+    return false;
+  }
+  try {
+    const url = `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${FIRMS_MAP_KEY}/${WILDFIRE_SOURCE}/${WILDFIRE_BBOX}/${WILDFIRE_DAY_RANGE}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const text = await res.text();
+    const rows = parseFirmsCsv(text);
+    renderWildfireMarkers(rows);
+    wildfireLastFetchedAt = Date.now();
+    return true;
+  } catch (e) {
+    console.warn('[wildfire] failed to load FIRMS data', e);
+    if (!silent) alert(t('wildfireLoadError'));
+    return false;
+  }
+}
+
+async function toggleWildfireLayer() {
+  const turningOn = !wildfireVisible;
+  const btn = document.getElementById('wildfireBtn');
+
+  if (turningOn) {
+    wildfireVisible = true; // set before fetching so renderWildfireMarkers() adds the layer once data arrives
+    const stale = !wildfireLayer || (Date.now() - wildfireLastFetchedAt) > WILDFIRE_REFRESH_MS;
+    let ok = true;
+    if (stale) {
+      ok = await loadWildfireData();
+    } else {
+      wildfireLayer.addTo(map);
+    }
+    if (!ok) { wildfireVisible = false; return; } // fetch failed -- leave the toggle off, no localStorage write
+    if (btn) btn.classList.add('active');
+    try { localStorage.setItem('ttt_wildfire_visible', 'true'); } catch (e) {}
+  } else {
+    wildfireVisible = false;
+    if (wildfireLayer && map.hasLayer(wildfireLayer)) map.removeLayer(wildfireLayer);
+    if (btn) btn.classList.remove('active');
+    try { localStorage.setItem('ttt_wildfire_visible', 'false'); } catch (e) {}
   }
 }
 
