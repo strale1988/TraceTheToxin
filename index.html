@@ -394,6 +394,33 @@ button{
 .trace-pulse-spline-forward {
   animation: traceFlowDashReverse 0.9s linear infinite;
 }
+
+/* Wildfire dots: a small comet-shaped pulse repeatedly stretches out and
+   fades from each fire, oriented (via the wrapping <g transform="rotate">
+   set in makeWildfireIcon()) toward wherever the wind is currently blowing
+   TO at that fire's location -- same "add 180° to the meteorological wind
+   direction" convention used by the GPS arrow and wind compass elsewhere.
+   Calm conditions fall back to a plain radial breathing pulse instead,
+   since a direction isn't meaningful below WILDFIRE_CALM_THRESHOLD_KMH. */
+@keyframes wildfireWindPulse {
+  0%   { transform: translateY(0)     scaleX(1)   scaleY(1);   opacity: 0.65; }
+  65%  {                                                        opacity: 0.3; }
+  100% { transform: translateY(-15px) scaleX(0.55) scaleY(2.4); opacity: 0; }
+}
+@keyframes wildfireCalmPulse {
+  0%   { transform: scale(0.9); opacity: 0.6; }
+  100% { transform: scale(2.4); opacity: 0; }
+}
+.wildfire-icon .wildfire-wind-pulse{
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: wildfireWindPulse 1.8s ease-out infinite;
+}
+.wildfire-icon .wildfire-calm-pulse{
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: wildfireCalmPulse 1.8s ease-out infinite;
+}
   
 .generic-modal-overlay{
   position:fixed; inset:0;
@@ -2079,6 +2106,10 @@ const WILDFIRE_SOURCE = 'VIIRS_SNPP_NRT';
 // precedence as activeWizLocation()), not a fixed region or the whole
 // world. See computeWildfireBbox()/loadWildfireData() below.
 const WILDFIRE_RADIUS_KM = 100;
+// Below this wind speed, direction readings get noisy/unreliable and a
+// directional pulse would be misleading -- fall back to a plain radial
+// pulse instead (see makeWildfireIcon()).
+const WILDFIRE_CALM_THRESHOLD_KMH = 3;
 // Detections older than this are dropped from the FIRMS request entirely
 // (the API's own day-range granularity is whole days, so 1 = "today").
 const WILDFIRE_DAY_RANGE = 1;
@@ -2267,8 +2298,8 @@ const T = {
     sr:'Dijamantske oznake predstavljaju zvanične državne stanice za kvalitet vazduha, obojene prema trenutnom očitavanju.' },
   mapKeyWildfireTitle: { en:'Active wildfires (satellite)', sr:'Aktivni požari (satelit)' },
   mapKeyWildfireBody: {
-    en:'Dots show wildfire hotspots detected by NASA satellites in roughly the last day. Color reflects detection confidence; tap a dot for details.',
-    sr:'Tačke prikazuju žarišta požara koje su NASA sateliti otkrili u poslednjih otprilike dan. Boja odražava pouzdanost detekcije; dodirnite tačku za detalje.' },
+    en:'Dots show wildfire hotspots detected by NASA satellites in roughly the last day. Color reflects detection confidence; each dot pulses toward the direction the wind is currently blowing it (a plain pulse means calm winds). Tap a dot for details.',
+    sr:'Tačke prikazuju žarišta požara koje su NASA sateliti otkrili u poslednjih otprilike dan. Boja odražava pouzdanost detekcije; svaka tačka pulsira u pravcu u kom trenutno duva vetar (obična pulsacija znači da je vetar slab). Dodirnite tačku za detalje.' },
   wildfirePopupTitle: { en:'Wildfire hotspot', sr:'Žarište požara' },
   wildfireAcquired:   { en:'Detected', sr:'Otkriveno' },
   wildfireConfidence: { en:'Confidence', sr:'Pouzdanost' },
@@ -2278,6 +2309,7 @@ const T = {
   wildfireBrightness: { en:'Brightness', sr:'Osvetljenost' },
   wildfireFrp:        { en:'Radiative power', sr:'Radijativna snaga' },
   wildfireSatellite:  { en:'Satellite', sr:'Satelit' },
+  wildfireDistance:   { en:'Distance', sr:'Udaljenost' },
   wildfireSource:     { en:'Source: NASA FIRMS', sr:'Izvor: NASA FIRMS' },
   wildfireNoKeyMsg: {
     en:'The wildfire layer needs a free NASA FIRMS key to work. Get one at firms.modaps.eosdis.nasa.gov/api/map_key and add it to the app\'s FIRMS_MAP_KEY setting.',
@@ -5121,19 +5153,45 @@ function buildWildfirePopupHtml(row) {
   const timeDisplay = time.length === 4 ? `${time.slice(0, 2)}:${time.slice(2)} UTC` : '';
   const brightness = parseFloat(row.bright_ti4 ?? row.brightness);
   const frp = parseFloat(row.frp);
-  return `
-    <div style="min-width:190px;font-size:12px;line-height:1.5;">
-      <div style="font-weight:700;margin-bottom:4px;display:flex;align-items:center;gap:6px;">
-        <span style="width:10px;height:10px;border-radius:50%;background:${color};display:inline-block;flex-shrink:0;"></span>
-        ${t('wildfirePopupTitle')}
-      </div>
-      <div>${t('wildfireAcquired')}: ${row.acq_date || ''} ${timeDisplay}</div>
-      <div>${t('wildfireConfidence')}: ${label}</div>
-      ${!isNaN(brightness) ? `<div>${t('wildfireBrightness')}: ${brightness.toFixed(1)} K</div>` : ''}
-      ${!isNaN(frp) ? `<div>${t('wildfireFrp')}: ${frp.toFixed(1)} MW</div>` : ''}
-      ${row.satellite ? `<div>${t('wildfireSatellite')}: ${row.satellite}</div>` : ''}
-      <div style="margin-top:4px;color:var(--text-secondary);font-size:10px;">${t('wildfireSource')}</div>
+  const flat = parseFloat(row.latitude), flon = parseFloat(row.longitude);
+  let distanceKm = null;
+  if (!isNaN(flat) && !isNaN(flon)) {
+    const { lat, lon } = activeWizLocation();
+    distanceKm = getHaversineDistance(lat, lon, flat, flon);
+  }
+
+  const row_ = (labelKey, valueHtml) => `
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <span style="font-size:9px;color:var(--text-secondary);text-transform:uppercase;">${t(labelKey)}</span>
+      <span style="font-size:11px;font-weight:600;color:var(--text-primary);white-space:nowrap;">${valueHtml}</span>
     </div>`;
+  const divider = `<div style="height:1px;background:var(--border-color);margin:2px 0;"></div>`;
+
+  return `<div class="popup-inner" style="padding:0;min-width:220px;max-width:460px;font-family:sans-serif;">
+  <div style="background:${color};padding:4px 8px;border-radius:6px 6px 0 0;display:flex;flex-direction:column;align-items:flex-start;gap:1px;">
+    <span style="font-size:11px;font-weight:700;color:white;">
+      ${t('wildfirePopupTitle')}
+    </span>
+    <span style="font-size:9px;color:rgba(255,255,255,.8);">
+      ${row.acq_date || ''}${timeDisplay ? ` ${timeDisplay}` : ''}
+    </span>
+  </div>
+
+  <div style="padding:5px 8px;display:flex;flex-direction:column;gap:2px;">
+    ${row_('wildfireConfidence', label)}
+    ${!isNaN(brightness) ? row_('wildfireBrightness', `${brightness.toFixed(1)} K`) : ''}
+    ${!isNaN(frp) ? row_('wildfireFrp', `${frp.toFixed(1)} MW`) : ''}
+
+    ${(row.satellite || distanceKm != null) ? divider : ''}
+    ${row.satellite ? row_('wildfireSatellite', row.satellite) : ''}
+    ${distanceKm != null ? row_('wildfireDistance', `${distanceKm < 10 ? distanceKm.toFixed(1) : Math.round(distanceKm)} km`) : ''}
+
+    ${divider}
+    <div style="font-size:10px;color:var(--text-secondary);font-style:italic;line-height:1.2;">
+      ${t('wildfireSource')}
+    </div>
+  </div>
+</div>`;
 }
 
 // Builds a "west,south,east,north" box (the format FIRMS' Area API expects)
@@ -5151,16 +5209,42 @@ function computeWildfireBbox(lat, lon, radiusKm) {
   return `${west.toFixed(4)},${south.toFixed(4)},${east.toFixed(4)},${north.toFixed(4)}`;
 }
 
-function renderWildfireMarkers(rows) {
+// windDeg is the CURRENT meteorological wind direction (the direction the
+// wind is blowing FROM) at the fire layer's fetch center -- see
+// loadWildfireData(). Same convention as makeUserLocationIcon(): rotate a
+// shape that defaults to pointing "up" by (windDeg + 180) so it visually
+// points where the wind is blowing TO.
+function makeWildfireIcon(color, windDeg, windSpeed) {
+  const size = 30, cx = size / 2, cy = size / 2;
+  const hasDirection = windDeg != null && !isNaN(windDeg) &&
+    windSpeed != null && !isNaN(windSpeed) && windSpeed >= WILDFIRE_CALM_THRESHOLD_KMH;
+  const visualAngle = hasDirection ? (parseFloat(windDeg) + 180) % 360 : 0;
+
+  const pulseSvg = hasDirection
+    ? `<g transform="rotate(${visualAngle} ${cx} ${cy})">
+         <circle class="wildfire-wind-pulse" cx="${cx}" cy="${cy}" r="5" fill="${color}"/>
+       </g>`
+    : `<circle class="wildfire-calm-pulse" cx="${cx}" cy="${cy}" r="5" fill="${color}"/>`;
+
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="overflow:visible;">
+      ${pulseSvg}
+      <circle cx="${cx}" cy="${cy}" r="5" fill="${color}" stroke="#fff" stroke-width="1.25"/>
+    </svg>`;
+
+  return L.divIcon({ className: 'wildfire-icon', html: svg, iconSize: [size, size], iconAnchor: [cx, cy] });
+}
+
+function renderWildfireMarkers(rows, windDeg, windSpeed) {
   if (wildfireLayer) map.removeLayer(wildfireLayer);
   wildfireLayer = L.layerGroup();
   rows.forEach(row => {
     const lat = parseFloat(row.latitude), lon = parseFloat(row.longitude);
     if (isNaN(lat) || isNaN(lon)) return;
     const { color } = wildfireConfidenceInfo(row);
-    L.circleMarker([lat, lon], {
-      radius: 6, weight: 1, color: '#fff', fillColor: color, fillOpacity: 0.9
-    }).bindPopup(buildWildfirePopupHtml(row)).addTo(wildfireLayer);
+    L.marker([lat, lon], { icon: makeWildfireIcon(color, windDeg, windSpeed) })
+      .bindPopup(buildWildfirePopupHtml(row), { maxWidth: 460, minWidth: 220 })
+      .addTo(wildfireLayer);
   });
   if (wildfireVisible) wildfireLayer.addTo(map);
 }
@@ -5179,7 +5263,15 @@ async function loadWildfireData(silent) {
     const { lat, lon } = activeWizLocation();
     const bbox = computeWildfireBbox(lat, lon, WILDFIRE_RADIUS_KM);
     const url = `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${FIRMS_MAP_KEY}/${WILDFIRE_SOURCE}/${bbox}/${WILDFIRE_DAY_RANGE}`;
-    const res = await fetch(url);
+    // Fetched together: FIRMS for the fire points themselves, Open-Meteo for
+    // the current wind reading used to orient each fire's pulse animation.
+    // One shared reading for the whole 100km layer (not one per fire) --
+    // wind direction doesn't vary enough over that range to be worth a
+    // separate API call per dot, and this keeps the request count sane.
+    const [res, wind] = await Promise.all([
+      fetch(url),
+      getWeatherData(lat, lon).catch(() => null) // missing wind just means a non-directional pulse, not a failed layer
+    ]);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const text = await res.text();
     // The bbox is a rectangle, so its corners reach slightly past
@@ -5190,7 +5282,7 @@ async function loadWildfireData(silent) {
       return !isNaN(flat) && !isNaN(flon) &&
         getHaversineDistance(lat, lon, flat, flon) <= WILDFIRE_RADIUS_KM;
     });
-    renderWildfireMarkers(rows);
+    renderWildfireMarkers(rows, wind?.wind_direction, wind?.wind_speed);
     wildfireLastFetchedAt = Date.now();
     wildfireLastFetchedAround = { lat, lon };
     return true;
