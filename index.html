@@ -625,8 +625,8 @@ span.flatpickr-weekday {
 }
 .wildfire-btn:active{ transform:scale(.9); }
 .wildfire-btn.active{ background:#d84315; border-color:#d84315; }
-.wildfire-btn svg{ stroke:var(--text-secondary); transition:stroke .15s ease; }
-.wildfire-btn.active svg{ stroke:#fff; }
+.wildfire-btn .icon-img{ filter:var(--icon-tint-filter); }
+.wildfire-btn.active .icon-img{ filter:none; }
 .map-filter-btn{
   background:var(--floating-bg);
   border:1px solid var(--floating-border);
@@ -1030,14 +1030,11 @@ span.flatpickr-weekday {
     <img class="icon-img" src="icons/search.png" alt="Trace">
   </div>
   <div id="sourceHeatBtn" class="source-heat-btn" style="display:none" title="Show probable source heatmap" onclick="toggleSourceHeat()">
-    <img class="icon-img" src="icons/fire.png" alt="Fire">
+    <img class="icon-img" src="icons/heatmap.png" alt="Heatmap">
   </div>
   <div id="sourceHeatConfidenceBadge" class="source-heat-confidence-badge" style="display:none"></div>
   <div id="wildfireBtn" class="wildfire-btn" style="display:none" title="Show active wildfires (NASA satellite data)" onclick="toggleWildfireLayer()">
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-      <circle cx="12" cy="12" r="9"/>
-      <path d="M12 7.5c-1.1 1.9-2.6 3.4-2.6 5.4a2.6 2.6 0 0 0 5.2 0c0-.6-.2-1.1-.5-1.6.5.2 1 .6 1.2 1.1-.2-1.7-1.1-3-3.3-4.9z"/>
-    </svg>
+    <img class="icon-img" src="icons/fire.png" alt="Fire">
   </div>
 </div>
 <input type="text" id="mapDateRangePicker" style="display:none">
@@ -2073,7 +2070,7 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
    and paste it below. Without a real key the button will still appear but
    will show a message instead of data when tapped.
 ═══════════════════════════════════════════════════ */
-const FIRMS_MAP_KEY = 'YOUR_FIRMS_MAP_KEY_HERE';
+const FIRMS_MAP_KEY = 'dbd760ed261d410dc37484ddf2bede12';
 // VIIRS_SNPP_NRT = 375m resolution, ~3hr latency, good default. Other valid
 // values: VIIRS_NOAA20_NRT, VIIRS_NOAA21_NRT, MODIS_NRT (1km, older sensor).
 const WILDFIRE_SOURCE = 'VIIRS_SNPP_NRT';
