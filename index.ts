@@ -1,138 +1,6127 @@
-// ═══════════════════════════════════════════════════════════════
-// TraceTheToxin — hourly SEPA air quality collector
-//
-// Fetches the live station table from vazduh.sepa.gov.rs, parses it,
-// and archives one row per station into air_quality_readings.
-// Deploy with: supabase functions deploy collect-air-quality
-// Schedule with the SQL at the bottom of this file (pg_cron).
-// ═══════════════════════════════════════════════════════════════
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { DOMParser } from "https://deno.land/x/deno_dom@v0.1.45/deno-dom-wasm.ts";
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>TraceTheToxin</title>
+  
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  
+  <link rel="icon" type="image/png" href="image/TraceTheToxin.png">
+  <meta property="og:image" content="https://github.io"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"/>
 
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const SEPA_URL = "https://vazduh.sepa.gov.rs/?view=desktop";
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/themes/dark.css">
+  <script>
+    (function(){
+      try {
+        var mode = localStorage.getItem('ttt_theme_mode') || 'dark';
+        var systemDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        var resolved;
+        if (mode === 'auto') resolved = systemDark ? 'dark' : 'light';
+        else if (mode === 'smart') { var h = new Date().getHours(); resolved = (h >= 7 && h < 19) ? 'light' : 'dark'; }
+        else resolved = mode;
+        document.documentElement.dataset.theme = resolved;
+      } catch (e) {}
+    })();
+  </script>
+  <style>
+*{ margin:0; padding:0; box-sizing:border-box; }
 
-// Slug generator — must match the ids seeded in air_quality_stations.
-function slugify(name: string): string {
-  return name
-    .toLowerCase()
-    .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // strip diacritics
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+button, [onclick], [role="button"]{
+  -webkit-user-select:none;
+  user-select:none;
+  -webkit-touch-callout:none;
 }
 
-function num(text: string | null | undefined): number | null {
-  if (!text) return null;
-  const cleaned = text.trim().replace(",", ".");
-  if (cleaned === "" || cleaned === "-") return null;
-  const n = parseFloat(cleaned);
-  return Number.isFinite(n) ? n : null;
+:root{
+  --bg-app:#111111;
+  --bg-surface:#181818;
+  --bg-surface-alt:#262626;
+  --border-color:#292929;
+  --border-color-strong:#3a3a3a;
+  --text-primary:#ffffff;
+  --text-secondary:#bbbbbb;
+  --text-muted:#888888;
+  --accent:#00a7b5;
+  --accent-contrast:#ffffff;
+  --danger:#ff4b4b;
+  --danger-strong:#7a1f1f;
+  --icon-tint-filter: brightness(0) invert(1);
+  --floating-bg: rgba(20,20,20,.88);
+  --floating-border: #3a3a3a;
+  --floating-shadow: rgba(0,0,0,.55);
+  --map-tile-filter: grayscale(1) invert(1) brightness(0.85) contrast(0.9);
+  --radius-sm:6px; --radius-md:8px; --radius-lg:10px; --radius-xl:14px; --radius-pill:20px;
+  --fs-9:9px; --fs-10:10px; --fs-11:11px; --fs-12:12px; --fs-12-5:12.5px; --fs-13:13px;
+  --fs-14:14px; --fs-15:15px; --fs-16:16px; --fs-18:18px; --fs-19:19px; --fs-20:20px; --fs-22:22px;
+  --fw-medium:500; --fw-semibold:600; --fw-bold:700; --fw-heavy:800;
+}
+html[data-theme="light"]{
+  --bg-app:#f4f4f2;
+  --bg-surface:#ffffff;
+  --bg-surface-alt:#ececeb;
+  --border-color:#e2e2e0;
+  --border-color-strong:#ddd;
+  --text-primary:#1a1a1a;
+  --text-secondary:#555;
+  --text-muted:#888;
+  --accent:#00838f;
+  --accent-contrast:#ffffff;
+  --icon-tint-filter: brightness(0) invert(32%);
+  --floating-bg: rgba(255,255,255,.92);
+  --floating-border: #e2e2e0;
+  --floating-shadow: rgba(0,0,0,.18);
+  --map-tile-filter: grayscale(1) brightness(1.08) contrast(0.92);
+  /* Live-measured height of #legendBar (see syncLegendBarHeight()) so every
+     floating map control can anchor itself above it, however tall it gets. */
+  --legend-bar-h: 100px;
+}
+.leaflet-control-container .leaflet-top.leaflet-left{
+  top:calc(env(safe-area-inset-top, 0px) + 78px) !important;
+  left:10px !important;
+  margin:0 !important;
+}
+.leaflet-control-container .leaflet-bottom.leaflet-right{
+  top:auto !important;
+  bottom:calc(var(--legend-bar-h) + 40px) !important;
+  right:12px !important;
+  margin:0 !important;
+  transform:none;
+}
+.leaflet-control-container .leaflet-bottom.leaflet-right .leaflet-control{
+  margin:0 !important;
+}
+.leaflet-control-container .leaflet-bottom.leaflet-left{
+  bottom:calc(var(--legend-bar-h) + 4px) !important;
+  left:10px !important;
+  margin:0 !important;
+}
+.leaflet-tile-pane{ filter:var(--map-tile-filter); }
+
+body{
+  font-family:-apple-system,BlinkMacSystemFont,sans-serif;
+  background:var(--bg-app);
+  color:var(--text-primary);
+  height: 100svh;
+  overflow:hidden;
 }
 
-Deno.serve(async () => {
+/* ═══════════════════════════════════════════════════
+   PULL-TO-REFRESH (custom, anchored to the header)
+   Body has overflow:hidden so the browser's native overscroll
+   pull-to-refresh never fires -- this reproduces that gesture
+   specifically when the pull starts on the top bar itself.
+═══════════════════════════════════════════════════ */
+#pullRefreshIndicator{
+  position:fixed; top:0; left:50%;
+  transform:translate(-50%, -60px);
+  z-index:499; /* just behind the header, which slides down to reveal it */
+  background:var(--floating-bg);
+  border:1px solid var(--floating-border);
+  border-top:none;
+  border-radius:0 0 var(--radius-lg) var(--radius-lg);
+  padding:calc(8px + env(safe-area-inset-top, 0px)) 16px 8px;
+  display:flex; align-items:center; gap:6px;
+  font-size:var(--fs-11); color:var(--text-secondary);
+  box-shadow:0 2px 8px var(--floating-shadow);
+  pointer-events:none;
+  white-space:nowrap;
+}
+#pullRefreshIndicator.animate{ transition:transform .2s ease; }
+#pullRefreshIndicator svg{ width:14px; height:14px; transition:transform .1s ease; }
+#pullRefreshIndicator.ready svg{ transform:rotate(180deg); }
+#pullRefreshIndicator.refreshing svg{ animation:pullRefreshSpin .7s linear infinite; }
+@keyframes pullRefreshSpin{ to{ transform:rotate(360deg); } }
+
+header{
+  position:fixed;
+  top:0;
+  left:0;
+  right:0;
+  z-index:500;
+  padding:calc(10px + env(safe-area-inset-top, 0px)) 14px 10px;
+  background:var(--floating-bg);
+  backdrop-filter:blur(8px);
+  -webkit-backdrop-filter:blur(8px);
+  border-bottom:1px solid var(--floating-border);
+  border-radius:0 0 20px 20px;
+  box-shadow:0 4px 18px var(--floating-shadow);
+  transform:translateY(0);
+  touch-action:pan-y;
+}
+header.animate{ transition:transform .2s ease; }
+
+.header-top{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+}
+
+header h1{ font-size:var(--fs-19); }
+header p{ font-size:var(--fs-11); opacity:.7; margin-top:2px; }
+
+.subtitle-row{
+  display:flex;
+  align-items:baseline;
+  gap:6px;
+  flex-wrap:wrap;
+}
+.header-report-count{
+  font-size:var(--fs-11);
+  font-weight:var(--fw-semibold);
+  color:var(--accent);
+  white-space:nowrap;
+}
+
+.right-controls{
+  display:flex;
+  gap:8px;
+  align-items:center;
+  flex-shrink:0;
+}
+
+.help-icon-btn{
+  background:var(--bg-surface-alt);
+  color:var(--text-secondary);
+  border:none;
+  border-radius:50%;
+  width:36px;
+  height:36px;
+  padding:0;
+  font-size:var(--fs-14);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  cursor:pointer;
+  box-shadow:0 1px 3px var(--floating-shadow);
+  transition:transform .12s ease, background .15s ease;
+  -webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;
+}
+.help-icon-btn:active{ background:var(--border-color-strong); transform:scale(.9); }
+.help-icon-btn .icon-img{ filter:var(--icon-tint-filter); }
+
+#map {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.filter-label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px 4px 14px;
+  background: var(--bg-surface);
+  font-size: var(--fs-11);
+  font-weight: bold;
+}
+
+.filter-title {
+  color: var(--text-muted);
+  letter-spacing: .3px;
+  text-transform: uppercase;
+  font-size: var(--fs-10);
+}
+
+#reportCount {
+  color: var(--text-secondary);
+  font-size: var(--fs-12);
+  text-align: right;
+  width: 80px;
+}
+
+.filter-select-row {
+  background: var(--bg-surface);
+  padding: 0 12px 14px 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+input[type=number]::-webkit-inner-spin-button, 
+input[type=number]::-webkit-outer-spin-button { 
+  -webkit-appearance: none; 
+  margin: 0; 
+}
+
+.select-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  /* flex-basis:100% forces the date picker onto its own full-width row
+     whenever there isn't room beside both CSV buttons, instead of the row
+     staying nowrap and the buttons getting pushed off past the edge of
+     the screen (which is what was actually happening on narrow phones --
+     the row wasn't "missing", it was rendering off-screen because nothing
+     in it could shrink or wrap). */
+  flex: 1 1 100%;
+  min-width: 140px;
+}
+
+/* The two export buttons share the row below the date picker on narrow
+   screens instead of each keeping a fixed, non-shrinking padding. */
+.filter-select-row .export-btn{
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+input[type="text"], input[type="number"], input[type="time"]{
+  width:100%;
+  padding:11px 10px;
+  border:none;
+  border-radius:var(--radius-md);
+  background:var(--bg-surface-alt);
+  color:var(--text-primary);
+  font-size:var(--fs-13);
+}
+
+button{
+  padding:12px;
+  border:none;
+  border-radius:var(--radius-md);
+  cursor:pointer;
+  font-weight:bold;
+  font-size:var(--fs-13);
+  -webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;
+}
+
+.report-btn{ background:var(--danger); color:white; width:100%; transition:opacity .2s; }
+.report-btn:disabled{ opacity:.35; cursor:not-allowed; }
+.export-btn{ background:var(--accent); color:white; width:100%; }
+
+.legend{
+  display:flex;
+  gap:8px;
+  font-size:10px;
+  align-items:center;
+  flex-wrap:wrap;
+  opacity:.8;
+}
+.legend-item{ display:flex; align-items:center; gap:3px; }
+.legend-dot{ width:9px; height:9px; border-radius:50%; display:inline-block; flex-shrink:0; }
+
+.leaflet-popup-content-wrapper{
+  border-radius:10px !important;
+  padding:0 !important;
+  overflow:hidden;
+  min-width:200px;
+  background: var(--floating-bg) !important;
+  box-shadow: 0 3px 14px var(--floating-shadow);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+.leaflet-popup-content{
+  margin:0 !important;
+  width:auto !important;
+  max-height:70vh;
+  overflow-y:auto;
+  overflow-x:hidden;
+  -webkit-overflow-scrolling:touch;
+}
+.leaflet-popup-tip{
+  background: var(--floating-bg) !important;
+  box-shadow: 0 3px 14px var(--floating-shadow);
+}
+.leaflet-popup-close-button{
+  color: var(--text-secondary) !important;
+  font-size: 18px !important;
+}
+.leaflet-popup-close-button:hover{ color: var(--text-primary) !important; }
+
+.popup-inner{
+  font-family:-apple-system,BlinkMacSystemFont,sans-serif;
+  font-size:13px;
+  line-height:1.65;
+  color:var(--text-primary);
+  padding:12px 14px;
+  min-width:200px;
+}
+.popup-inner b{ color:var(--text-primary); }
+.popup-title{ font-size:14px; font-weight:700; margin-bottom:8px; color:var(--text-primary); }
+
+.bg-trail-teal {
+  pointer-events: none;
+}
+
+@keyframes marchDots {
+  from { stroke-dashoffset: 0; }
+  to   { stroke-dashoffset: 22; }
+}
+.bg-trail-animated path,
+.bg-trail-animated {
+  animation: marchDots 0.6s linear infinite;
+}
+
+/* Trace Possible Source: a breathing ripple on the source point, and a
+   flowing-dash animation along each matched report's trail -- together
+   giving the impression of something spreading outward from the source to
+   the reports (and a little further, per the trail's own buffer past the
+   traced point). */
+@keyframes tracePulseBreathe {
+  0%, 100% { opacity: 0.12; }
+  50%      { opacity: 0.4; }
+}
+.trace-pulse-circle path {
+  animation: tracePulseBreathe 1.6s ease-in-out infinite;
+}
+@keyframes traceFlowDash {
+  from { stroke-dashoffset: 0; }
+  to   { stroke-dashoffset: 22; }
+}
+.trace-pulse-spline path,
+.trace-pulse-spline {
+  animation: traceFlowDash 0.9s linear infinite;
+}
+/* Forward tail (past the report) continues the same outward spread, so its
+   dash flow runs the opposite direction from the backtrail above --
+   otherwise it reads as flowing backward, toward the report, instead of
+   continuing on past it. */
+@keyframes traceFlowDashReverse {
+  from { stroke-dashoffset: 22; }
+  to   { stroke-dashoffset: 0; }
+}
+.trace-pulse-spline-forward path,
+.trace-pulse-spline-forward {
+  animation: traceFlowDashReverse 0.9s linear infinite;
+}
+  
+.generic-modal-overlay{
+  position:fixed; inset:0;
+  background:rgba(0,0,0,.75);
+  display:flex; align-items:center; justify-content:center;
+  z-index:9999;
+  padding:20px;
+  -webkit-overflow-scrolling:touch;
+}
+.generic-modal{
+  background:var(--bg-surface); color:var(--text-primary);
+  border-radius:18px;
+  padding:24px 20px;
+  max-width:340px; width:100%;
+  text-align:center;
+  box-shadow:0 16px 48px var(--floating-shadow);
+  max-height:85vh; overflow-y:auto;
+  pointer-events:all;
+}
+.generic-modal h2{ font-size:18px; font-weight:700; margin-bottom:12px; }
+.generic-modal p{ font-size:13px; line-height:1.6; color:var(--text-secondary); margin-bottom:12px; text-align:left; }
+.generic-modal-close{
+  background:var(--bg-surface-alt); color:var(--text-primary);
+  border:1px solid var(--border-color-strong); border-radius:10px;
+  padding:12px 20px;
+  font-size:14px; font-weight:600;
+  cursor:pointer; width:100%;
+  -webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;
+  min-height:44px;
+}
+.generic-modal-close:active{ background:var(--border-color-strong); }
+
+
+/* ==========================================================================
+   FLATPICKR CUSTOM THEME OVERRIDES
+   ========================================================================== */
+.flatpickr-calendar {
+  background: #181818 !important;
+  border: 1px solid #333 !important;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6) !important;
+  border-radius: 12px !important;
+  font-family: inherit !important;
+}
+
+/* Header styling (Month & Year selectors) */
+.flatpickr-months .flatpickr-month,
+.flatpickr-months .flatpickr-prev-month, 
+.flatpickr-months .flatpickr-next-month {
+  color: #fff !important;
+  fill: #fff !important;
+}
+.flatpickr-months .flatpickr-prev-month:hover, 
+.flatpickr-months .flatpickr-next-month:hover {
+  background: #262626 !important;
+}
+.flatpickr-current-month .numInputWrapper span.arrowUp:after { border-bottom-color: #fff !important; }
+.flatpickr-current-month .numInputWrapper span.arrowDown:after { border-top-color: #fff !important; }
+
+/* Weekday column headers */
+span.flatpickr-weekday {
+  background: #181818 !important;
+  color: #888 !important;
+  font-weight: bold !important;
+}
+
+.flatpickr-day:hover, 
+.flatpickr-day.prevMonthDay:hover, 
+.flatpickr-day.nextMonthDay:hover {
+  background: #262626 !important;
+  border-color: #262626 !important;
+  color: #fff !important;
+}
+
+/* Days outside the current month scope */
+.flatpickr-day.prevMonthDay, 
+.flatpickr-day.nextMonthDay {
+  color: #444 !important;
+}
+
+/* Selected active range styling (Matching your app's main Teal accent) */
+.flatpickr-day.selected, 
+.flatpickr-day.startRange, 
+.flatpickr-day.endRange, 
+.flatpickr-day.selected.inRange, 
+.flatpickr-day.startRange.inRange, 
+.flatpickr-day.endRange.inRange, 
+.flatpickr-day.selected:focus, 
+.flatpickr-day.startRange:focus, 
+.flatpickr-day.endRange:focus, 
+.flatpickr-day.selected:hover, 
+.flatpickr-day.startRange:hover, 
+.flatpickr-day.endRange:hover {
+  background: #00a7b5 !important;
+  border-color: #00a7b5 !important;
+  color: white !important;
+}
+
+/* Between-dates range highlighting */
+.flatpickr-day.inRange,
+.flatpickr-day.prevMonthDay.inRange, 
+.flatpickr-day.nextMonthDay.inRange, 
+.flatpickr-day.today.inRange, 
+.flatpickr-day.prevMonthDay.today.inRange, 
+.flatpickr-day.nextMonthDay.today.inRange {
+  background: #00a7b5 !important;
+  border-color: transparent !important;
+  border-radius: 0 !important;
+}
+
+
+/* ═══════════════════════════════════════════════════
+   SPLASHSCREEN LOADER
+═══════════════════════════════════════════════════ */
+#splashScreen{
+  position:fixed; inset:0; z-index:10001;
+  display:flex; flex-direction:column; align-items:center;
+  background:var(--bg-app);
+  opacity:1;
+  transition:opacity .25s ease;
+}
+#splashScreen.splash-hidden{ opacity:0; pointer-events:none; }
+.splash-spinner-wrap{
+  position:relative; flex:1; width:100%;
+  display:flex; align-items:center; justify-content:center;
+}
+.splash-logo{
+  position:relative; z-index:1;
+  width:86px; height:86px;
+  object-fit:contain; border-radius:24px;
+}
+.splash-halo{
+  position:absolute; top:50%; left:50%;
+  width:86px; height:86px; border-radius:50%;
+  background:var(--accent);
+  transform:translate(-50%,-50%) scale(.7);
+  opacity:.45;
+  animation:splash-halo-pulse 1.8s ease-out infinite;
+}
+.splash-halo-2{ animation-delay:.9s; }
+@keyframes splash-halo-pulse{
+  0%{ transform:translate(-50%,-50%) scale(.7); opacity:.45; }
+  70%{ transform:translate(-50%,-50%) scale(1.55); opacity:0; }
+  100%{ opacity:0; }
+}
+.splash-text{
+  flex:0 0 auto;
+  padding-bottom:calc(env(safe-area-inset-bottom, 0px) + 36px);
+  color:var(--text-primary); font-size:var(--fs-13); font-weight:var(--fw-semibold); opacity:.75;
+}
+
+/* ═══════════════════════════════════════════════════
+   BOTTOM LEGEND BAR (rounded top corners, docked bottom)
+═══════════════════════════════════════════════════ */
+#legendBar{
+  position:fixed; left:0; right:0; bottom:0; z-index:400;
+  background:var(--bg-surface);
+  border-top:1px solid var(--border-color);
+  border-radius:18px 18px 0 0;
+  box-shadow:0 -4px 16px var(--floating-shadow);
+  padding:10px 16px calc(10px + env(safe-area-inset-bottom, 0px));
+  display:flex; flex-direction:column; gap:6px;
+}
+.legend-row{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.legend-item{ display:flex; align-items:center; gap:4px; }
+.legend-dot{ width:8px; height:8px; border-radius:50%; flex-shrink:0; display:inline-block; }
+.legend-row .leg{ color:var(--text-secondary); font-size:var(--fs-10); }
+
+/* ═══════════════════════════════════════════════════
+   CIRCULAR FLOATING BUTTONS (right side)
+═══════════════════════════════════════════════════ */
+.bottomright-stack{
+  display:flex; flex-direction:column; align-items:center; gap:10px;
+  position:fixed; right:12px; z-index:420;
+}
+#traceSourceBtn{ position:fixed; bottom:calc(var(--legend-bar-h) + 94px); right:12px; }
+#pinMapBtn{ position:fixed; bottom:calc(var(--legend-bar-h) + 148px); right:12px; }
+#mapFilterBtn{ position:fixed; bottom:calc(var(--legend-bar-h) + 202px); right:12px; }
+#sourceHeatBtn{ position:fixed; bottom:calc(var(--legend-bar-h) + 256px); right:12px; }
+.source-heat-confidence-badge{
+  position:fixed; bottom:calc(var(--legend-bar-h) + 300px); right:12px;
+  z-index:800;
+  display:flex; align-items:center; gap:6px;
+  background:var(--bg-surface); color:var(--text-primary);
+  border:1px solid var(--border-color-strong);
+  border-radius:999px;
+  padding:6px 12px;
+  font-size:12px; font-weight:var(--fw-medium, 500);
+  box-shadow:0 2px 8px rgba(0,0,0,.25);
+  white-space:nowrap;
+  max-width:calc(100vw - 24px);
+}
+.source-heat-confidence-dot{
+  width:8px; height:8px; border-radius:50%;
+  background:var(--confidence-color, #888);
+  flex-shrink:0;
+}
+.source-heat-confidence-sub{ color:var(--text-secondary); font-weight:var(--fw-regular,400); }
+.source-heat-btn{
+  background:var(--floating-bg);
+  border:1px solid var(--floating-border);
+  border-radius:50%;
+  width:44px; height:44px;
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer; font-size:22px;
+  box-shadow:0 2px 8px var(--floating-shadow);
+  transition:background .15s ease, transform .12s ease, box-shadow .15s ease;
+  user-select:none;
+  -webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;
+}
+.source-heat-btn:active{ transform:scale(.9); }
+.source-heat-btn.active{ background:#f5a623; border-color:#f5a623; }
+.source-heat-btn .icon-img{ filter:var(--icon-tint-filter); }
+.source-heat-btn.active .icon-img{ filter:none; }
+.map-filter-btn{
+  background:var(--floating-bg);
+  border:1px solid var(--floating-border);
+  border-radius:50%;
+  width:44px; height:44px;
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer; font-size:22px;
+  box-shadow:0 2px 8px var(--floating-shadow);
+  transition:background .15s ease, transform .12s ease, box-shadow .15s ease;
+  user-select:none;
+  -webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;
+}
+.map-filter-btn:active{ transform:scale(.9); }
+.map-filter-btn.active{ background:#f5a623; border-color:#f5a623; }
+.map-filter-btn .icon-img{ filter:var(--icon-tint-filter); }
+.map-filter-btn.active .icon-img{ filter:none; }
+.pin-map-btn{
+  background:var(--floating-bg);
+  border:1px solid var(--floating-border);
+  border-radius:50%;
+  width:44px; height:44px;
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer; font-size:22px;
+  box-shadow:0 2px 8px var(--floating-shadow);
+  transition:background .15s ease, transform .12s ease, box-shadow .15s ease;
+  user-select:none;
+  -webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;
+}
+.pin-map-btn:active{ transform:scale(.9); }
+.pin-map-btn.active{ background:#f5a623; border-color:#f5a623; }
+.pin-map-btn .icon-img{ filter:var(--icon-tint-filter); }
+.pin-map-btn.active .icon-img{ filter:none; }
+
+.trace-source-btn{
+  background:var(--floating-bg);
+  border:1px solid var(--floating-border);
+  border-radius:50%;
+  width:44px; height:44px;
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer; font-size:22px;
+  box-shadow:0 2px 8px var(--floating-shadow);
+  transition:background .15s ease, transform .12s ease;
+  user-select:none;
+  -webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;
+}
+.trace-source-btn:active{ transform:scale(.9); }
+.trace-source-btn.active{ background:var(--danger); border-color:var(--danger); }
+.trace-source-btn .icon-img{ filter:var(--icon-tint-filter); }
+
+/* ═══════════════════════════════════════════════════
+   REPORT MARKER CLUSTERING
+═══════════════════════════════════════════════════ */
+.report-cluster-icon{ background:transparent; border:none; }
+.report-cluster-badge{
+  width:100%; height:100%; border-radius:50%;
+  background:var(--accent, #0ea5b5);
+  color:#fff;
+  text-align:center;
+  font-weight:var(--fw-bold);
+  font-size:13px;
+  border:3px solid #fff;
+  box-shadow:0 2px 6px rgba(0,0,0,.35);
+}
+/* Report pins/clusters vanish for the duration of the zoom gesture, then
+   reappear already resolved into their new clustered/spiderfied layout --
+   avoids everything visibly jumping around mid-zoom. */
+#map.zooming-hide-reports .report-pin-icon,
+#map.zooming-hide-reports .report-cluster-icon,
+#map.zooming-hide-reports .marker-cluster{
+  opacity:0 !important;
+  transition:none !important;
+}
+
+/* Solo/focus mode (setTrailFocus): smooth fade when a report's trail
+   dims/undims as other popups open and close, rather than an abrupt cut. */
+.leaflet-splinePane-pane path{
+  transition: stroke-opacity .25s ease;
+}
+.report-pin-icon{
+  transition: opacity .25s ease;
+}
+
+/* ═══════════════════════════════════════════════════
+   WIND COMPASS WIDGET (fixed corner badge)
+   Shows the live wind reading fetched once at app start:
+   an arrow (rotated to point where the wind is blowing
+   TOWARD, same convention as the report-pin icons and the
+   wizard's compass dial), plus the raw degrees and cardinal
+   direction the wind is blowing FROM underneath.
+═══════════════════════════════════════════════════ */
+#windCompassWidget{
+  position:fixed;
+  top:calc(env(safe-area-inset-top, 0px) + 72px);
+  right:12px;
+  z-index:410;
+  background:var(--floating-bg);
+  border:1px solid var(--floating-border);
+  border-radius:var(--radius-lg);
+  box-shadow:0 2px 8px var(--floating-shadow);
+  padding:6px 10px 7px;
+  display:none;
+  flex-direction:column;
+  align-items:center;
+  gap:1px;
+  min-width:52px;
+  -webkit-tap-highlight-color:transparent;
+}
+#windCompassWidget.visible{ display:flex; }
+#windCompassWidget .wind-compass-deg{
+  font-size:var(--fs-11); font-weight:var(--fw-bold); color:var(--text-primary); margin-top:1px;
+}
+#windCompassWidget .wind-compass-dir{
+  font-size:var(--fs-9); font-weight:var(--fw-medium); color:var(--text-muted); text-transform:uppercase;
+}
+.trace-source-btn.active .icon-img{ filter:none; }
+
+/* ═══════════════════════════════════════════════════
+   REPORT FAB (red circular +)
+═══════════════════════════════════════════════════ */
+.report-fab-btn{
+  width:60px; height:60px;
+  border-radius:50%;
+  background:var(--danger);
+  color:#fff;
+  box-shadow:0 4px 14px rgba(0,0,0,.35);
+  border:none;
+  position:fixed;
+  left:50%;
+  transform:translateX(-50%);
+  bottom:calc(var(--legend-bar-h) + 8px);
+  z-index:420;
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer;
+  transition:transform .12s ease, box-shadow .12s ease;
+  -webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;
+}
+.report-fab-btn:active{ transform:translateX(-50%) scale(.9); }
+.report-fab-btn svg{ width:28px; height:28px; }
+.report-fab-btn:disabled{ opacity:.45; cursor:not-allowed; box-shadow:none; }
+.report-fab-btn:disabled:active{ transform:translateX(-50%); }
+
+/* ═══════════════════════════════════════════════════
+   REPORT WIZARD (full-screen, step based, no dropdowns)
+═══════════════════════════════════════════════════ */
+.wiz-overlay{
+  position:fixed; inset:0; z-index:9999;
+  background:var(--bg-app);
+  display:flex; flex-direction:column;
+}
+.wiz-header{ display:flex; align-items:center; gap:10px; padding:calc(14px + env(safe-area-inset-top,0px)) 16px 14px; flex:0 0 auto; }
+.wiz-back-btn, .wiz-close-btn{
+  width:34px; height:34px; border-radius:50%;
+  background:var(--bg-surface-alt); border:none; color:var(--text-primary);
+  font-size:var(--fs-18); display:flex; align-items:center; justify-content:center; cursor:pointer;
+  -webkit-tap-highlight-color:transparent; touch-action:manipulation;
+}
+.wiz-progress{ flex:1; display:flex; gap:4px; }
+.wiz-progress span{ height:4px; flex:1; border-radius:2px; background:var(--border-color-strong); }
+.wiz-progress span.done{ background:var(--danger); }
+.wiz-body{ flex:1; overflow-y:auto; padding:4px 20px 20px; }
+.wiz-step-label{ color:var(--text-secondary); font-size:var(--fs-13); margin:0 0 4px; }
+.wiz-step-title{ font-size:var(--fs-20); font-weight:var(--fw-semibold); margin:0 0 18px; color:var(--text-primary); }
+.wiz-grid{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }
+.wiz-tile{
+  border:1px solid transparent; border-radius:14px; padding:16px 6px;
+  display:flex; flex-direction:column; align-items:center; gap:10px;
+  cursor:pointer; text-align:center; color:#fff;
+  -webkit-tap-highlight-color:transparent; touch-action:manipulation;
+}
+.wiz-tile:active{ filter:brightness(0.9); }
+.wiz-tile-icon{ width:34px; height:34px; }
+.wiz-tile span{ font-size:var(--fs-12-5); line-height:1.25; }
+.wiz-details-row{ margin:0 0 16px; }
+.wiz-details-row label{ display:block; font-size:var(--fs-13); color:var(--text-secondary); margin:0 0 6px; }
+.wiz-details-two-col{ display:flex; gap:8px; }
+.wiz-details-two-col .wiz-details-row{ flex:1; }
+.wiz-details-three-col{ display:flex; gap:8px; }
+.wiz-details-three-col .wiz-details-row{ flex:1; min-width:0; }
+.wiz-details-three-col input{ height:44px; padding-top:0; padding-bottom:0; }
+.wiz-details-three-col input[type="number"]{ text-align:center; }
+.wind-compass-wrap{ display:flex; flex-direction:column; align-items:center; gap:8px; padding:10px 0 4px; }
+.wind-compass-dial{ display:block; touch-action:none; }
+.wind-compass-dial .compass-label-text{ fill:var(--text-secondary); font-size:15px; font-weight:var(--fw-semibold); user-select:none; }
+.compass-dir-letter{
+  display:inline-flex; align-items:center; justify-content:center;
+  min-width:32px; padding:6px 12px; border-radius:var(--radius-md);
+  background:var(--bg-surface-alt); color:var(--text-secondary);
+  font-size:var(--fs-13); font-weight:var(--fw-semibold);
+}
+.wiz-submit-btn{
+  width:100%; background:var(--danger); color:#fff; border:none;
+  border-radius:var(--radius-xl); padding:16px; font-size:var(--fs-16); font-weight:var(--fw-semibold); cursor:pointer;
+}
+.wiz-submit-btn:disabled{ opacity:.5; }
+.wiz-intensity-value{
+  font-size:40px; font-weight:var(--fw-heavy); text-align:center; margin:8px 0 4px;
+}
+.wiz-intensity-label{ text-align:center; color:var(--text-secondary); font-size:var(--fs-13); margin-bottom:18px; min-height:1.4em; line-height:1.4em; }
+.wiz-intensity-label.is-empty{ visibility:hidden; }
+.wiz-intensity-slider{
+  width:100%; -webkit-appearance:none; appearance:none;
+  height:8px; border-radius:4px; background:var(--bg-surface-alt); outline:none;
+}
+.wiz-intensity-slider::-webkit-slider-thumb{
+  -webkit-appearance:none; width:26px; height:26px; border-radius:50%;
+  background:var(--danger); cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,.4);
+}
+.wiz-intensity-slider::-moz-range-thumb{
+  width:26px; height:26px; border-radius:50%; border:none;
+  background:var(--danger); cursor:pointer;
+}
+.wiz-cooldown-notice{
+  background:var(--bg-surface-alt); border-left:3px solid var(--danger);
+  border-radius:6px; padding:12px 14px; font-size:var(--fs-13); color:var(--text-secondary); margin-top:12px;
+}
+
+/* ═══════════════════════════════════════════════════
+   SETTINGS MODAL (fullscreen)
+═══════════════════════════════════════════════════ */
+.fullscreen-modal-overlay{
+  position:fixed; top:0; left:0; right:0;
+  /* Not inset:0/height:100% -- on mobile browsers those size to the large
+     viewport (as if the address bar were hidden), so with the address bar
+     actually showing, the bottom of the modal sat behind the browser's own
+     chrome and was unreachable no matter how far you scrolled inside it.
+     100svh matches what body{} already uses for the same reason. */
+  height:100svh;
+  z-index:9999; background:var(--bg-app);
+  display:flex; flex-direction:column; /* header keeps its natural height; body gets the rest */
+}
+.fullscreen-modal-header{
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+  padding:calc(14px + env(safe-area-inset-top,0px)) 16px 14px 16px;
+  border-bottom:1px solid var(--border-color);
+  flex-shrink:0;
+}
+.fullscreen-modal-header h2{ font-size:var(--fs-16); font-weight:var(--fw-bold); margin:0; flex:1; min-width:0; }
+.fullscreen-modal-close{
+  background:var(--bg-surface-alt); color:var(--text-primary); border:none; border-radius:50%;
+  width:36px; height:36px; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center; font-size:var(--fs-18); cursor:pointer;
+  transition:transform .12s ease, background .15s ease;
+  -webkit-tap-highlight-color:transparent; touch-action:manipulation;
+}
+.fullscreen-modal-close:active{ background:var(--border-color-strong); transform:scale(.9); }
+.fullscreen-modal-close .icon-img{ width:18px; height:18px; filter:var(--icon-tint-filter); }
+.fullscreen-modal-body{
+  flex:1 1 auto;
+  /* THE fix: a flex item's default min-height is auto, meaning it refuses
+     to shrink smaller than its content -- so overflow-y:auto never actually
+     kicks in and the last section (filter + CSV buttons) just extends past
+     the visible area with no way to reach it. This is the standard, JS-free
+     fix for that exact bug; the previous approach worked around it with
+     absolute positioning + a JS-measured header-height offset instead,
+     which depended on that measurement running (and being correct) before
+     every single open/resize -- a real race-condition surface, and very
+     likely why this kept coming back intermittently. */
+  min-height:0;
+  overflow-y:auto; overflow-x:hidden; -webkit-overflow-scrolling:touch; touch-action:pan-y; overscroll-behavior:contain;
+  /* Bumped from 24px -> 40px: on some phones env(safe-area-inset-bottom)
+     resolves to 0 even though there's a home-indicator bar, which left the
+     last section (the date filter + CSV row) sitting flush against the
+     very edge of the screen -- reachable if you scrolled exactly far
+     enough, but easy to mistake for "the scroll stops before it". This
+     extra fixed buffer makes sure there's always visible room past it. */
+  padding:16px 16px calc(40px + env(safe-area-inset-bottom,0px));
+  display:flex; flex-direction:column; gap:16px;
+}
+.detail-section{ background:var(--bg-surface); border:1px solid var(--border-color); border-radius:var(--radius-xl); padding:14px; flex-shrink:0; }
+.detail-section-title{ font-size:var(--fs-10); font-weight:var(--fw-bold); letter-spacing:.4px; text-transform:uppercase; color:var(--text-muted); margin-bottom:10px; }
+.detail-export-hint{ font-size:var(--fs-12); color:var(--text-secondary); margin:8px 0 0; line-height:1.4; }
+.icon-img{ width:20px; height:20px; object-fit:contain; vertical-align:middle; }
+.icon-img-inline{ width:16px; height:16px; margin:0 4px -3px 0; filter:var(--icon-tint-filter); }
+
+.settings-btn{
+  background:var(--bg-surface-alt); color:var(--text-primary); border:none; border-radius:var(--radius-xl);
+  display:flex; align-items:center; justify-content:center; gap:6px;
+  padding:12px; font-size:var(--fs-13); font-weight:var(--fw-semibold); cursor:pointer;
+  transition:background .15s ease, transform .1s ease;
+  -webkit-tap-highlight-color:transparent; touch-action:manipulation;
+}
+.settings-btn:active{ background:var(--border-color-strong); transform:scale(.98); }
+
+.theme-segment{ display:flex; background:var(--bg-surface-alt); border-radius:var(--radius-md); padding:3px; gap:3px; }
+.theme-segment-btn{
+  flex:1; border:none; background:transparent; color:var(--text-secondary);
+  font-size:var(--fs-12-5); font-weight:var(--fw-bold); padding:8px 6px; border-radius:var(--radius-sm);
+  cursor:pointer; -webkit-tap-highlight-color:transparent; touch-action:manipulation;
+  transition:background .15s, color .15s;
+}
+.theme-segment-btn.active{ background:var(--bg-surface); color:var(--text-primary); box-shadow:0 1px 4px var(--floating-shadow); }
+
+.settings-toggle-row{
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+  background:var(--bg-surface-alt); border-radius:var(--radius-xl); padding:12px 14px; margin-top:8px;
+  font-size:var(--fs-13); font-weight:var(--fw-semibold); color:var(--text-primary);
+  cursor:pointer; -webkit-tap-highlight-color:transparent; touch-action:manipulation;
+}
+.toggle-switch{ position:relative; display:inline-block; width:42px; height:24px; flex-shrink:0; }
+.toggle-switch input{ position:absolute; inset:0; opacity:0; margin:0; cursor:pointer; }
+.toggle-switch-track{ position:absolute; inset:0; background:var(--border-color-strong); border-radius:999px; transition:background .15s ease; }
+.toggle-switch-thumb{ position:absolute; top:2px; left:2px; width:20px; height:20px; border-radius:50%; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.3); transition:transform .15s ease; }
+.toggle-switch input:checked + .toggle-switch-track{ background:var(--accent); }
+.toggle-switch input:checked + .toggle-switch-track .toggle-switch-thumb{ transform:translateX(18px); }
+
+/* Flatpickr input theme modification override */
+#dateRangePicker {
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='18' rx='2' ry='2'%3E%3C/rect%3E%3Cline x1='16' y1='2' x2='16' y2='6'%3E%3C/line%3E%3Cline x1='8' y1='2' x2='8' y2='6'%3E%3C/line%3E%3Cline x1='3' y1='10' x2='21' y2='10'%3E%3C/line%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 32px !important;
+}
+</style>
+</head>
+<body>
+
+<div id="pullRefreshIndicator">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <line x1="12" y1="5" x2="12" y2="19"></line>
+    <polyline points="19 12 12 19 5 12"></polyline>
+  </svg>
+  <span id="pullRefreshLabel">Pull to refresh</span>
+</div>
+
+<header>
+  <div class="header-top">
+    <div>
+      <h1>TraceTheToxin</h1>
+      <div class="subtitle-row">
+        <p id="subtitle">Community Air Reporting Network</p>
+        <span id="headerReportCount" class="header-report-count"></span>
+      </div>
+    </div>
+    <div class="right-controls">
+      <button class="help-icon-btn" id="settingsBtn" title="Settings / Podešavanja" onclick="showSettingsModal()">
+        <img class="icon-img" src="icons/settings.png" alt="Settings">
+      </button>
+    </div>
+  </div>
+</header>
+
+<div id="map"></div>
+
+<div id="windCompassWidget" title="Live wind direction">
+  <svg id="windCompassSvg" width="34" height="34" viewBox="0 0 34 34" style="overflow:visible;">
+    <circle cx="17" cy="17" r="15" fill="none" stroke="var(--border-color-strong)" stroke-width="1"/>
+    <g id="windCompassArrowGroup" transform="rotate(0 17 17)">
+      <line x1="17" y1="6" x2="17" y2="17" stroke="var(--accent)" stroke-width="3" stroke-linecap="round"/>
+      <polygon points="17,3 13,10 21,10" fill="var(--accent)"/>
+    </g>
+  </svg>
+  <span class="wind-compass-deg" id="windCompassDeg">–</span>
+  <span class="wind-compass-dir" id="windCompassDir">–</span>
+</div>
+
+<div id="splashScreen">
+  <div class="splash-spinner-wrap">
+    <span class="splash-halo"></span>
+    <span class="splash-halo splash-halo-2"></span>
+    <img src="image/TraceTheToxin.png" alt="TraceTheToxin" class="splash-logo">
+  </div>
+  <div class="splash-text" id="splashText">Loading map…</div>
+</div>
+
+<div id="legendBar">
+  <div class="legend-row" id="ageLegendRow">
+    <span class="legend-item"><span class="legend-dot" style="background:#a32222"></span><span class="leg" data-en="&lt;1h"  data-sr="&lt;1h">&lt;1h</span></span>
+    <span class="legend-item"><span class="legend-dot" style="background:#a33822"></span><span class="leg" data-en="1–2h"  data-sr="1–2h">1–2h</span></span>
+    <span class="legend-item"><span class="legend-dot" style="background:#a34d22"></span><span class="leg" data-en="2–6h"  data-sr="2–6h">2–6h</span></span>
+    <span class="legend-item"><span class="legend-dot" style="background:#a36322"></span><span class="leg" data-en="6–12h" data-sr="6–12h">6–12h</span></span>
+    <span class="legend-item"><span class="legend-dot" style="background:#a37822"></span><span class="leg" data-en="12–24h" data-sr="12–24h">12–24h</span></span>
+    <span class="legend-item"><span class="legend-dot" style="background:#9f8a5f"></span><span class="leg" data-en="24-48h" data-sr="24-48h">24-48h</span></span>
+    <span class="legend-item"><span class="legend-dot" style="background:#333333"></span><span class="leg" data-en="48h+" data-sr="48h+">48h+</span></span>
+  </div>
+  <div class="legend-row" id="catLegendRow">
+    <span class="legend-item"><span class="legend-dot" style="background:#c41e27"></span><span class="leg" data-en="Smoke" data-sr="Dim">Dim</span></span>
+    <span class="legend-item"><span class="legend-dot" style="background:#8b4513"></span><span class="leg" data-en="Sewage" data-sr="Kanalizacija">Kanalizacija</span></span>
+    <span class="legend-item"><span class="legend-dot" style="background:#d4c600"></span><span class="leg" data-en="Sulfur" data-sr="Sumpor">Sumpor</span></span>
+    <span class="legend-item"><span class="legend-dot" style="background:#cc3399"></span><span class="leg" data-en="Burnt plastic" data-sr="Spaljena plastika">Spaljena plastika</span></span>
+    <span class="legend-item"><span class="legend-dot" style="background:#008ab8"></span><span class="leg" data-en="Chemicals" data-sr="Hemikalije">Hemikalije</span></span>
+    <span class="legend-item"><span class="legend-dot" style="background:#2a682a"></span><span class="leg" data-en="Waste" data-sr="Otpad">Otpad</span></span>
+    <span class="legend-item"><span class="legend-dot" style="background:#3ec46d"></span><span class="leg" data-en="Clean Air" data-sr="Čist vazduh">Čist vazduh</span></span>
+    <span class="legend-item"><span class="legend-dot" style="background:#8342a1"></span><span class="leg" data-en="Unknown" data-sr="Nepoznato">Nepoznato</span></span>
+    <span class="legend-item"><span class="legend-dot" style="background:#474747"></span><span class="leg" data-en="Other" data-sr="Ostalo">Ostalo</span></span>
+  </div>
+</div>
+
+<div id="bottomRightStack" class="bottomright-stack">
+  <div id="mapFilterBtn" class="map-filter-btn" style="display:none" title="Filter reports shown on the map by date" onclick="openMapFilter()">
+    <img class="icon-img" src="icons/category-filter.png" alt="Filter">
+  </div>
+  <div id="pinMapBtn" class="pin-map-btn" style="display:none" title="Set location manually" onclick="togglePinMode()">
+    <img class="icon-img" src="icons/pin.png" alt="Pin">
+  </div>
+  <div id="traceSourceBtn" class="trace-source-btn" style="display:none" title="Trace Possible Source" onclick="toggleTraceMode()">
+    <img class="icon-img" src="icons/search.png" alt="Trace">
+  </div>
+  <div id="sourceHeatBtn" class="source-heat-btn" style="display:none" title="Show probable source heatmap" onclick="toggleSourceHeat()">
+    <img class="icon-img" src="icons/fire.png" alt="Fire">
+  </div>
+  <div id="sourceHeatConfidenceBadge" class="source-heat-confidence-badge" style="display:none"></div>
+</div>
+<input type="text" id="mapDateRangePicker" style="display:none">
+
+<button type="button" class="report-fab-btn" id="reportFabBtn" title="Report bad air" aria-label="Report bad air" onclick="reportFabTap()" disabled>
+  <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <line x1="12" y1="5" x2="12" y2="19"></line>
+    <line x1="5" y1="12" x2="19" y2="12"></line>
+  </svg>
+</button>
+
+<!-- Report Wizard (no dropdowns; category tiles -> intensity slider -> details) -->
+<div class="wiz-overlay" id="reportWizard" style="display:none">
+  <div class="wiz-header">
+    <button type="button" class="wiz-back-btn" id="wizBackBtn" onclick="wizGoBack()" aria-label="Back">‹</button>
+    <div class="wiz-progress" id="wizProgress"></div>
+    <button type="button" class="wiz-close-btn" onclick="closeReportWizard()" aria-label="Cancel">✕</button>
+  </div>
+  <div class="wiz-body" id="wizBody"></div>
+</div>
+
+<!-- Settings modal -->
+<div id="settingsModal" class="fullscreen-modal-overlay" style="display:none">
+  <div class="fullscreen-modal-header">
+    <h2 id="settingsModalTitle">Settings</h2>
+    <button class="fullscreen-modal-close" onclick="hideSettingsModal()" aria-label="Close"><img class="icon-img" src="icons/close.png" alt="close"></button>
+  </div>
+  <div class="fullscreen-modal-body">
+
+    <div class="detail-section" id="helpSettingsSection">
+      <div class="detail-section-title" id="helpSectionTitle">Help</div>
+      <div style="display:flex; gap:8px;">
+        <button type="button" class="settings-btn" style="flex:1;" onclick="showHelpModal()" id="settingsHelpBtn">
+          <img class="icon-img icon-img-inline" src="icons/help.png" alt=""> How to use TraceTheToxin
+        </button>
+        <button type="button" class="settings-btn" style="flex:1;" onclick="showMapKeyModal()" id="settingsMapKeyBtn">
+          <svg class="icon-img-inline" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin:0 4px -3px 0;flex-shrink:0;">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="10.5" x2="12" y2="16.5"/>
+            <circle cx="12" cy="7.2" r="1.15" fill="currentColor" stroke="none"/>
+          </svg> Map key
+        </button>
+      </div>
+    </div>
+
+    <div class="detail-section" id="languageSettingsSection">
+      <div class="detail-section-title" id="languageSectionTitle">Language</div>
+      <div class="theme-segment" id="langSegment">
+        <button type="button" class="theme-segment-btn" onclick="setLang('en')" id="langBtnEn">🇬🇧 EN</button>
+        <button type="button" class="theme-segment-btn active" onclick="setLang('sr')" id="langBtnSr">🇷🇸 SR</button>
+        <button type="button" class="theme-segment-btn" onclick="setLang('auto')" id="langBtnAuto"><span id="langBtnAutoLabel">Auto</span></button>
+      </div>
+      <p class="detail-export-hint" id="langAutoHint">We'll set the language based on your device/browser settings.</p>
+    </div>
+
+    <div class="detail-section" id="themeSettingsSection">
+      <div class="detail-section-title" id="themeSectionTitle">Theme</div>
+      <div class="theme-segment" id="themeSegment">
+        <button type="button" class="theme-segment-btn" onclick="setThemeMode('light')" id="themeBtnLight">Light</button>
+        <button type="button" class="theme-segment-btn active" onclick="setThemeMode('dark')" id="themeBtnDark">Dark</button>
+        <button type="button" class="theme-segment-btn" onclick="setThemeMode('auto')" id="themeBtnAuto">Auto</button>
+        <button type="button" class="theme-segment-btn" onclick="setThemeMode('smart')" id="themeBtnSmart">Smart</button>
+      </div>
+      <p class="detail-export-hint" id="themeAutoHint">Auto follows your device's light/dark setting. Smart adapts to ambient light where available, otherwise local time.</p>
+    </div>
+
+    <div class="detail-section" id="trailHoursSettingsSection">
+      <div class="detail-section-title" id="trailHoursSectionTitle">Wind Trail Length</div>
+      <div class="theme-segment" id="trailHoursSegment">
+        <button type="button" class="theme-segment-btn" onclick="setTrailDisplayHours(3)" id="trailHoursBtn3">3h</button>
+        <button type="button" class="theme-segment-btn active" onclick="setTrailDisplayHours(6)" id="trailHoursBtn6">6h</button>
+        <button type="button" class="theme-segment-btn" onclick="setTrailDisplayHours(12)" id="trailHoursBtn12">12h</button>
+      </div>
+      <p class="detail-export-hint" id="trailHoursHint">How far back the wind trail is drawn on the map. Nearest-station matching always uses up to 12h of history regardless of this setting.</p>
+    </div>
+
+    <div class="detail-section" id="splineVisibilitySettingsSection">
+      <label class="settings-toggle-row" for="splineVisibilityToggle">
+        <span id="splineVisibilityLabel">Show historical wind trails</span>
+        <span class="toggle-switch">
+          <input type="checkbox" id="splineVisibilityToggle" onchange="setSplineVisibility(this.checked)">
+          <span class="toggle-switch-track"><span class="toggle-switch-thumb"></span></span>
+        </span>
+      </label>
+      <p class="detail-export-hint" id="splineVisibilityHint">Show the dashed wind-trail lines behind each pin. Off by default to keep the map uncluttered.</p>
+    </div>
+
+    <div class="detail-section" id="traceHeatmapSettingsSection">
+      <label class="settings-toggle-row" for="traceHeatmapToggle">
+        <span id="traceHeatmapLabel">Show heatmap when tracing possible source</span>
+        <span class="toggle-switch">
+          <input type="checkbox" id="traceHeatmapToggle" onchange="setTraceHeatmapEnabled(this.checked)">
+          <span class="toggle-switch-track"><span class="toggle-switch-thumb"></span></span>
+        </span>
+      </label>
+      <p class="detail-export-hint" id="traceHeatmapHint">While using Trace Possible Source: purple at the tracer pin, fading to red then orange toward each matched report, then a yellow tail continuing ~5km further along the wind past the report -- brightening back toward orange wherever it crosses another report's trail.</p>
+    </div>
+
+    <div class="detail-section" id="sourceHeatScienceSettingsSection">
+      <div class="filter-title" style="margin-bottom:10px;" id="sourceHeatSectionTitle">Source Heatmap</div>
+      <p class="detail-export-hint" style="margin-top:-4px;margin-bottom:12px;" id="sourceHeatSectionBody">The flame button shows a plain concentration heatmap: one weighted point per report, so brighter/redder areas simply mean more (and stronger, more recent) reports nearby.</p>
+      <button class="export-btn" style="width:100%;margin-top:4px;" onclick="showHeatMethodologyModal()" id="sourceHeatMethBtn">How the source heatmap works</button>
+    </div>
+
+    <div class="detail-section" style="padding:0;overflow:hidden;">
+      <div class="filter-label-row" style="border-radius:0;">
+        <span class="filter-title" id="filterTitleLabel">Time Window Filter</span>
+        <span id="reportCount">0 Reports</span>
+      </div>
+      <div class="filter-select-row">
+        <div class="select-wrap">
+          <input type="text" id="dateRangePicker" placeholder="Select date range..." readonly>
+        </div>
+        <button class="export-btn" onclick="downloadCSV()"
+                style="width:auto;padding:11px 10px;font-size:12px;">
+          <span id="csvLabel">CSV</span>
+        </button>
+        <button class="export-btn" onclick="downloadStationCSV()"
+                style="width:auto;padding:11px 10px;font-size:12px;">
+          <span id="stationCsvLabel">Stations CSV</span>
+        </button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- GPS/Error Alert Modal -->
+<div id="gpsModal" class="generic-modal-overlay" style="display:none">
+  <div class="generic-modal">
+    <div class="generic-modal-icon"><img src="icons/pin.png" alt="Pin" style="width:18px;height:18px;vertical-align:middle;"></div>
+    <h2 id="gpsModalTitle">GPS Not Enabled</h2>
+    <p id="gpsModalBody">Location access is turned off. To report bad air at your location, enable it in your settings.</p>
+    <p id="gpsModalAlt" style="font-size:12px;color:var(--text-secondary);margin-bottom:16px;">Or use the <img src="icons/pin.png" alt="Pin" style="width:18px;height:18px;vertical-align:middle;"> button on the map to drop a pin manually.</p>
+    <button class="generic-modal-close" onclick="hideGpsModal()" id="gpsModalBtn">Got it</button>
+  </div>
+</div>
+
+<!-- Dynamic Instruction Help Modal -->
+<div id="helpModal" class="generic-modal-overlay" style="display:none">
+  <div class="generic-modal" style="max-width: 380px;">
+    <h2 id="helpModalTitle" style="margin-top: 6px;">How to Use</h2>
+    <div id="helpModalContent" style="max-height: 55vh; overflow-y: auto; padding-right: 4px;">
+      <!-- Filled programmatically via standard state language rules -->
+    </div>
+    <button class="generic-modal-close" onclick="hideHelpModal()" id="helpModalBtn" style="margin-top:14px;">Close</button>
+  </div>
+</div>
+
+<div id="heatMethodologyModal" class="generic-modal-overlay" style="display:none">
+  <div class="generic-modal" style="max-width: 420px;">
+    <h2 style="margin-top: 6px;" id="heatMethModalTitle">How the source heatmap works</h2>
+    <div id="heatMethModalContent" style="max-height: 55vh; overflow-y: auto; padding-right: 4px; font-size: 14px; line-height: 1.5;">
+      <!-- Filled programmatically via buildHeatMethodologyContent() -->
+    </div>
+    <button class="generic-modal-close" onclick="hideHeatMethodologyModal()" id="heatMethModalBtn" style="margin-top:14px;">Close</button>
+  </div>
+</div>
+
+<div id="mapKeyModal" class="generic-modal-overlay" style="display:none">
+  <div class="generic-modal" style="max-width: 440px;">
+    <h2 style="margin-top: 6px;" id="mapKeyModalTitle">Map key</h2>
+    <div id="mapKeyModalContent" style="max-height: 65vh; overflow-y: auto; padding-right: 4px; font-size: 13px; line-height: 1.5;">
+      <!-- Filled programmatically via buildMapKeyModalContent() -->
+    </div>
+    <button class="generic-modal-close" onclick="hideMapKeyModal()" id="mapKeyModalBtn" style="margin-top:14px;">Close</button>
+  </div>
+</div>
+
+
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<script>
+// leaflet-heat.js repeatedly reads pixel data back off its canvas
+// (getImageData) without this hint, which is fine functionally but spams
+// the console with a perf warning on every redraw. Patching getContext
+// here -- before the library's own canvas gets created -- opts every 2D
+// context on the page into willReadFrequently silently.
+(function () {
+  const origGetContext = HTMLCanvasElement.prototype.getContext;
+  HTMLCanvasElement.prototype.getContext = function (type, options) {
+    if (type === '2d') {
+      options = Object.assign({ willReadFrequently: true }, options || {});
+    }
+    return origGetContext.call(this, type, options);
+  };
+})();
+</script>
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<!-- Flatpickr Calendar Engine -->
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<!-- Flatpickr Serbian Translation File -->
+<script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/sr.js"></script>
+<script>
+
+
+// Validate Wind Input Range
+function validateRange(input) {
+  let val = parseFloat(input.value);
+  if (isNaN(val)) { input.value = ""; }
+  else {
+    if (val < 0) input.value = 0;
+    if (val > 360) input.value = 360;
+  }
+  checkWizSubmitReady();
+}
+
+function nowRoundedToQuarterHour() {
+  const now = new Date();
+  const mins = now.getMinutes();
+  now.setMinutes(Math.round(mins / 15) * 15);
+  return now.toTimeString().slice(0, 5);
+}
+
+/* ═══════════════════════════════════════════════════
+   SPAM PROTECTION — max 1 report per device per hour
+═══════════════════════════════════════════════════ */
+const REPORT_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes
+const REPORT_COOLDOWN_KEY = 'ttt_last_report_ts';
+
+function getReportCooldownRemainingMs() {
   try {
-    const res = await fetch(SEPA_URL, {
-      headers: { "User-Agent": "TraceTheToxin-collector/1.0" },
-    });
-    if (!res.ok) {
-      return new Response(`SEPA fetch failed: ${res.status}`, { status: 502 });
+    const last = parseInt(localStorage.getItem(REPORT_COOLDOWN_KEY), 10) || 0;
+    const remaining = REPORT_COOLDOWN_MS - (Date.now() - last);
+    return remaining > 0 ? remaining : 0;
+  } catch (e) { return 0; } // localStorage unavailable — fail open
+}
+
+function markReportSubmittedNow() {
+  try { localStorage.setItem(REPORT_COOLDOWN_KEY, Date.now().toString()); } catch (e) {}
+}
+
+/* ═══════════════════════════════════════════════════
+   REPORT WIZARD — category tiles → intensity slider →
+   details & submit. No dropdown selects anywhere.
+═══════════════════════════════════════════════════ */
+const WIZ_CATEGORIES = [
+  { value:'Smoke',                                                            icon:'smoke.png' },
+  { value:'Sewage',                                                           icon:'sewage.png' },
+  { value:'Sulfur',                                                           icon:'sulfur.png' },
+  { value:'Burnt plastic or rubber',                                         icon:'burnt_plastic.png' },
+  { value:'Chemical solvents (paint, fuel, glue, industrial chemicals)',      icon:'chemicals.png' },
+  { value:'Waste / Trash / Garbage',                                         icon:'waste.png' },
+  { value:'Clean Air',                                                       icon:'clean_air.png' },
+  { value:'Unknown',                                                         icon:'unknown.png' },
+  { value:'Other',                                                           icon:'other.png' },
+];
+const WIZ_CATEGORY_LABELS = {
+  en: ['Smoke','Sewage','Sulfur','Burnt plastic','Chemicals','Waste','Clean Air','Unknown','Other'],
+  sr: ['Dim','Kanalizacija','Sumpor','Spaljena plastika','Hemikalije','Otpad','Čist vazduh','Nepoznato','Ostalo'],
+};
+
+let wizState = { step: 0, category: null, intensity: 5 };
+
+function reportFabTap() {
+  if (!(userCoords || manualCoords)) {
+    showGpsModal();
+    return;
+  }
+  const remaining = getReportCooldownRemainingMs();
+  if (remaining > 0) {
+    const mins = Math.ceil(remaining / 60000);
+    alert(t('cooldownActive').replace('{n}', mins));
+    return;
+  }
+  openReportWizard();
+}
+
+function openReportWizard() {
+  wizState = { step: 0, category: null, intensity: 5 };
+  document.getElementById('reportWizard').style.display = 'flex';
+  renderWizStep();
+}
+
+function closeReportWizard() {
+  document.getElementById('reportWizard').style.display = 'none';
+  if (pinMode) {
+    pinMode = false;
+    const pinBtn = document.getElementById('pinMapBtn');
+    if (pinBtn) pinBtn.classList.remove('active');
+    // togglePinMode() reloads pins and restores the GPS marker when leaving
+    // pin mode -- since we're flipping the flag directly here instead of
+    // going through it, do the same.
+    if (userMarker && !map.hasLayer(userMarker)) userMarker.addTo(map);
+    loadPinsByWindow();
+  }
+  if (manualMarker) { map.removeLayer(manualMarker); manualMarker = null; }
+  manualCoords = null;
+  checkFormReady();
+}
+
+function wizGoBack() {
+  if (wizState.step > 0) {
+    if (wizState.category === 'Clean Air' && wizState.step === 2) {
+      // Clean Air skipped step 1 (intensity) on the way in, so skip it on
+      // the way back out too.
+      wizState.step = 0;
+    } else {
+      wizState.step -= 1;
     }
-    const html = await res.text();
-    const doc = new DOMParser().parseFromString(html, "text/html");
-    if (!doc) return new Response("HTML parse failed", { status: 500 });
+    renderWizStep();
+  } else closeReportWizard();
+}
 
-    // The station table is the first data table on the page:
-    // columns: Indeks | Stanica | Mreža | PM10 | PM2.5 | SO2 | NO2 | O3
-    const rows = Array.from(doc.querySelectorAll("table tbody tr"));
-    if (!rows.length) {
-      return new Response("No table rows found — SEPA markup may have changed", { status: 500 });
-    }
+function renderWizProgress() {
+  // Clean Air skips the intensity step, so its wizard is only 2 steps long.
+  const isCleanAir = wizState.category === 'Clean Air';
+  const totalSteps = isCleanAir ? 2 : 3;
+  const currentIndex = isCleanAir ? (wizState.step === 2 ? 1 : 0) : wizState.step;
+  const el = document.getElementById('wizProgress');
+  el.innerHTML = Array.from({ length: totalSteps }, (_, i) =>
+    `<span class="${i <= currentIndex ? 'done' : ''}"></span>`).join('');
+  document.getElementById('wizBackBtn').style.visibility = wizState.step === 0 ? 'hidden' : 'visible';
+}
 
-    // Round down to the current hour, UTC — one snapshot bucket per run.
-    const now = new Date();
-    now.setUTCMinutes(0, 0, 0);
-    const recordedAt = now.toISOString();
+function renderWizStep() {
+  renderWizProgress();
+  if (wizState.step === 0) renderWizCategoryStep();
+  else if (wizState.step === 1) renderWizIntensityStep();
+  else renderWizDetailsStep();
+}
 
-    const readings: Record<string, unknown>[] = [];
-    const unknownStations: string[] = [];
+function renderWizCategoryStep() {
+  const labels = WIZ_CATEGORY_LABELS[lang] || WIZ_CATEGORY_LABELS.en;
+  const body = document.getElementById('wizBody');
+  body.innerHTML = `
+    <p class="wiz-step-label">${t('wizStepLabel')} 1</p>
+    <h3 class="wiz-step-title">${t('wizCategoryTitle')}</h3>
+    <div class="wiz-grid">
+      ${WIZ_CATEGORIES.map((c, i) => `
+        <div class="wiz-tile" style="background:${categoryColor(c.value)};" onclick="wizSelectCategory('${c.value.replace(/'/g, "\\'")}')">
+          <div class="wiz-tile-icon" style="background-color:#fff;-webkit-mask-image:url('icons/${c.icon}');mask-image:url('icons/${c.icon}');-webkit-mask-size:contain;mask-size:contain;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;-webkit-mask-position:center;mask-position:center;"></div>
+          <span>${labels[i]}</span>
+        </div>`).join('')}
+    </div>`;
+}
 
-    for (const row of rows) {
-      const cells = Array.from(row.querySelectorAll("td")).map((c) => c.textContent?.trim() ?? "");
-      if (cells.length < 8) continue;
+function wizSelectCategory(value) {
+  wizState.category = value;
+  if (value === 'Clean Air') {
+    // Clean Air has no meaningful "intensity" — always maxed, and the
+    // slider step is skipped entirely.
+    wizState.intensity = 10;
+    wizState.step = 2;
+  } else {
+    wizState.step = 1;
+  }
+  renderWizStep();
+}
 
-      const [category, stationName, , pm10, pm25, so2, no2, o3] = cells;
-      const id = slugify(stationName);
+function renderWizIntensityStep() {
+  const body = document.getElementById('wizBody');
+  body.innerHTML = `
+    <p class="wiz-step-label">${t('wizStepLabel')} 2</p>
+    <h3 class="wiz-step-title">${t('wizIntensityTitle')}</h3>
+    <div class="wiz-intensity-value" id="wizIntensityValue" style="color:${categoryColor(wizState.category)};">${wizState.intensity}</div>
+    <div class="wiz-intensity-label${intensityWord(wizState.intensity) ? '' : ' is-empty'}" id="wizIntensityWord">${intensityWord(wizState.intensity) || '\u00A0'}</div>
+    <input type="range" min="1" max="10" step="1" class="wiz-intensity-slider" id="wizIntensitySlider"
+           value="${wizState.intensity}" oninput="wizOnIntensityInput(this.value)">
+    <div class="wiz-details-row" style="margin-top:24px;">
+      <button type="button" class="wiz-submit-btn" style="background:${categoryColor(wizState.category)};" onclick="wizGoToDetails()">${t('wizContinue')}</button>
+    </div>`;
+}
 
-      readings.push({
-        station_id: id,
-        recorded_at: recordedAt,
-        pm10: num(pm10),
-        pm25: num(pm25),
-        so2: num(so2),
-        no2: num(no2),
-        o3: num(o3),
-        category: category || null,
+function intensityWord(n) {
+  n = parseInt(n, 10);
+  const words = lang === 'sr'
+    ? { 1:'Jedva primetno', 5:'Umereno', 10:'Nepodnošljivo' }
+    : { 1:'Barely noticeable', 5:'Moderate', 10:'Overwhelming' };
+  return words[n] || '';
+}
+
+function wizOnIntensityInput(v) {
+  wizState.intensity = parseInt(v, 10);
+  document.getElementById('wizIntensityValue').textContent = wizState.intensity;
+  const word = intensityWord(wizState.intensity);
+  const wordEl = document.getElementById('wizIntensityWord');
+  wordEl.textContent = word || '\u00A0';
+  wordEl.classList.toggle('is-empty', !word);
+}
+
+function wizGoToDetails() {
+  wizState.step = 2;
+  renderWizStep();
+}
+
+function renderWizDetailsStep() {
+  const body = document.getElementById('wizBody');
+  body.innerHTML = `
+    <p class="wiz-step-label">${t('wizStepLabel')} ${wizState.category === 'Clean Air' ? 2 : 3}</p>
+    <h3 class="wiz-step-title">${t('wizDetailsTitle')}</h3>
+    <div class="wiz-details-three-col">
+      <div class="wiz-details-row">
+        <label>${t('wizTimeLabel')}</label>
+        <input type="time" id="reportTime" value="${nowRoundedToQuarterHour()}" oninput="checkWizSubmitReady()">
+      </div>
+      <div class="wiz-details-row">
+        <label>${t('windDirPH')}</label>
+        <input type="number" id="manualWind" min="0" max="360" placeholder="0-360" value="270"
+               oninput="onManualWindChange()" onblur="validateRange(this)">
+      </div>
+      <div class="wiz-details-row">
+        <label>${t('durationPH')}</label>
+        <input type="number" id="duration" min="1" max="24" placeholder="1-24" oninput="checkWizSubmitReady()">
+      </div>
+    </div>
+    <div class="wiz-details-row">
+      <div style="display:flex;align-items:center;justify-content:center;gap:18px;flex-wrap:wrap;">
+        <div class="wind-compass-wrap">
+          <svg class="wind-compass-dial" id="windCompassDial" viewBox="0 0 200 200" width="200" height="200">
+            <circle cx="100" cy="100" r="90" fill="none" stroke="var(--border-color-strong)" stroke-width="2"/>
+            <text class="compass-label-text" x="100" y="30" text-anchor="middle" dominant-baseline="middle">N</text>
+            <text class="compass-label-text" x="170" y="100" text-anchor="middle" dominant-baseline="middle">E</text>
+            <text class="compass-label-text" x="100" y="170" text-anchor="middle" dominant-baseline="middle">S</text>
+            <text class="compass-label-text" x="30" y="100" text-anchor="middle" dominant-baseline="middle">W</text>
+            <g id="compassArrowGroup" transform="rotate(90 100 100)">
+              <line x1="100" y1="100" x2="100" y2="50" stroke="var(--accent)" stroke-width="4" stroke-linecap="round"/>
+              <polygon points="100,36 90,52 110,52" fill="var(--accent)"/>
+            </g>
+            <circle cx="100" cy="100" r="5" fill="var(--accent)"/>
+          </svg>
+        </div>
+        <div id="windAppLinksCol" style="display:flex;flex-direction:column;align-items:flex-start;gap:8px;">
+          ${buildWindAppLinksHtml()}
+        </div>
+      </div>
+    </div>
+    <div class="wiz-details-row" id="windAutoFillHint" style="font-size:11px;color:var(--text-secondary);display:none;"></div>
+    <div class="wiz-details-row">
+      <label>${t('commentPH')}</label>
+      <input type="text" id="comment" placeholder="${t('commentPH')}">
+    </div>
+    <div class="wiz-details-row" id="wizLocationHint" style="font-size:12px;color:var(--text-secondary);"></div>
+    <button type="button" class="wiz-submit-btn" id="wizSubmitBtn"
+            style="background:${wizState.category === 'Clean Air' ? categoryColor('Clean Air') : ''}"
+            onclick="reportBadAir()" disabled>
+      <span id="reportBtnLabel">${wizState.category === 'Clean Air' ? t('reportBtnCleanAir') : t('reportBtn')}</span>
+    </button>`;
+  updateCompassVisual(DEFAULT_WIND_DEG);
+  setupCompassDrag();
+  checkWizSubmitReady();
+  autoFillWindDirection();
+}
+
+/* ═══════════════════════════════════════════════════
+   WIND COMPASS WIDGET
+   The arrow lives inside <g id="compassArrowGroup"> and is rotated with an
+   SVG rotate(deg cx cy) transform, so it always pivots exactly on the
+   circle's center (100,100) — no CSS transform-origin drift, no overlap
+   between the arrow and the N/E/S/W labels.
+
+   Convention: the number field / "Smer Vetra" value is the meteorological
+   wind direction (where the wind is blowing FROM). The arrow shows where
+   the wind is blowing TO, i.e. it points 180deg opposite the stored value
+   (e.g. value 270 -> arrow visually points at 90, to the right).
+═══════════════════════════════════════════════════ */
+const DEFAULT_WIND_DEG = 270;
+
+function updateCompassVisual(deg) {
+  deg = ((deg % 360) + 360) % 360;
+  const arrowVisualAngle = (deg + 180) % 360;
+  const g = document.getElementById('compassArrowGroup');
+  if (g) g.setAttribute('transform', `rotate(${arrowVisualAngle} 100 100)`);
+}
+
+function onManualWindChange() {
+  const input = document.getElementById('manualWind');
+  const raw = input ? input.value : '';
+  if (raw !== '' && !isNaN(parseFloat(raw))) {
+    updateCompassVisual(parseFloat(raw));
+  }
+  const hintEl = document.getElementById('windAutoFillHint');
+  if (hintEl) hintEl.style.display = 'none';
+  checkWizSubmitReady();
+}
+
+function setWindDirection(arrowVisualAngle) {
+  // Convert the angle the user just pointed the arrow at back into the
+  // reported wind-direction value (180deg offset — see note above).
+  const deg = Math.round(((arrowVisualAngle + 180) % 360 + 360) % 360);
+  const input = document.getElementById('manualWind');
+  if (input) input.value = deg;
+  updateCompassVisual(deg);
+  const hintEl = document.getElementById('windAutoFillHint');
+  if (hintEl) hintEl.style.display = 'none';
+  checkWizSubmitReady();
+}
+
+// Fetches the current live wind direction for the report's location from
+// Xweather and pre-fills the compass with it, so the user usually doesn't
+// have to look anything up manually. They can still drag the compass or
+// type over the value if it doesn't look right — this never blocks
+// submission, and any manual edit clears the "auto-filled" hint above.
+// Circuit breaker for the get-wind-direction edge function: once it fails,
+// skip calling it again until this timestamp so we're not repeatedly
+// round-tripping to a function that's confirmed down, and instead go
+// straight to the Open-Meteo fallback (see autoFillWindDirection below).
+let windDirEdgeFunctionDownUntil = 0;
+const WIND_EDGE_FUNCTION_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
+
+async function autoFillWindDirection() {
+  const activeLoc = (pinMode && manualCoords) ? manualCoords : userCoords;
+  const hintEl = document.getElementById('windAutoFillHint');
+  if (!activeLoc) return;
+
+  let windDirDeg = null;
+
+  // Circuit breaker: the last few 502s came back identically on both
+  // immediate-retry attempts, which means the function is down, not just
+  // having a transient blip — retrying it inline every single call just
+  // adds a doomed round-trip before we fall back anyway. So: try it once,
+  // and if it fails, skip calling it again for a cooldown window and go
+  // straight to the Open-Meteo fallback until it's had time to recover.
+  if (Date.now() >= windDirEdgeFunctionDownUntil) {
+    try {
+      const { data, error } = await sb.functions.invoke('get-wind-direction', {
+        body: { lat: activeLoc.lat, lon: activeLoc.lon }
       });
-      unknownStations.push(id);
+      if (error) {
+        console.error('get-wind-direction failed, falling back to Open-Meteo:', error);
+        windDirEdgeFunctionDownUntil = Date.now() + WIND_EDGE_FUNCTION_COOLDOWN_MS;
+      } else if (data && data.windDirDeg != null) {
+        windDirDeg = data.windDirDeg;
+      }
+    } catch (err) {
+      console.error('get-wind-direction threw, falling back to Open-Meteo:', err);
+      windDirEdgeFunctionDownUntil = Date.now() + WIND_EDGE_FUNCTION_COOLDOWN_MS;
     }
+  }
 
-    const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
-
-    // Guard against inserting readings for stations that don't exist yet
-    // (new station added by SEPA, or a name/slug drift) — log instead of failing.
-    const { data: knownStations } = await supabase
-      .from("air_quality_stations")
-      .select("id");
-    const knownIds = new Set((knownStations ?? []).map((s) => s.id));
-
-    const validReadings = readings.filter((r) => knownIds.has(r.station_id as string));
-    const skipped = readings.length - validReadings.length;
-
-    if (!validReadings.length) {
-      return new Response(
-        JSON.stringify({ inserted: 0, skipped, note: "No matching known stations — check slugs" }),
-        { status: 200, headers: { "Content-Type": "application/json" } },
-      );
+  // Fall back to Open-Meteo's free current-conditions forecast (the same
+  // source already used elsewhere in this app) if the edge function is
+  // unavailable or returned nothing usable, so a single backend hiccup
+  // doesn't leave the compass unfilled.
+  if (windDirDeg == null) {
+    try {
+      const fallback = await getWeatherData(activeLoc.lat, activeLoc.lon);
+      if (fallback && fallback.source !== 'Offline/Default') windDirDeg = fallback.wind_direction;
+    } catch (err) {
+      console.error('Open-Meteo fallback also failed:', err);
     }
+  }
 
-    const { error } = await supabase
-      .from("air_quality_readings")
-      .upsert(validReadings, { onConflict: "station_id,recorded_at" });
+  if (windDirDeg == null) return;
 
-    if (error) {
-      return new Response(`Insert failed: ${error.message}`, { status: 500 });
-    }
+  // Only apply it if the user hasn't already started typing/dragging
+  // their own value while this was in flight.
+  const input = document.getElementById('manualWind');
+  if (!input) return;
 
-    return new Response(
-      JSON.stringify({ inserted: validReadings.length, skipped, recordedAt }),
-      { status: 200, headers: { "Content-Type": "application/json" } },
+  const deg = Math.round(windDirDeg);
+  input.value = deg;
+  updateCompassVisual(deg);
+  checkWizSubmitReady();
+
+  if (hintEl) {
+    hintEl.textContent = t('windAutoFilledHint');
+    hintEl.style.display = 'block';
+  }
+}
+
+function setupCompassDrag() {
+  const svg = document.getElementById('windCompassDial');
+  if (!svg) return;
+
+  function angleFromEvent(e) {
+    const rect = svg.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const dx = e.clientX - cx;
+    const dy = e.clientY - cy;
+    // 0deg = up (N), clockwise positive — matches compass bearing convention.
+    const deg = Math.atan2(dx, -dy) * 180 / Math.PI;
+    return (deg + 360) % 360;
+  }
+
+  svg.onpointerdown = function(e) {
+    svg.setPointerCapture(e.pointerId);
+    setWindDirection(angleFromEvent(e));
+  };
+  svg.onpointermove = function(e) {
+    if (!svg.hasPointerCapture(e.pointerId)) return;
+    setWindDirection(angleFromEvent(e));
+  };
+}
+
+function checkWizSubmitReady() {
+  const btn = document.getElementById('wizSubmitBtn');
+  if (!btn) return;
+  const timeEl = document.getElementById('reportTime');
+  const windEl = document.getElementById('manualWind');
+  const durEl  = document.getElementById('duration');
+  const time = timeEl ? timeEl.value : '';
+  const wind = windEl ? windEl.value : '';
+  const windVal = parseFloat(wind);
+  const isWindValid = wind !== '' && windVal >= 0 && windVal <= 360;
+  const hasLoc = !!(userCoords || manualCoords);
+  btn.disabled = !(time && isWindValid && hasLoc);
+  const hintEl = document.getElementById('wizLocationHint');
+  if (hintEl) hintEl.textContent = hasLoc ? '' : t('wizNoLocationHint');
+}
+
+/* ═══════════════════════════════════════════════════
+   THEME (Light / Dark / Auto / Smart)
+═══════════════════════════════════════════════════ */
+let ambientSensor = null;
+let smartRecalcInterval = null;
+let lastAmbientLux = null;
+
+// Rough day/night boundary used when no ambient light sensor is available.
+// Not sunrise/sunset-accurate, but a reasonable local-time fallback.
+function timeOfDayIsLight() {
+  const h = new Date().getHours();
+  return h >= 7 && h < 19;
+}
+
+function resolveThemeMode(mode) {
+  if (mode === 'auto') {
+    const systemDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    return systemDark ? 'dark' : 'light';
+  }
+  if (mode === 'smart') {
+    if (lastAmbientLux != null) return lastAmbientLux < 15 ? 'dark' : 'light';
+    return timeOfDayIsLight() ? 'light' : 'dark';
+  }
+  return mode;
+}
+
+function startSmartSensing() {
+  stopSmartSensing();
+  if ('AmbientLightSensor' in window) {
+    try {
+      ambientSensor = new AmbientLightSensor();
+      ambientSensor.addEventListener('reading', () => {
+        lastAmbientLux = ambientSensor.illuminance;
+        if (getSavedThemeMode() === 'smart') applyThemeMode('smart');
+      });
+      ambientSensor.addEventListener('error', () => { lastAmbientLux = null; });
+      ambientSensor.start();
+    } catch (e) { lastAmbientLux = null; } // permission denied / unsupported — falls back to time-of-day
+  }
+  // Time-of-day fallback keeps re-checking regardless, so "Smart" still
+  // flips at dawn/dusk even without sensor access.
+  smartRecalcInterval = setInterval(() => {
+    if (getSavedThemeMode() === 'smart') applyThemeMode('smart');
+  }, 5 * 60 * 1000);
+}
+function stopSmartSensing() {
+  if (ambientSensor) { try { ambientSensor.stop(); } catch (e) {} ambientSensor = null; }
+  if (smartRecalcInterval) { clearInterval(smartRecalcInterval); smartRecalcInterval = null; }
+  lastAmbientLux = null;
+}
+function getSavedThemeMode() {
+  try { return localStorage.getItem('ttt_theme_mode') || 'dark'; } catch (e) { return 'dark'; }
+}
+function initTheme() {
+  const mode = getSavedThemeMode();
+  applyThemeMode(mode);
+  if (mode === 'smart') startSmartSensing();
+}
+function applyThemeMode(mode) {
+  document.documentElement.dataset.theme = resolveThemeMode(mode);
+  ['Light','Dark','Auto','Smart'].forEach(m => {
+    const btn = document.getElementById('themeBtn' + m);
+    if (btn) btn.classList.toggle('active', m.toLowerCase() === mode);
+  });
+}
+function setThemeMode(mode) {
+  try { localStorage.setItem('ttt_theme_mode', mode); } catch (e) {}
+  if (mode === 'smart') startSmartSensing(); else stopSmartSensing();
+  applyThemeMode(mode);
+}
+
+/* ═══════════════════════════════════════════════════
+   SETTINGS MODAL
+═══════════════════════════════════════════════════ */
+function showSettingsModal() {
+  // Must match the CSS's display:flex (see .fullscreen-modal-overlay) --
+  // setting 'block' here overrode that inline and broke the
+  // flex:1/min-height:0 scroll fix on .fullscreen-modal-body, which is
+  // exactly why the settings panel wasn't scrolling.
+  document.getElementById('settingsModal').style.display = 'flex';
+  const splineToggle = document.getElementById('splineVisibilityToggle');
+  if (splineToggle) splineToggle.checked = splinesVisible;
+  const traceHeatToggle = document.getElementById('traceHeatmapToggle');
+  if (traceHeatToggle) traceHeatToggle.checked = traceHeatmapEnabled;
+}
+function hideSettingsModal() {
+  document.getElementById('settingsModal').style.display = 'none';
+}
+function showHeatMethodologyModal() {
+  buildHeatMethodologyContent();
+  document.getElementById('heatMethodologyModal').style.display = 'flex';
+}
+function hideHeatMethodologyModal() {
+  document.getElementById('heatMethodologyModal').style.display = 'none';
+}
+function showMapKeyModal() {
+  buildMapKeyModalContent();
+  document.getElementById('mapKeyModal').style.display = 'flex';
+}
+function hideMapKeyModal() {
+  document.getElementById('mapKeyModal').style.display = 'none';
+}
+
+// Builds the "How the source heatmap works" modal content from the
+// translation dictionary, the same pattern buildHelpModalContent() uses --
+// so it stays in sync with the active language both when first opened and
+// if the user switches language while it's already open.
+function buildHeatMethodologyContent() {
+  const titleEl = document.getElementById('heatMethModalTitle');
+  const btnEl = document.getElementById('heatMethModalBtn');
+  if (titleEl) titleEl.textContent = t('heatMethTitle');
+  if (btnEl) btnEl.textContent = t('helpClose');
+
+  const contentEl = document.getElementById('heatMethModalContent');
+  if (!contentEl) return;
+  contentEl.innerHTML = `
+    <p>${t('heatMethIntro')}</p>
+    <ul style="padding-left: 18px; margin: 10px 0;">
+      <li style="margin-bottom:8px;">${t('heatMethLi1')}</li>
+      <li style="margin-bottom:8px;">${t('heatMethLi2')}</li>
+      <li style="margin-bottom:8px;">${t('heatMethLi3')}</li>
+      <li>${t('heatMethLi4')}</li>
+    </ul>
+    <p style="color: var(--text-secondary);">${t('heatMethFooter')}</p>
+  `;
+}
+
+// Builds the "Map key" modal content from the translation dictionary --
+// same pattern as buildHelpModalContent()/buildHeatMethodologyContent().
+// The illustrative SVGs/gradients themselves aren't language-dependent, so
+// only the surrounding labels and captions are pulled through t().
+function buildMapKeyModalContent() {
+  const titleEl = document.getElementById('mapKeyModalTitle');
+  const btnEl = document.getElementById('mapKeyModalBtn');
+  if (titleEl) titleEl.textContent = t('mapKeyTitle');
+  if (btnEl) btnEl.textContent = t('helpClose');
+
+  const contentEl = document.getElementById('mapKeyModalContent');
+  if (!contentEl) return;
+  contentEl.innerHTML = `
+    <div style="font-weight:600; margin-bottom:4px;">${t('mapKeyReportPinsTitle')}</div>
+    <p style="color:var(--text-secondary); margin-top:0;">${t('mapKeyReportPinsBody')}</p>
+
+    <div style="height:1px;background:var(--border-color);margin:12px 0;"></div>
+
+    <div style="font-weight:600; margin-bottom:6px;">${t('mapKeyWindTitle')}</div>
+    <div style="display:flex; align-items:center; gap:14px; margin-bottom:6px;">
+      <svg width="70" height="60" viewBox="0 0 70 60">
+        <circle cx="20" cy="30" r="11" fill="#a32222" stroke="#fff" stroke-width="2"/>
+        <line x1="20" y1="24" x2="20" y2="12" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
+        <polygon points="20,9 17,15 23,15" fill="#fff"/>
+        <circle cx="52" cy="30" r="11" fill="#a32222" stroke="#fff" stroke-width="2"/>
+        <line x1="52" y1="24" x2="52" y2="19" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
+        <polygon points="52,16 49.5,20.5 54.5,20.5" fill="#fff"/>
+      </svg>
+      <p style="color:var(--text-secondary); margin:0;">${t('mapKeyWindBody')}</p>
+    </div>
+
+    <div style="height:1px;background:var(--border-color);margin:12px 0;"></div>
+
+    <div style="font-weight:600; margin-bottom:6px;">${t('mapKeyTrailsTitle')}</div>
+    <svg width="100%" height="26" viewBox="0 0 300 26" preserveAspectRatio="none" style="display:block; margin-bottom:4px;">
+      <line x1="6" y1="13" x2="294" y2="13" stroke="#7a7a7a" stroke-linecap="round" stroke-dasharray="2,7">
+        <animate attributeName="stroke-width" values="1.5;5;1.5" dur="1s" repeatCount="indefinite"/>
+      </line>
+    </svg>
+    <p style="color:var(--text-secondary); margin:0 0 10px;">${t('mapKeyTrailsBody1')}</p>
+    <p style="color:var(--text-secondary); margin:0;">${t('mapKeyTrailsBody2')}</p>
+
+    <div style="height:1px;background:var(--border-color);margin:12px 0;"></div>
+
+    <div style="font-weight:600; margin-bottom:6px;">${t('mapKeySourceHeatTitle')}</div>
+    <div style="height:14px; border-radius:7px; margin-bottom:4px; background:linear-gradient(to right, #fff59d, #ffca28, #f57c00, #c41e27);"></div>
+    <p style="color:var(--text-secondary); margin:0 0 4px;">${t('mapKeySourceHeatBody')} <a href="#" onclick="showHeatMethodologyModal(); return false;">${t('mapKeyHowCalculated')}</a></p>
+
+    <div style="height:1px;background:var(--border-color);margin:12px 0;"></div>
+
+    <div style="font-weight:600; margin-bottom:6px;">${t('mapKeyTraceTitle')}</div>
+    <div style="height:14px; border-radius:7px; margin-bottom:4px; background:linear-gradient(to right, #8e24aa, #c41e27, #f57c00, #fff59d);"></div>
+    <p style="color:var(--text-secondary); margin:0;">${t('mapKeyTraceBody')}</p>
+
+    <div style="height:1px;background:var(--border-color);margin:12px 0;"></div>
+
+    <div style="font-weight:600; margin-bottom:6px;">${t('mapKeyStationsTitle')}</div>
+    <div style="display:flex; flex-wrap:wrap; gap:8px 14px; margin-bottom:2px;">
+      <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;background:#4CAF50;display:inline-block;transform:rotate(45deg);"></span><span style="color:var(--text-secondary);">Dobar (good)</span></span>
+      <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;background:#8BC34A;display:inline-block;transform:rotate(45deg);"></span><span style="color:var(--text-secondary);">Prihvatljiv (acceptable)</span></span>
+      <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;background:#FFC107;display:inline-block;transform:rotate(45deg);"></span><span style="color:var(--text-secondary);">Umeren (moderate)</span></span>
+      <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;background:#FF9800;display:inline-block;transform:rotate(45deg);"></span><span style="color:var(--text-secondary);">Zagađen (polluted)</span></span>
+      <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;background:#F44336;display:inline-block;transform:rotate(45deg);"></span><span style="color:var(--text-secondary);">Veoma zagađen (very polluted)</span></span>
+      <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;background:#9C27B0;display:inline-block;transform:rotate(45deg);"></span><span style="color:var(--text-secondary);">Izuzetno zagađen (extremely polluted)</span></span>
+    </div>
+    <p style="color:var(--text-secondary); margin:6px 0 0;">${t('mapKeyStationsBody')}</p>
+  `;
+}
+
+/* ═══════════════════════════════════════════════════
+   GLOBAL STATE DECLARATIONS
+═══════════════════════════════════════════════════ */
+let lastSyncTimestamp = new Date().toISOString();
+
+let lang = 'sr';
+let traceMode = false;
+let tracerMarker = null;
+let tracerVisualCircles = []; 
+let globalActiveData = [];
+
+let fp = null; 
+
+// Persists a flatpickr range selection to localStorage and restores it on
+// next load, so the date filter a user picked survives a page reload
+// instead of always resetting to the last-3-days default.
+function saveDateRange(storageKey, selectedDates) {
+  if (!selectedDates || selectedDates.length < 2) return;
+  try {
+    localStorage.setItem(storageKey, JSON.stringify([selectedDates[0].toISOString(), selectedDates[1].toISOString()]));
+  } catch (e) {}
+}
+function loadDateRange(storageKey) {
+  try {
+    const raw = localStorage.getItem(storageKey);
+    if (!raw) return null;
+    const [s, e] = JSON.parse(raw);
+    const dates = [new Date(s), new Date(e)];
+    if (isNaN(dates[0]) || isNaN(dates[1])) return null;
+    return dates;
+  } catch (e) { return null; }
+}
+// Independent flatpickr instance behind the on-map filter button — controls
+// only which report pins are rendered on the map. Kept separate from fp,
+// which now only scopes what the Settings CSV export buttons download.
+let mapFp = null;
+
+// How many hours of wind-trail history to DRAW on the map (default 6h) —
+// purely a rendering setting. Calculations (nearest-station matching, the
+// tracer) always use up to the full TRAIL_WINDOW_HOURS regardless of this.
+function getTrailDisplayHours() {
+  try {
+    const saved = parseInt(localStorage.getItem('ttt_trail_display_hours'), 10);
+    if (saved === 3 || saved === 6 || saved === 12) return saved;
+  } catch (e) {}
+  return 6;
+}
+function setTrailDisplayHours(hours) {
+  try { localStorage.setItem('ttt_trail_display_hours', String(hours)); } catch (e) {}
+  document.querySelectorAll('#trailHoursSegment .theme-segment-btn').forEach(b => {
+    b.classList.toggle('active', b.getAttribute('onclick') === `setTrailDisplayHours(${hours})`);
+  });
+  loadPinsByWindow();
+}
+
+// Historical wind-trail splines (the dashed lines + their tap targets) —
+// off by default, since most people just want to see the pins.
+let splinesVisible = (function () {
+  try { return localStorage.getItem('ttt_splines_visible') === 'true'; } catch (e) { return false; }
+})();
+let traceHeatmapEnabled = (function () {
+  try { return localStorage.getItem('ttt_trace_heatmap_enabled') === 'true'; } catch (e) { return false; }
+})();
+function applySplineVisibility() {
+  const pane = map.getPane('splinePane');
+  // Trace Possible Source relies on the trail being visible to mean
+  // anything -- always show it while actively tracing, regardless of the
+  // general splines-off-by-default setting, which only governs normal
+  // browsing.
+  if (pane) pane.style.display = (splinesVisible || traceMode) ? '' : 'none';
+}
+function setSplineVisibility(visible) {
+  splinesVisible = !!visible;
+  try { localStorage.setItem('ttt_splines_visible', String(splinesVisible)); } catch (e) {}
+  applySplineVisibility();
+  const toggle = document.getElementById('splineVisibilityToggle');
+  if (toggle) toggle.checked = splinesVisible;
+}
+
+// lastTraceTracerCoords/lastTraceMatchedReports/traceHeatLayer/
+// renderTraceHeatLayer are declared further down alongside
+// filterPinsBySourceTrajectory (their natural home) -- fine to reference
+// them here since this function only runs on a user click, well after the
+// whole script (and those declarations) has finished loading.
+function setTraceHeatmapEnabled(enabled) {
+  traceHeatmapEnabled = !!enabled;
+  try { localStorage.setItem('ttt_trace_heatmap_enabled', String(traceHeatmapEnabled)); } catch (e) {}
+  const toggle = document.getElementById('traceHeatmapToggle');
+  if (toggle) toggle.checked = traceHeatmapEnabled;
+
+  if (!traceHeatmapEnabled) {
+    if (traceHeatLayer && map.hasLayer(traceHeatLayer)) map.removeLayer(traceHeatLayer);
+    return;
+  }
+  // Turned on mid-trace: show it immediately for whatever's already traced,
+  // without requiring another map click.
+  if (traceMode && lastTraceTracerCoords) {
+    renderTraceHeatLayer(lastTraceTracerCoords, lastTraceMatchedReports);
+  }
+}
+
+const weatherCache = {};
+const windTrailCache = {};
+
+// In-flight promise cache so concurrent requests for the SAME location+hour
+// (e.g. several reports near each other, all being drawn at once) share one
+// network request instead of each firing its own — this alone removes most
+// of the duplicate traffic that was tripping Open-Meteo's rate limit.
+const weatherFetchInFlight = {};
+
+// Simple concurrency limiter for Open-Meteo requests. generateAllBackgroundTrails
+// used to Promise.all() every visible report's historic-wind fetch at once —
+// fine for a handful of pins, but with dozens open at the same time Open-Meteo
+// started returning 429 Too Many Requests, which silently degraded into "no
+// wind data" for whichever reports lost the race (and starved out unrelated
+// foreground fetches, like the wizard's auto-fill, that happened to run at the
+// same time). Routing every Open-Meteo call through this queue caps how many
+// are ever in flight at once, so the whole batch succeeds instead of piling up
+// and colliding into rate-limiting.
+const OPEN_METEO_MAX_CONCURRENT = 3;
+let openMeteoActive = 0;
+const openMeteoQueue = [];
+function runWithOpenMeteoLimit(taskFn) {
+  return new Promise((resolve, reject) => {
+    const run = () => {
+      openMeteoActive++;
+      Promise.resolve().then(taskFn).then(resolve, reject).finally(() => {
+        openMeteoActive--;
+        if (openMeteoQueue.length) openMeteoQueue.shift()();
+      });
+    };
+    if (openMeteoActive < OPEN_METEO_MAX_CONCURRENT) run();
+    else openMeteoQueue.push(run);
+  });
+}
+
+// How many hours of historical wind data to pull when building the spline
+// trail (and the live backtrack). Change this one number to load a longer
+// or shorter trail — everything below derives from it, including the
+// "settled data" gate (window + 1h buffer) that decides when a report is
+// old enough for Open-Meteo's data to be considered final.
+const TRAIL_WINDOW_HOURS = 12;
+const TRAIL_SETTLED_GATE_HOURS = TRAIL_WINDOW_HOURS + 1;
+
+// Minimum age before we even attempt to build a spline for a report.
+// Open-Meteo's forecast hourly data can lag ~1h behind real time, so a
+// report younger than this simply has nothing to draw a trail from yet.
+// Once a report clears this, we build a trail from whatever hours ARE
+// available (see availableHours below) and it keeps growing, hour by
+// hour, up to the full TRAIL_WINDOW_HOURS.
+const TRAIL_MIN_HOURS = 1;
+
+// Shared by filterPinsBySourceTrajectory (does this report's trail match
+// the tracer at all?) and generateAllBackgroundTrails (how far along the
+// trail to draw before cutting it off, once it does match) -- kept as one
+// pair of constants so the two can't silently drift out of sync.
+// A trail point counts as "reaching" the tracer if it comes within
+// BASE_RADIUS_KM, growing by DISPERSION_RATE_KM_H per hour further back
+// (further back = more time for the plume to have spread/wandered, so a
+// looser radius is allowed there).
+const TRACER_BASE_RADIUS_KM = 2.0;
+const TRACER_DISPERSION_RATE_KM_H = 2.0;
+
+// How close (km) a station has to come to any point along a report's
+// backtracked wind trail to count as "passed through" for the popup's
+// station list. Measured as perpendicular distance to the trail's actual
+// path (interpolated between hourly points, not just distance to the
+// hourly vertices themselves) — see distanceToTrailPolyline() — so even a
+// tight radius like this still catches a station the path swings close to
+// between two hourly steps.
+const STATION_TRAIL_MATCH_RADIUS_KM = 5;
+
+// A station whose CLOSEST approach to the trail happens this early —
+// meaning the wind has travelled less than this many km from the report
+// itself when it comes near the station — is really just "near the
+// incident", not somewhere the wind demonstrably carried anything there.
+// Without this, a station sitting a few km from the report in a totally
+// different direction than the wind was actually blowing could still get
+// falsely matched, since the trail always STARTS at the report's own
+// location and a nearby station is "close to the trail" there by
+// definition even though the wind never carried anything toward it.
+const MIN_TRAIL_MATCH_PATH_KM = 1.0;
+
+// If the standard TRAIL_WINDOW_HOURS trail doesn't pass within
+// STATION_TRAIL_MATCH_RADIUS_KM of any station, the wind may simply have
+// come from further away than that window covers (e.g. a report near Novi
+// Sad whose wind actually originated south past Obrenovac, ~90km away) —
+// so station MATCHING (never the map's drawn trail, which stays a fixed
+// TRAIL_WINDOW_HOURS) retries with progressively longer backward windows
+// before giving up and falling back to plain-nearest. Purely an in-memory
+// lookup (see buildExtendedRawTrailForStationMatch) -- never touches the
+// report's backfilled fields or the persisted historic_wind_json cache
+// that the standard window uses.
+const STATION_MATCH_EXTENDED_HOURS_STEPS = [24, 48];
+
+// Window used to search for a single downwind "next station" -- the one
+// the plume would reach just after passing the report. Only the single
+// closest match within this window is kept (see findStationMatchesForReport)
+// so the station list stays dominated by where the wind came FROM
+// (upwind/backward matches) rather than everywhere it might still be
+// going; the km cap stays generous (rather than the short 5km used for the
+// visual forward-tail elsewhere) purely so that one next-station lookup
+// isn't missed just because the nearest downwind station happens to be far.
+const STATION_MATCH_FORWARD_HOURS = TRAIL_WINDOW_HOURS;
+const STATION_MATCH_FORWARD_MAX_KM = 300;
+
+/* ═══════════════════════════════════════════════════
+   SUPABASE
+═══════════════════════════════════════════════════ */
+const SUPABASE_URL = 'https://fnkqmwweljsupbmerbkh.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZua3Ftd3dlbGpzdXBibWVyYmtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE3OTcwODUsImV4cCI6MjA5NzM3MzA4NX0.eX3mxnSpGmJ6Ebw7Y4F_jHiJarPH4ri9WNYXwmLi16I';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+/* ═══════════════════════════════════════════════════
+   i18n
+═══════════════════════════════════════════════════ */
+const T = {
+  subtitle:     { en:'Community Air Reporting Network',  sr:'Mreža za prijavu kvaliteta vazduha' },
+  reportCount:  { en:'Reports',                          sr:'Prijava' },
+  reportCount1: { en:'Report',                           sr:'Prijava' },
+  ofCount:      { en:'of',                                sr:'od' },
+  reportBtn:    { en:'REPORT BAD AIR',                   sr:'PRIJAVI LOŠ VAZDUH' },
+  reportBtnCleanAir: { en:'REPORT CLEAN AIR',             sr:'PRIJAVI ČIST VAZDUH' },
+  csvLabel:     { en:'CSV',                              sr:'CSV' },
+  stationCsvLabel: { en:'Stations CSV',                  sr:'CSV stanica' },
+  noStations:   { en:'No station data in this view',    sr:'Nema podataka stanica u ovom prikazu' },
+  commentPH:    { en:'Optional notes...',                sr:'Opciona napomena...' },
+  waitGps:      { en:'Waiting for GPS...',               sr:'Čekanje GPS-a...' },
+  
+  submitted:    { en:'Report submitted.',                sr:'Prijava uspešna.' },
+  popupInt:     { en:'Intensity',                        sr:'Intenzitet' },
+  popupDir:     { en:'Reported Wind Direction',                        sr:'Prijavljen Smer Vetra' },
+
+  popupDuration: { en: 'Duration',                      sr: 'Trajanje' },
+
+  historical: { en: 'Historical Data', sr: 'Istorijski Podaci' },
+
+  aqStationLabel: { en: 'Air Quality Station', sr: 'Stanica za kvalitet vazduha' },
+  aqUpdated:      { en: 'Updated',             sr: 'Ažurirano' },
+  aqNoData:       { en: 'No recent data',      sr: 'Nema skorašnjih podataka' },
+  aqApprox:       { en: 'Approximate location',sr: 'Približna lokacija' },
+
+  nearestStation:     { en: 'Nearest Station where wind has passed', sr: 'Najbliža stanica kroz koju je vetar prošao' },
+  stationsAlongTrail: { en: 'Stations where wind has passed', sr: 'Stanice kroz koje je vetar prošao' },
+  nearestStationDist: { en: 'away',                      sr: 'udaljena' },
+  windTravelTime:      { en: 'Wind travel time',           sr: 'Vreme putovanja vetra' },
+  windTravelDist:      { en: 'Wind travel distance',       sr: 'Pređena razdaljina vetra' },
+  windArrivedAfter:    { en: 'Wind reached here after',    sr: 'Vetar je ovde stigao posle' },
+  windUpwindTag:       { en: 'upwind',                     sr: 'uz vetar' },
+  windDownwindTag:     { en: 'downwind',                   sr: 'niz vetar' },
+  stationDataAsOf:     { en: 'Station data as of',         sr: 'Podaci stanice od' },
+  stationDataLoading:  { en: 'Loading station data...',    sr: 'Učitavanje podataka stanice...' },
+  stationNoneNearby:   { en: 'No stations nearby',         sr: 'Nema stanica u blizini' },
+  seeAllStations:      { en: 'See all stations',           sr: 'Prikaži sve stanice' },
+  seeStationDetails:   { en: 'See station details',        sr: 'Prikaži detalje stanice' },
+  avgAtReportTime:     { en: 'Average at time & place reported', sr: 'Prosek u vreme i na mestu prijave' },
+  pullToRefresh:       { en: 'Pull to refresh', sr: 'Povucite za osvežavanje' },
+  releaseToRefresh:    { en: 'Release to refresh', sr: 'Otpustite za osvežavanje' },
+  refreshing:          { en: 'Refreshing…', sr: 'Osvežavanje…' },
+
+  
+  hours:         { en: 'h',                         sr: 'h' },
+  timeFilter:   { en:'Time Window Filter',               sr:'Filter vremenskog prozora' },
+  catPH:        { en:'Select smell…',                    sr:'Izaberi miris…' },
+  intPH:        { en:'Intensity…',                       sr:'Intenzitet…' },
+  gpsTitle:     { en:'GPS Not Enabled',                  sr:'GPS nije uključen' },
+  gpsBody:      { en:'Location access is turned off. To report bad air at your location, enable it in your settings.', sr:'Pristup lokaciji je isključen. Da biste prijavili loš vazduh, omogućite ga u podešavanjima.' },
+  gpsAlt:       { 
+    en:'Or use the <img src="icons/pin.png" alt="Pin" style="width:18px;height:18px;vertical-align:middle;"> button on the map to drop a pin manually.', 
+    sr:'Ili koristite dugme <img src="icons/pin.png" alt="Pin" style="width:18px;height:18px;vertical-align:middle;"> na karti da ručno postavite pin.' },
+  gpsBtn:       { en:'Got it',                           sr:'Razumem' },
+  noReports:    { en:'No reports in current map view.',  sr:'Nema prijava u vidljivoj oblasti.' },
+  calendarPH:   { en:'Select date range...',            sr:'Izaberi vremenski opseg...' },
+  helpTitle:    { en:'How to use TraceTheToxin',         sr:'Kako se koristi TraceTheToxin' },
+  helpClose:    { en:'Close',                            sr:'Zatvori' },
+  helpStep1:    { en:'1. Enable GPS or Add a Pin:',      sr:'1. Uključite GPS ili dodajte pin:' },
+  helpStep1Body:{ 
+    en:'Turn on your device GPS so the app can find you, or tap the pin button <img src="icons/pin.png" alt="Pin" style="width:18px;height:18px;vertical-align:middle;"> on the map to manually drop your location. A location is required before you can submit a report.', 
+    sr:'Uključite GPS na uređaju kako bi aplikacija mogla da vas pronađe, ili pritisnite dugme <img src="icons/pin.png" alt="Pin" style="width:18px;height:18px;vertical-align:middle;"> na mapi da ručno postavite vašu lokaciju. Lokacija je obavezna pre nego što možete da pošaljete prijavu.' },
+  helpStep2:    { en:'2. Check the Wind Direction:',     sr:'2. Proverite smer vetra:' },
+  helpStep2Body:{ en:'Wind direction is now filled in automatically for you using live wind data. If it looks wrong, you can drag the compass, type a value directly, or tap the Windfinder link to check it yourself.', sr:'Smer vetra se sada automatski popunjava na osnovu podataka uživo. Ako izgleda netačno, možete prevući kompas, uneti vrednost ručno, ili kliknuti na Windfinder link da proverite sami.' },
+  windfinderCheckTitle:{ en:'Open Windfinder in a new tab to check wind direction yourself', sr:'Otvori Windfinder u novom tabu da sami proverite smer vetra' },
+  windAppCheckTitle:{ en:'Opens in a new tab, centered on your current report location', sr:'Otvara se u novom tabu, centrirano na vašoj trenutnoj lokaciji prijave' },
+  windAutoFilledHint:{ en:'Auto-filled from live wind data — change it if this doesn\u2019t look right.', sr:'Automatski popunjeno na osnovu podataka o vetru uživo \u2014 promenite ako ne izgleda tačno.' },
+  helpStep3:    { en:'3. Report Bad Air:',               sr:'3. Prijavite loš vazduh:' },
+  helpStep3Body:{ en:'Tap the Report Bad Air button and choose the type of smell you\'re noticing.', sr:'Pritisnite dugme za prijavu lošeg vazduha i izaberite vrstu mirisa koji osećate.' },
+  helpStep4:    { en:'4. Follow the Steps and Submit:',  sr:'4. Pratite korake i pošaljite:' },
+  helpStep4Body:{ en:'Set the intensity, fill in the time, duration, and any comments, then tap the "REPORT BAD AIR" button to submit.', sr:'Podesite intenzitet, unesite vreme, trajanje i eventualni komentar, a zatim pritisnite dugme "PRIJAVI LOŠ VAZDUH" da pošaljete prijavu.' },
+  windDirPH:    { en:'Wind Dir (0-360)', sr:'Smer Vetra (0-360)' },
+  durationPH:   { en:'Duration (1-24h)', sr:'Trajanje (1-24h)' },
+
+  wizStepLabel:      { en:'Step',                        sr:'Korak' },
+  wizCategoryTitle:  { en:"What's the smell?",           sr:'Kakav je miris?' },
+  wizIntensityTitle: { en:'How intense is it?',          sr:'Koliko je intenzivno?' },
+  wizDetailsTitle:   { en:'Add the details',             sr:'Dodajte detalje' },
+  wizContinue:       { en:'Continue',                    sr:'Nastavi' },
+  wizTimeLabel:      { en:'Time noticed',                sr:'Vreme zapažanja' },
+  wizNoLocationHint: { en:'Waiting for GPS — or drop a pin manually on the map.', sr:'Čekanje GPS-a — ili ručno postavite pin na mapi.' },
+  cooldownActive:    { en:'You can submit one report every 30 minutes from this device. Please try again in {n} min.', sr:'Sa ovog uređaja možete poslati jednu prijavu na svakih 30 minuta. Pokušajte ponovo za {n} min.' },
+
+  settingsTitle:     { en:'Settings',                    sr:'Podešavanja' },
+  helpSectionTitle:  { en:'Help',                        sr:'Pomoć' },
+  settingsHelpBtn:   { en:'How to use TraceTheToxin',    sr:'Kako se koristi TraceTheToxin' },
+  languageSectionTitle: { en:'Language',                 sr:'Jezik' },
+  langAutoHint:      { en:"We'll set the language based on your location, falling back to your device/browser settings.", sr:'Jezik ćemo podesiti na osnovu vaše lokacije, a u suprotnom prema podešavanjima vašeg uređaja/pregledača.' },
+  langBtnAutoLabel:  { en:'Auto',                        sr:'Auto' },
+  themeSectionTitle: { en:'Theme',                       sr:'Tema' },
+  themeAutoHint:     { en:"Auto follows your device's light/dark setting. Smart adapts to ambient light where available, otherwise local time.", sr:'Auto prati podešavanje svetle/tamne teme vašeg uređaja. Pametna se prilagođava osvetljenju okoline gde je dostupno, inače lokalnom vremenu.' },
+  themeBtnLight:     { en:'Light',                       sr:'Svetla' },
+  themeBtnDark:      { en:'Dark',                        sr:'Tamna' },
+  themeBtnAuto:      { en:'Auto',                        sr:'Auto' },
+  themeBtnSmart:     { en:'Smart',                       sr:'Pametna' },
+
+  trailHoursSectionTitle: { en:'Wind Trail Length', sr:'Dužina traga vetra' },
+  trailHoursHint: { en:"How far back the wind trail is drawn on the map. Nearest-station matching always uses up to 12h of history regardless of this setting.", sr:'Koliko unazad se crta trag vetra na mapi. Poklapanje sa najbližom stanicom uvek koristi do 12h istorije bez obzira na ovo podešavanje.' },
+
+  splineVisibilityLabel: { en:'Show historical wind trails', sr:'Prikaži istorijske tragove vetra' },
+  splineVisibilityHint:  { en:'Show the dashed wind-trail lines behind each pin. Off by default to keep the map uncluttered.', sr:'Prikaži isprekidane linije traga vetra iza svake oznake. Podrazumevano isključeno radi preglednosti mape.' },
+
+  settingsMapKeyBtn: { en:'Map key', sr:'Legenda mape' },
+
+  traceHeatmapLabel: { en:'Show heatmap when tracing possible source', sr:'Prikaži toplotnu mapu prilikom traženja mogućeg izvora' },
+  traceHeatmapHint:  {
+    en:'While using Trace Possible Source: purple at the tracer pin, fading to red then orange toward each matched report, then a yellow tail continuing ~5km further along the wind past the report -- brightening back toward orange wherever it crosses another report\'s trail.',
+    sr:'Prilikom korišćenja funkcije Traži mogući izvor: ljubičasta boja kod oznake za traženje, prelazi u crvenu pa narandžastu ka svakoj podudarnoj prijavi, zatim žuti rep koji se nastavlja ~5km dalje niz vetar posle prijave -- ponovo posvetljava ka narandžastoj gde god preseca trag druge prijave.' },
+
+  sourceHeatSectionTitle: { en:'Source Heatmap', sr:'Toplotna mapa izvora' },
+  sourceHeatSectionBody:  {
+    en:'The flame button shows a plain concentration heatmap: one weighted point per report, so brighter/redder areas simply mean more (and stronger, more recent) reports nearby.',
+    sr:'Dugme plamen prikazuje jednostavnu toplotnu mapu koncentracije: jedna ponderisana tačka po prijavi, tako da svetlije/crvenije oblasti jednostavno znače više (i jačih, skorijih) prijava u blizini.' },
+
+  heatMethTitle: { en:'How the source heatmap works', sr:'Kako funkcioniše toplotna mapa izvora' },
+  heatMethIntro: {
+    en:'The flame button shows where reports are concentrated -- it\'s not a wind or dispersion model, just a weighted density map of active reports:',
+    sr:'Dugme plamen prikazuje gde su prijave koncentrisane -- to nije model vetra ili disperzije, već samo ponderisana mapa gustine aktivnih prijava:' },
+  heatMethLi1: { en:'Every active report contributes one point at its own location.', sr:'Svaka aktivna prijava doprinosi jednom tačkom na svojoj lokaciji.' },
+  heatMethLi2: {
+    en:'<strong>Intensity &amp; time-decay</strong> weight stronger, more recent reports more heavily than older or milder ones.',
+    sr:'<strong>Jačina i vremensko opadanje</strong> daju veću težinu jačim i skorijim prijavama u odnosu na starije ili blaže.' },
+  heatMethLi3: {
+    en:'<strong>Station corroboration</strong> gives a small boost where the nearest air-quality station measured elevated pollution around the same time as the report.',
+    sr:'<strong>Potvrda stanice</strong> daje mali dodatak tamo gde je najbliža stanica za kvalitet vazduha izmerila povišeno zagađenje otprilike u vreme prijave.' },
+  heatMethLi4: {
+    en:'Overlapping reports simply add together, so areas with more (and stronger) reports read brighter and redder.',
+    sr:'Preklapajuće prijave se jednostavno sabiraju, tako da područja sa više (i jačih) prijava izgledaju svetlije i crvenije.' },
+  heatMethFooter: {
+    en:'Treat it as a quick visual summary of where reports are clustering, not a verified pollution-source location.',
+    sr:'Posmatrajte ovo kao brzi vizuelni prikaz gde se prijave grupišu, a ne kao potvrđenu lokaciju izvora zagađenja.' },
+
+  mapKeyTitle: { en:'Map key', sr:'Legenda mape' },
+  mapKeyReportPinsTitle: { en:'Report pins', sr:'Oznake prijava' },
+  mapKeyReportPinsBody: {
+    en:'Fill color = how long ago the report was made; the small ring accent = category. Full colors for both are in the bar at the bottom of the map.',
+    sr:'Boja popune = koliko je vremena prošlo od prijave; mali prsten oko oznake = kategorija. Pune boje za oboje se nalaze u traci na dnu mape.' },
+  mapKeyWindTitle: { en:'Wind direction &amp; speed', sr:'Smer i brzina vetra' },
+  mapKeyWindBody: {
+    en:'Arrow points where the wind was blowing toward at the time of the report. <strong>Longer arrow = stronger wind</strong> (left: strong, right: calm).',
+    sr:'Strelica pokazuje u kom pravcu je vetar duvao u trenutku prijave. <strong>Duža strelica = jači vetar</strong> (levo: jak, desno: slab).' },
+  mapKeyTrailsTitle: { en:'Wind trails', sr:'Tragovi vetra' },
+  mapKeyTrailsBody1: {
+    en:'Each dashed trail is that report\'s estimated wind history. <strong>Thicker sections = faster wind</strong> at that point in time; thinner = calmer.',
+    sr:'Svaka isprekidana linija predstavlja procenjenu istoriju vetra za tu prijavu. <strong>Deblji delovi = brži vetar</strong> u tom trenutku; tanji = slabiji.' },
+  mapKeyTrailsBody2: {
+    en:'Tap a report to spotlight its trail -- every other trail and pin dims so it\'s easy to follow. Close the popup (or tap elsewhere) to bring everything back.',
+    sr:'Dodirnite prijavu da istaknete njen trag -- svi ostali tragovi i oznake se zatamne radi lakšeg praćenja. Zatvorite iskačući prozor (ili dodirnite negde drugde) da vratite sve na prikaz.' },
+  mapKeySourceHeatTitle: { en:'Source heatmap (flame button)', sr:'Toplotna mapa izvora (dugme plamen)' },
+  mapKeySourceHeatBody: {
+    en:'Brighter/redder = more (and stronger, more recent) reports clustered in that area.',
+    sr:'Svetlije/crvenije = više (i jačih, skorijih) prijava grupisanih u tom području.' },
+  mapKeyHowCalculated: { en:'How it\'s calculated', sr:'Kako se izračunava' },
+  mapKeyTraceTitle: { en:'Trace Possible Source', sr:'Traži mogući izvor' },
+  mapKeyTraceBody: {
+    en:'Purple at the tracer pin, fading to red then orange as each matched report\'s trail arrives, then a yellow tail continuing ~1h further along the wind past the report.',
+    sr:'Ljubičasta boja kod oznake za traženje, prelazi u crvenu pa narandžastu kako pristižu tragovi podudarnih prijava, zatim žuti rep koji se nastavlja ~1č dalje niz vetar posle prijave.' },
+  mapKeyStationsTitle: { en:'Air-quality stations', sr:'Stanice za kvalitet vazduha' },
+  mapKeyStationsBody: {
+    en:'Diamond markers are official government air-quality stations, colored by their current reading.',
+    sr:'Dijamantske oznake predstavljaju zvanične državne stanice za kvalitet vazduha, obojene prema trenutnom očitavanju.' },
+};
+
+function t(k){ return T[k]?.[lang] ?? k; }
+
+function guessLangFromBrowser(){
+  const browserLang = (navigator.language || 'en').slice(0, 2).toLowerCase();
+  return browserLang === 'sr' ? 'sr' : 'en';
+}
+
+// Applies a language resolved by GPS/reverse-geocoding, but only if the
+// user hasn't since switched away from Auto mode (e.g. the lookup was
+// still in flight when they tapped EN/SR manually).
+function applyAutoLangResult(newLang){
+  let currentMode = 'auto';
+  try { currentMode = localStorage.getItem('ttt_lang_mode') || 'auto'; } catch (e) {}
+  if (currentMode !== 'auto' || lang === newLang) return;
+  lang = newLang;
+  applyLang();
+}
+
+function resolveLangFromCoords(lat, lon){
+  fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=3&addressdetails=1`)
+    .then(r => r.json())
+    .then(data => {
+      const cc = data && data.address && data.address.country_code;
+      if (cc) applyAutoLangResult(cc === 'rs' ? 'sr' : 'en');
+    })
+    .catch(() => { /* reverse-geocode failed — browser-language guess stands */ });
+}
+
+// Auto language: start from the browser locale immediately so the UI
+// never waits on GPS, then refine using location where we can, since
+// that's a better signal than browser locale (e.g. a device set to
+// English being used in Serbia, or vice versa).
+function detectAutoLang(){
+  lang = guessLangFromBrowser();
+
+  if (userCoords) {
+    resolveLangFromCoords(userCoords.lat, userCoords.lon);
+  } else if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      pos => resolveLangFromCoords(pos.coords.latitude, pos.coords.longitude),
+      () => { /* GPS denied/unavailable — browser-language guess stands */ },
+      { timeout: 8000 }
     );
-  } catch (err) {
-    return new Response(`Collector error: ${err}`, { status: 500 });
+  }
+}
+
+function setLang(l){
+  if (l === 'auto') {
+    detectAutoLang();
+  } else {
+    lang = l;
+  }
+  try { localStorage.setItem('ttt_lang_mode', l); } catch (e) {}
+
+  document.querySelectorAll('#langSegment .theme-segment-btn').forEach(b=>{
+    b.classList.toggle('active', b.getAttribute('onclick') && b.getAttribute('onclick').includes("'"+l+"'"));
+  });
+  applyLang();
+  
+  if (fp) {
+    const savedDates = fp.selectedDates;
+    fp.destroy();
+    initCalendarFilter(savedDates);
+  }
+  if (mapFp) {
+    const savedMapDates = mapFp.selectedDates;
+    mapFp.destroy();
+    initMapCalendarFilter(savedMapDates);
+    loadPinsByWindow();
+  }
+}
+
+function applyLang(){
+  const el = id => document.getElementById(id);
+
+  if (el('subtitle'))         el('subtitle').textContent = t('subtitle');
+  if (el('csvLabel'))         el('csvLabel').textContent = t('csvLabel');
+  if (el('stationCsvLabel'))  el('stationCsvLabel').textContent = t('stationCsvLabel');
+  if (el('filterTitleLabel')) el('filterTitleLabel').textContent = t('timeFilter');
+  if (el('dateRangePicker'))  el('dateRangePicker').placeholder = t('calendarPH');
+
+  if (el('settingsModalTitle')) el('settingsModalTitle').textContent = t('settingsTitle');
+  if (el('helpSectionTitle'))   el('helpSectionTitle').textContent = t('helpSectionTitle');
+  if (el('settingsHelpBtn'))    el('settingsHelpBtn').innerHTML = `<img class="icon-img icon-img-inline" src="icons/help.png" alt=""> ${t('settingsHelpBtn')}`;
+  if (el('settingsMapKeyBtn'))  el('settingsMapKeyBtn').innerHTML = `<svg class="icon-img-inline" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin:0 4px -3px 0;flex-shrink:0;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="10.5" x2="12" y2="16.5"/><circle cx="12" cy="7.2" r="1.15" fill="currentColor" stroke="none"/></svg> ${t('settingsMapKeyBtn')}`;
+  if (el('languageSectionTitle')) el('languageSectionTitle').textContent = t('languageSectionTitle');
+  if (el('langAutoHint'))       el('langAutoHint').textContent = t('langAutoHint');
+  if (el('langBtnAutoLabel'))   el('langBtnAutoLabel').textContent = t('langBtnAutoLabel');
+  if (el('themeSectionTitle'))  el('themeSectionTitle').textContent = t('themeSectionTitle');
+  if (el('themeAutoHint'))      el('themeAutoHint').textContent = t('themeAutoHint');
+  if (el('themeBtnLight'))      el('themeBtnLight').textContent = t('themeBtnLight');
+  if (el('themeBtnDark'))       el('themeBtnDark').textContent = t('themeBtnDark');
+  if (el('themeBtnAuto'))       el('themeBtnAuto').textContent = t('themeBtnAuto');
+  if (el('themeBtnSmart'))      el('themeBtnSmart').textContent = t('themeBtnSmart');
+  if (el('trailHoursSectionTitle')) el('trailHoursSectionTitle').textContent = t('trailHoursSectionTitle');
+  if (el('trailHoursHint'))         el('trailHoursHint').textContent = t('trailHoursHint');
+  if (el('splineVisibilityLabel')) el('splineVisibilityLabel').textContent = t('splineVisibilityLabel');
+  if (el('splineVisibilityHint'))  el('splineVisibilityHint').textContent = t('splineVisibilityHint');
+  if (el('traceHeatmapLabel'))     el('traceHeatmapLabel').textContent = t('traceHeatmapLabel');
+  if (el('traceHeatmapHint'))      el('traceHeatmapHint').textContent = t('traceHeatmapHint');
+  if (el('sourceHeatSectionTitle')) el('sourceHeatSectionTitle').textContent = t('sourceHeatSectionTitle');
+  if (el('sourceHeatSectionBody'))  el('sourceHeatSectionBody').textContent = t('sourceHeatSectionBody');
+  if (el('sourceHeatMethBtn'))      el('sourceHeatMethBtn').textContent = t('heatMethTitle');
+  if (el('pullRefreshLabel'))      el('pullRefreshLabel').textContent = t('pullToRefresh');
+  if (lastKnownReportCount !== null) updateReportCountUI(lastKnownReportCount, lastKnownReportTotal);
+
+  // Only re-render the active wizard step if the wizard is currently open,
+  // since its inputs (category tiles, comment field, etc.) are rebuilt
+  // fresh from scratch each time a step renders.
+  const wiz = el('reportWizard');
+  if (wiz && wiz.style.display !== 'none') renderWizStep();
+
+  document.querySelectorAll('.leg').forEach(el=>{
+    el.textContent = el.dataset[lang] || el.dataset.en;
+  });
+
+  const gm = document.getElementById('gpsModal');
+  if(gm && gm.style.display!=='none') updateGpsModalText();
+
+  const hmm = document.getElementById('heatMethodologyModal');
+  if (hmm && hmm.style.display !== 'none') buildHeatMethodologyContent();
+
+  const mkm = document.getElementById('mapKeyModal');
+  if (mkm && mkm.style.display !== 'none') buildMapKeyModalContent();
+
+  buildHelpModalContent();
+}
+
+/* ═══════════════════════════════════════════════════
+   HELP INSTRUCTION POPUP MODAL
+═══════════════════════════════════════════════════ */
+function showHelpModal() {
+  buildHelpModalContent();
+  document.getElementById('helpModal').style.display = 'flex';
+}
+function hideHelpModal() {
+  document.getElementById('helpModal').style.display = 'none';
+}
+
+function buildHelpModalContent() {
+  document.getElementById('helpModalTitle').textContent = t('helpTitle');
+  document.getElementById('helpModalBtn').textContent = t('helpClose');
+
+  const contentEl = document.getElementById('helpModalContent');
+  
+  contentEl.innerHTML = `
+    <div style="text-align: left; font-size: 13px; line-height: 1.6; display: flex; flex-direction: column; gap: 12px; margin-top: 10px;">
+      <p><strong>${t('helpStep1')}</strong> ${t('helpStep1Body')}</p>
+      <p><strong>${t('helpStep2')}</strong> ${t('helpStep2Body')}</p>
+      <div style="background: rgba(245, 166, 35, 0.1); border-left: 3px solid #f5a623; padding: 10px 12px; border-radius: 4px;">
+        <strong>${t('helpStep3')}</strong> ${t('helpStep3Body')}
+      </div>
+      <p><strong>${t('helpStep4')}</strong> ${t('helpStep4Body')}</p>
+    </div>
+  `;
+}
+
+/* ═══════════════════════════════════════════════════
+   CALENDAR POPUP SETUP (FLATPICKR)
+═══════════════════════════════════════════════════ */
+// Settings' date-range filter — scopes ONLY what the two CSV export buttons
+// download. Independent from the map filter below; doesn't touch rendering.
+function initCalendarFilter(optionalDefaultDates) {
+  let initialDates = optionalDefaultDates || loadDateRange('ttt_csv_filter_dates');
+  
+  if (!initialDates || initialDates.length === 0) {
+    const defaultStart = new Date();
+    defaultStart.setDate(defaultStart.getDate() - 3); 
+    const defaultEnd = new Date();
+    initialDates = [defaultStart, defaultEnd];
+  }
+
+  fp = flatpickr("#dateRangePicker", {
+    mode: "range",
+    theme: "dark",
+    dateFormat: "d.m.Y", 
+    locale: lang === 'sr' ? flatpickr.l10ns.sr : 'default',
+    defaultDate: initialDates,
+    onClose: function(selectedDates) {
+      saveDateRange('ttt_csv_filter_dates', selectedDates);
+    }
+  });
+}
+
+// On-map filter, opened via the round filter button (category-filter.png
+// icon). Scopes ONLY which report pins are rendered on the map — entirely
+// independent from the Settings CSV filter above.
+// Intentionally NOT persisted to localStorage — always opens defaulted to
+// the last 7 days, regardless of what the user picked in a previous session.
+function initMapCalendarFilter(optionalDefaultDates) {
+  let initialDates = optionalDefaultDates;
+
+  if (!initialDates || initialDates.length === 0) {
+    const defaultStart = new Date();
+    defaultStart.setDate(defaultStart.getDate() - 7);
+    const defaultEnd = new Date();
+    initialDates = [defaultStart, defaultEnd];
+  }
+
+  mapFp = flatpickr("#mapDateRangePicker", {
+    mode: "range",
+    theme: "dark",
+    dateFormat: "d.m.Y",
+    locale: lang === 'sr' ? flatpickr.l10ns.sr : 'default',
+    defaultDate: initialDates,
+    positionElement: document.getElementById('mapFilterBtn'),
+    onClose: async function(selectedDates) {
+      if (selectedDates.length === 2) {
+        await loadPinsByWindow();
+
+        if (traceMode && tracerMarker) {
+          // getLatLng() returns {lat, lng} (Leaflet's own property name), but
+          // filterPinsBySourceTrajectory expects {lat, lon} like every other
+          // coords object in this app -- passing it straight through left
+          // .lon undefined and crashed L.circle() downstream.
+          const ll = tracerMarker.getLatLng();
+          filterPinsBySourceTrajectory({ lat: ll.lat, lon: ll.lng });
+        }
+      }
+    }
+  });
+}
+
+// Opens the map filter's calendar — called by the round filter button.
+function openMapFilter() {
+  if (mapFp) mapFp.open();
+}
+
+
+
+/* ═══════════════════════════════════════════════════
+   LEGEND / BUTTON BAR — LIVE HEIGHT SYNC
+   #legendBar wraps onto more lines at narrower widths, larger zoom levels,
+   or when switching to longer Serbian strings — so its rendered height is
+   never a fixed number. Every floating control that needs to sit above it
+   (report FAB, pin/trace buttons, Windfinder control, attribution) reads
+   --legend-bar-h instead of a hardcoded pixel guess, and this keeps that
+   variable in sync with the bar's actual, current, on-screen height.
+═══════════════════════════════════════════════════ */
+function syncLegendBarHeight() {
+  const bar = document.getElementById('legendBar');
+  if (!bar) return;
+  document.documentElement.style.setProperty('--legend-bar-h', bar.offsetHeight + 'px');
+}
+window.addEventListener('resize', syncLegendBarHeight);
+window.addEventListener('orientationchange', syncLegendBarHeight);
+if (window.ResizeObserver) {
+  new ResizeObserver(syncLegendBarHeight).observe(document.getElementById('legendBar'));
+}
+syncLegendBarHeight();
+
+/* ═══════════════════════════════════════════════════
+   MAP
+═══════════════════════════════════════════════════ */
+const map = L.map('map').setView([45.25,19.85],11);
+map.attributionControl.setPosition('bottomleft');
+map.createPane('conePane');
+map.getPane('conePane').style.zIndex = 390; // below splinePane
+map.getPane('conePane').style.pointerEvents = 'none';
+map.createPane('splinePane');
+map.getPane('splinePane').style.zIndex = 450;
+map.getPane('splinePane').style.pointerEvents = 'none';
+// Sits above the default marker pane (600), so the user's own
+// location/manual-pin marker is always drawn on top of report pins,
+// clusters, and AQ station markers — never buried under them regardless
+// of how many pins pile up nearby. Not interactive itself (no popup on
+// this marker), so it's set to ignore pointer events, letting taps fall
+// through to whatever pin is actually underneath it.
+map.createPane('userLocationPane');
+map.getPane('userLocationPane').style.zIndex = 620;
+map.getPane('userLocationPane').style.pointerEvents = 'none';
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+  attribution:'© OpenStreetMap'
+}).addTo(map);
+
+// Report pins used to cluster together at lower zoom levels into a count
+// badge ("47", "30", etc). That's now switched off in favor of always
+// showing every report individually -- each one shrinks to a small
+// animated category-color dot (see makeDotIcon/REPORT_DOT_ZOOM_THRESHOLD)
+// instead of merging into a badge, so cones and dots both stay visible
+// across the whole map no matter how far you zoom out.
+const reportClusterGroup = L.markerClusterGroup({
+  maxClusterRadius: 60,
+  disableClusteringAtZoom: 0, // 0 = never cluster, at any zoom level
+  spiderfyOnMaxZoom: true,
+  showCoverageOnHover: false,
+  zoomToBoundsOnClick: true,
+  animate: true,
+  chunkedLoading: true,
+  iconCreateFunction: function (cluster) {
+    const count = cluster.getChildCount();
+    const size = count < 10 ? 34 : count < 50 ? 42 : 50;
+    return L.divIcon({
+      html: `<div class="report-cluster-badge" style="width:${size}px;height:${size}px;line-height:${size}px;">${count}</div>`,
+      className: 'report-cluster-icon',
+      iconSize: [size, size]
+    });
+  }
+});
+map.addLayer(reportClusterGroup);
+
+// Hide report pins/clusters for the duration of the zoom animation only —
+// GPS dot, wind compass, and historical trails are unaffected.
+map.on('zoomstart', () => document.getElementById('map').classList.add('zooming-hide-reports'));
+map.on('zoomend',   () => document.getElementById('map').classList.remove('zooming-hide-reports'));
+
+// Whenever clustering changes (zoom, or a cluster forming/spiderfying),
+// re-check which reports are shown individually vs merged into a cluster
+// badge, and hide/show their cones to match — see
+// updateConeVisibilityForClustering(), defined further down.
+map.on('zoomend', () => updateConeVisibilityForClustering());
+reportClusterGroup.on('animationend', () => updateConeVisibilityForClustering());
+map.on('zoomend', () => updateMarkerIconsForZoom());
+
+// Swaps every report marker between the small category-color dot (zoomed
+// out) and the full detailed pin icon (zoomed in) as the zoom crosses
+// REPORT_DOT_ZOOM_THRESHOLD. Cheap no-op re-render when nothing crossed
+// the threshold since setIcon() just replaces the divIcon HTML.
+function updateMarkerIconsForZoom() {
+  Object.values(markerByReportId).forEach(marker => {
+    if (!marker || !marker._reportRef) return;
+    marker.setIcon(pickReportIcon(marker._reportRef));
+  });
+}
+
+let userCoords    = null;
+let userMarker    = null;
+let reportMarkers = [];
+// report.id -> its Leaflet marker instance, used to ask the cluster group
+// whether that report's pin is currently shown individually or absorbed
+// into a cluster badge (see updateConeVisibilityForClustering).
+let markerByReportId = {};
+let pinMode       = false;
+let manualCoords  = null;
+let manualMarker  = null;
+
+// One shared "current report location" resolver — same precedence
+// autoFillWindDirection() uses (dropped pin beats GPS beats nothing) — so
+// every wind-app shortcut and the auto-fill call always agree on where
+// "here" means. Falls back to a fixed Novi Sad coordinate only if neither
+// GPS nor a manual pin is available yet, so the links always work.
+const WIND_APP_FALLBACK_COORDS = { lat: 45.2294, lon: 19.8276 };
+function activeWizLocation() {
+  return (pinMode && manualCoords) ? manualCoords : (userCoords || WIND_APP_FALLBACK_COORDS);
+}
+
+// Deep-links into each wind app, pre-centered on the report's location so
+// the user doesn't have to search for their spot by hand in every app.
+// Rendered as a vertical column of shortcuts to the right of the wind
+// compass. Windfinder deliberately has no icon here (kept text-only, to
+// match the other app shortcuts beside it).
+function buildWindAppLinksHtml() {
+  const { lat, lon } = activeWizLocation();
+  const latR = lat.toFixed(4), lonR = lon.toFixed(4);
+  const nowIso = new Date().toISOString().slice(0, 16) + 'Z';
+
+  const apps = [
+    {
+      label: 'Windfinder',
+      url: `https://www.windfinder.com/#13/${latR}/${lonR}/${nowIso}/spot`,
+    },
+    {
+      label: 'Windy',
+      url: `https://www.windy.com/?wind,${latR},${lonR},11`,
+    },
+    {
+      label: 'Meteoblue',
+      url: `https://www.meteoblue.com/en/weather/current/${latR}N${lonR}E`,
+    },
+    {
+      label: 'Wunderground',
+      url: `https://www.wunderground.com/wundermap?lat=${latR}&lon=${lonR}&zoom=12`,
+    },
+  ];
+
+  return apps.map(app => `
+    <a href="${app.url}" target="_blank" rel="noopener" title="${t('windAppCheckTitle')}"
+       style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--text-secondary);
+              text-decoration:none;padding:5px 10px;border-radius:999px;background:var(--bg-surface-alt);
+              white-space:nowrap;">
+      ${app.icon ? `<img src="${app.icon}" style="width:14px;height:14px;object-fit:contain;">` : ''}
+      ${app.label}
+    </a>`).join('');
+}
+
+/* ═══════════════════════════════════════════════════
+   GPS MODAL
+═══════════════════════════════════════════════════ */
+function updateGpsModalText(){
+  const el = id => document.getElementById(id);
+  if(el('gpsModalTitle')) el('gpsModalTitle').textContent  = t('gpsTitle');
+  if(el('gpsModalBody'))  el('gpsModalBody').textContent   = t('gpsBody');
+  if(el('gpsModalAlt')) el('gpsModalAlt').innerHTML = t('gpsAlt');
+  if(el('gpsModalBtn'))   el('gpsModalBtn').textContent    = t('gpsBtn');
+}
+
+// Only auto-pop the "GPS not enabled" notice once per page load. After
+// that we keep silently retrying GPS in the background (see the
+// setInterval(startWatching, ...) below) without interrupting the user
+// again and again.
+let gpsModalShownThisLoad = false;
+
+function showGpsModal(){
+  const modal = document.getElementById('gpsModal');
+  if(!modal) return;
+  if (gpsModalShownThisLoad) return;
+  gpsModalShownThisLoad = true;
+  updateGpsModalText();
+  modal.style.display = 'flex';
+  modal.offsetHeight;
+}
+
+function hideGpsModal(){
+  const modal = document.getElementById('gpsModal');
+  if(modal) modal.style.display = 'none';
+}
+
+/* ═══════════════════════════════════════════════════
+   GPS INIT
+═══════════════════════════════════════════════════ */
+function enableManualPinMode() {
+  // Called when GPS is unavailable/denied (see initGps() below). Its job is
+  // just to turn ON pin-drop mode -- same as tapping the pin button -- so
+  // the user can tap their real location via the existing map click
+  // handler. It previously tried to drop a marker at `center`, an
+  // undefined variable (ReferenceError, silently aborting this whole
+  // function every time it ran) at the map's arbitrary current center --
+  // which isn't the user's actual location, and would have wrongly enabled
+  // the submit button at that bogus spot before they'd tapped anything.
+  if (pinMode) return;
+  pinMode = true;
+  const btn = document.getElementById('pinMapBtn');
+  if (btn) btn.classList.add('active');
+  clearMarkers();
+  clearBackgroundTrails();
+  if (userMarker && map.hasLayer(userMarker)) map.removeLayer(userMarker);
+  checkFormReady();
+}
+
+// Keeps the big red "+" report button disabled until the user has a
+// location — either a live GPS fix or a manually-dropped pin. Called
+// whenever userCoords / manualCoords change (GPS fix, pin drop, pin
+// clear). Also nudges the open wizard's own submit-readiness check,
+// which is a harmless no-op if the wizard isn't open.
+function checkFormReady() {
+  const hasLoc = !!(userCoords || manualCoords);
+  const fabBtn = document.getElementById('reportFabBtn');
+  if (fabBtn) {
+    fabBtn.disabled = !hasLoc;
+    fabBtn.title = hasLoc ? 'Report bad air' : t('wizNoLocationHint');
+  }
+  if (typeof checkWizSubmitReady === 'function') checkWizSubmitReady();
+
+  // If the details step (with the compass + wind-app shortcuts) is already
+  // open, a GPS fix or pin drop arriving afterwards shouldn't leave those
+  // stuck pointing at the fallback coordinate — refresh them in place.
+  if (typeof wizState !== 'undefined' && wizState.step === 2) {
+    const linksCol = document.getElementById('windAppLinksCol');
+    if (linksCol && typeof buildWindAppLinksHtml === 'function') {
+      linksCol.innerHTML = buildWindAppLinksHtml();
+    }
+    if (typeof autoFillWindDirection === 'function') autoFillWindDirection();
+  }
+}
+
+// Obfuscate a GPS fix by offsetting it a random distance (up to radiusMeters)
+// in a random direction, so the device's true location is never stored or shown.
+function fuzzCoords(lat, lon, radiusMeters = 250) {
+  const earthRadius = 6371000; // meters
+  const randomAngle = Math.random() * 2 * Math.PI;
+  // sqrt() gives a uniform distribution of points across the disk area
+  // (otherwise points would cluster near the center)
+  const randomDist = radiusMeters * Math.sqrt(Math.random());
+
+  const latRad = lat * Math.PI / 180;
+  const deltaLat = (randomDist * Math.cos(randomAngle)) / earthRadius;
+  const deltaLon = (randomDist * Math.sin(randomAngle)) / (earthRadius * Math.cos(latRad));
+
+  return {
+    lat: lat + (deltaLat * 180 / Math.PI),
+    lon: lon + (deltaLon * 180 / Math.PI)
+  };
+}
+
+// GPS dot icon: a white halo (for contrast against busy map tiles/pins)
+// behind the usual blue dot, plus -- once we have a wind reading -- an
+// arrow drawn on top pointing where the wind is blowing toward, so the
+// user's own location marker doubles as a wind indicator at a glance.
+function makeUserLocationIcon(windDeg) {
+  const size = 40, cx = size / 2, cy = size / 2;
+  const hasWind = windDeg != null && !isNaN(windDeg);
+  const visualAngle = hasWind ? (parseFloat(windDeg) + 180) % 360 : 0;
+
+  const arrowSvg = hasWind ? `
+    <g transform="rotate(${visualAngle} ${cx} ${cy})">
+      <line x1="${cx}" y1="${cy - 17}" x2="${cx}" y2="${cy - 7}" stroke="#00d0ff" stroke-width="3" stroke-linecap="round"/>
+      <polygon points="${cx},${cy - 20} ${cx - 4},${cy - 12} ${cx + 4},${cy - 12}" fill="#00d0ff" stroke="#ffffff" stroke-width="0.75"/>
+    </g>` : '';
+
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="overflow:visible;">
+      <circle cx="${cx}" cy="${cy}" r="13" fill="#ffffff" stroke="#00d0ff" stroke-width="1.5" opacity="0.95"/>
+      <circle cx="${cx}" cy="${cy}" r="8" fill="#00d0ff" stroke="#ffffff" stroke-width="2"/>
+      ${arrowSvg}
+    </svg>`;
+
+  return L.divIcon({ className: 'user-location-icon', html: svg, iconSize: [size, size], iconAnchor: [cx, cy] });
+}
+
+function startWatching() {
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      userCoords = fuzzCoords(pos.coords.latitude, pos.coords.longitude, 250);
+      hideGpsModal();
+
+      // Create the blue dot the first time we get a fix, then just move
+      // it on every subsequent fix so the dot tracks the device instead
+      // of freezing at the very first location the app ever saw. Not
+      // added to the map yet if pin mode is currently active -- it stays
+      // hidden (see togglePinMode) until pin mode is turned back off.
+      if (!userMarker) {
+        userMarker = L.marker([userCoords.lat, userCoords.lon], {
+          icon: makeUserLocationIcon(currentWindDegForMarker),
+          pane: 'userLocationPane'
+        });
+        if (!pinMode) {
+          userMarker.addTo(map);
+          map.setView([userCoords.lat, userCoords.lon], 13);
+        }
+      } else {
+        userMarker.setLatLng([userCoords.lat, userCoords.lon]);
+      }
+      checkFormReady();
+      evaluateActiveNearbyClusters();
+    },
+    err => {
+      // If GPS fails, switch to manual mode automatically
+      showGpsModal();
+      //enableManualPinMode();
+    },
+    { enableHighAccuracy: true, timeout: 12000 }
+  );
+}
+
+// Re-check GPS every 5s. This does two things at once:
+//  1. Keeps the blue dot in sync if the device has physically moved
+//     while the app was left open.
+//  2. Catches the case where GPS was off at load and the user turns it
+//     on afterwards — the very next tick will pick up a fix, hide the
+//     "GPS Not Enabled" modal, and drop the blue dot in automatically.
+setInterval(startWatching, 5000);
+
+function initGps() {
+  if (!navigator.geolocation) {
+    showGpsModal();
+    return;
+  }
+
+  // Check permission state directly
+  navigator.permissions.query({ name: 'geolocation' }).then(result => {
+    if (result.state === 'denied') {
+      // Don't auto-switch into manual pin mode just because GPS is
+      // denied/unavailable -- that used to silently flip the map into
+      // pin-drop mode without the user asking for it. Just show the "GPS
+      // Not Enabled" modal (which itself points at the pin button) and
+      // let the user opt into manual mode themselves by tapping it.
+      showGpsModal();
+    } else {
+      startWatching();
+    }
+  }).catch(() => {
+    // If permissions API not supported, just try to get the position
+    startWatching();
+  });
+}
+
+initGps();
+
+/* ═══════════════════════════════════════════════════
+   CONTROLS (Manual Pin & Tracer)
+═══════════════════════════════════════════════════ */
+const MapFilterControl = L.Control.extend({
+  options:{ position:'bottomleft' },
+  onAdd(){
+    const btn = document.getElementById('mapFilterBtn');
+    L.DomEvent.disableClickPropagation(btn);
+    return btn;
+  }
+});
+new MapFilterControl().addTo(map);
+document.getElementById('mapFilterBtn').style.display = 'flex';
+
+const PinControl = L.Control.extend({
+  options:{ position:'bottomleft' },
+  onAdd(){
+    const btn = document.getElementById('pinMapBtn');
+    // Stop the click from traveling through the button to the map canvas
+    L.DomEvent.disableClickPropagation(btn);
+    return btn;
+  }
+});
+new PinControl().addTo(map);
+document.getElementById('pinMapBtn').style.display = 'flex';
+
+const TraceControl = L.Control.extend({
+  options:{ position:'bottomleft' },
+  onAdd(){
+    const btn = document.getElementById('traceSourceBtn');
+    // CRITICAL FIX: Stop trace toggle click from dropping a point onto the canvas below!
+    L.DomEvent.disableClickPropagation(btn);
+    return btn;
+  }
+});
+new TraceControl().addTo(map);
+document.getElementById('traceSourceBtn').style.display = 'flex';
+
+const SourceHeatControl = L.Control.extend({
+  options:{ position:'bottomleft' },
+  onAdd(){
+    const btn = document.getElementById('sourceHeatBtn');
+    L.DomEvent.disableClickPropagation(btn);
+    return btn;
+  }
+});
+new SourceHeatControl().addTo(map);
+document.getElementById('sourceHeatBtn').style.display = 'flex';
+
+function togglePinMode() {
+  pinMode = !pinMode;
+  
+  if (pinMode) {
+    if (traceMode) toggleTraceMode(); 
+  }
+  
+  const btn = document.getElementById('pinMapBtn');
+  btn.classList.toggle('active', pinMode);
+  
+  if (pinMode) {
+    // Sweep the pins off the map for a clean workspace while placing one
+    clearMarkers();
+    clearBackgroundTrails();
+    // Hide the GPS dot too -- it now looks identical to the manual pin
+    // (same icon), so showing both at once is redundant/confusing. Its
+    // position keeps updating in the background; it's just not drawn
+    // until pin mode is turned back off.
+    if (userMarker && map.hasLayer(userMarker)) map.removeLayer(userMarker);
+  } else {
+    if(manualMarker){ map.removeLayer(manualMarker); manualMarker = null; }
+    manualCoords = null; 
+    // Restore the GPS dot now that manual placement is done.
+    if (userMarker && !map.hasLayer(userMarker)) userMarker.addTo(map);
+    loadPinsByWindow();
+  }
+  checkFormReady();
+}
+
+function toggleTraceMode() {
+  traceMode = !traceMode;
+  
+  const btn = document.getElementById('traceSourceBtn');
+  btn.classList.toggle('active', traceMode);
+
+  if (traceMode) {
+    if (pinMode) togglePinMode(); // Turn off manual pin mode if active
+    
+    // 1. Sweep everything off the map immediately for a clean workspace
+    clearMarkers();
+    clearBackgroundTrails();
+    
+    // Clear out any stale tracing structures
+    tracerVisualCircles.forEach(c => map.removeLayer(c));
+    tracerVisualCircles = [];
+    
+    if (tracerMarker) {
+      map.removeLayer(tracerMarker);
+      tracerMarker = null;
+    }
+    if (traceHeatLayer && map.hasLayer(traceHeatLayer)) map.removeLayer(traceHeatLayer);
+    lastTraceTracerCoords = null;
+    lastTraceMatchedReports = [];
+  } else {
+    // 2. Returning back to normal mode: Restore everything safely
+    if (tracerMarker) {
+      map.removeLayer(tracerMarker);
+      tracerMarker = null;
+    }
+    tracerVisualCircles.forEach(c => map.removeLayer(c));
+    tracerVisualCircles = [];
+    if (traceHeatLayer && map.hasLayer(traceHeatLayer)) map.removeLayer(traceHeatLayer);
+    lastTraceTracerCoords = null;
+    lastTraceMatchedReports = [];
+    
+    loadPinsByWindow(); // Re-render default historical background trails and pins
+  }
+  checkFormReady(); // Maintain UI integrity
+}
+
+map.on('click', async function(e) {
+
+  if (pinMode) {
+
+    manualCoords = {
+      lat: e.latlng.lat,
+      lon: e.latlng.lng
+    };
+
+    if (manualMarker) {
+      manualMarker.setLatLng(e.latlng);
+    } else {
+      manualMarker = L.marker(e.latlng, {
+        icon: makeUserLocationIcon(currentWindDegForMarker),
+        pane: 'userLocationPane'
+      }).addTo(map);
+    }
+
+    checkFormReady();
+    return;
+  }
+  
+  if (traceMode) {
+    const tracerCoords = { lat: e.latlng.lat, lon: e.latlng.lng };
+    
+    tracerVisualCircles.forEach(c => map.removeLayer(c));
+    tracerVisualCircles = [];
+    
+    if (tracerMarker) {
+      tracerMarker.setLatLng(e.latlng);
+    } else {
+      tracerMarker = L.marker(e.latlng, {
+        icon: L.divIcon({
+          className: '',
+          html: `<div style="width:22px;height:22px;background:#ff4d4d;border-radius:50%;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,.5)"></div>`,
+          iconAnchor: [11,11]
+        })
+      }).addTo(map);
+    }
+    
+    // Runs tracing calculation across historical dataset, then reveals ONLY the intersections
+    await filterPinsBySourceTrajectory(tracerCoords);
   }
 });
 
-/* ═══════════════════════════════════════════════════════════════
-   SCHEDULING — run once in the Supabase SQL editor after deploying.
-   Requires the pg_cron and pg_net extensions (enable them under
-   Database → Extensions in the Supabase dashboard first).
-═══════════════════════════════════════════════════════════════
+/* ═══════════════════════════════════════════════════
+   LIVE WIND SYSTEM
+═══════════════════════════════════════════════════ */
+/**
+ * Consolidated Weather Fetcher
+ * Fetches data from Open-Meteo with built-in timeout and error handling.
+ */
+// Helper to keep the degrees within 0-360 without corrupting the value
+function getProcessedWindDirection(rawDegrees) {
+  if (rawDegrees == null) return 0;
+  return (parseFloat(rawDegrees) % 360 + 360) % 360;
+}
 
-select cron.schedule(
-  'collect-air-quality-hourly',
-  '5 * * * *',  -- 5 minutes past every hour, gives SEPA time to publish the hour's data
-  $$
-  select net.http_post(
-    url := 'https://<YOUR-PROJECT-REF>.supabase.co/functions/v1/collect-air-quality',
-    headers := jsonb_build_object(
-      'Authorization', 'Bearer <YOUR-SERVICE-ROLE-KEY>',
-      'Content-Type', 'application/json'
-    )
+async function getWeatherData(lat, lng, datetime = null) {
+  const TIMEOUT_MS = 6000;
+  
+  const isHistorical = datetime && new Date(datetime).getTime() < (Date.now() - 24 * 60 * 60 * 1000);
+  
+  const baseURL = isHistorical 
+    ? 'https://archive-api.open-meteo.com/v1/archive' 
+    : 'https://api.open-meteo.com/v1/forecast';
+
+  const queryParams = isHistorical 
+    ? `?latitude=${lat}&longitude=${lng}&start_date=${datetime.split('T')[0]}&end_date=${datetime.split('T')[0]}&hourly=wind_speed_10m,wind_direction_10m,pressure_msl`
+    // NOTE: previously pinned `models=icon_d2` here -- same bug as the
+    // get-wind-direction edge function (see its source comments): that
+    // model only covers a Central-European domain and this app's
+    // coordinates sit right at its edge, so requests failed far more than
+    // they should have. Dropped so Open-Meteo auto-selects the best
+    // globally-available model, matching the rest of the app's calls.
+    : `?latitude=${lat}&longitude=${lng}&current=wind_speed_10m,wind_direction_10m,pressure_msl&timezone=auto`;
+  const controller = new AbortController();
+
+  const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
+  try {
+    let response = await fetch(baseURL + queryParams, { signal: controller.signal });
+    // Rate-limited (usually because a batch of background trail fetches is
+    // already using up the concurrency budget) — one short wait and retry
+    // is enough for this single foreground request to slot back in.
+    if (response.status === 429) {
+      await new Promise(res => setTimeout(res, 1200));
+      response = await fetch(baseURL + queryParams, { signal: controller.signal });
+    }
+    clearTimeout(timeoutId);
+
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+
+    let windSpeed, windDirection, pressure;
+    
+    if (data.current) {
+      ({ wind_speed_10m: windSpeed, wind_direction_10m: windDirection, pressure_msl: pressure } = data.current);
+    } else if (data.hourly) {
+      // hourly.time is UTC (this request has no `timezone=` param, and
+      // Open-Meteo defaults to UTC) -- must index it with the UTC hour of
+      // `datetime`, not the local hour, or this silently picks the wrong
+      // hour by exactly the browser's UTC offset.
+      const hourIndex = datetime ? new Date(datetime).getUTCHours() : 0;
+      windSpeed = data.hourly.wind_speed_10m[hourIndex];
+      windDirection = data.hourly.wind_direction_10m[hourIndex];
+      pressure = data.hourly.pressure_msl[hourIndex];
+    }
+
+    return {
+      wind_speed: windSpeed != null ? parseFloat(windSpeed.toFixed(1)) : 0,
+      // Removed Math.round, kept 2 decimals for precision
+      wind_direction: windDirection != null ? parseFloat(getProcessedWindDirection(windDirection).toFixed(2)) : 0,
+      sea_level_pressure: pressure != null ? parseFloat(pressure.toFixed(1)) : null,
+      source: isHistorical ? "Open-Meteo Archive" : "Open-Meteo Current"
+    };
+
+  } catch (error) {
+    console.error("Weather Fetch Error:", error.message);
+    return { wind_speed: 0, wind_direction: 0, sea_level_pressure: null, source: "Offline/Default" };
+  }
+}
+
+// Set once by updateWindMarker() the first time a real reading comes back,
+// so the GPS marker can be (re)built with the right arrow even if the wind
+// reading arrives before or after the marker itself exists.
+let currentWindDegForMarker = null;
+// "Just on load, static until refresh" per product decision — once we have
+// a real reading the compass widget and GPS-dot arrow stop updating, even
+// though triggerWindUpdate itself keeps refreshing currentWeatherData every
+// 5 minutes for whatever else in the app wants fresher data.
+let windMarkerLocked = false;
+// Assigned by triggerWindUpdate on every refresh; not currently read
+// elsewhere, but declared properly (was previously an implicit global).
+let currentWeatherData = null;
+
+async function triggerWindUpdate() {
+  const activeLoc = (pinMode && manualCoords) ? manualCoords : userCoords;
+  if (!activeLoc) return;
+
+  const weather = await getWeatherData(activeLoc.lat, activeLoc.lon);
+  currentWeatherData = weather;
+
+  if (!windMarkerLocked && weather.source !== 'Offline/Default' && weather.wind_direction != null) {
+    updateWindMarker(weather.wind_direction);
+    windMarkerLocked = true;
+  }
+}
+
+// Draws the wind reading fetched at load onto the map: rotates the corner
+// compass widget's arrow and fills in its degrees/cardinal text, and (re)builds
+// the GPS dot so it shows the same arrow directly on the marker.
+function updateWindMarker(windDeg) {
+  currentWindDegForMarker = windDeg;
+  const visualAngle = (parseFloat(windDeg) + 180) % 360;
+
+  const widget = document.getElementById('windCompassWidget');
+  const arrowGroup = document.getElementById('windCompassArrowGroup');
+  const degEl = document.getElementById('windCompassDeg');
+  const dirEl = document.getElementById('windCompassDir');
+  if (arrowGroup) arrowGroup.setAttribute('transform', `rotate(${visualAngle} 17 17)`);
+  if (degEl) degEl.textContent = `${Math.round(windDeg)}°`;
+  if (dirEl) dirEl.textContent = degToCardinal(windDeg);
+  if (widget) widget.classList.add('visible');
+
+  if (userMarker) userMarker.setIcon(makeUserLocationIcon(currentWindDegForMarker));
+}
+
+function startWindWhenReady(){
+  const activeLoc = (pinMode && manualCoords) ? manualCoords : userCoords;
+  if(activeLoc){
+    triggerWindUpdate();
+    setInterval(triggerWindUpdate, 5*60*1000);
+  } else { 
+    setTimeout(startWindWhenReady,1000); 
+  }
+}
+startWindWhenReady();
+
+/* ═══════════════════════════════════════════════════
+   HELPERS / MATH / SPLINES
+═══════════════════════════════════════════════════ */
+function ageColor(createdAt){
+  const h=(Date.now()-new Date(createdAt))/3600000;
+  if(h<1)   return '#a32222'; 
+  if(h<2)   return '#a33822'; 
+  if(h<6)   return '#a34d22'; 
+  if(h<12)  return '#a36322'; 
+  if(h<24)  return '#a37822'; 
+  if(h<48)  return '#9f8a5f';
+  return     '#333333';        
+}
+
+const CATEGORY_COLORS = {
+  'Smoke':                                                          '#c41e27', // vivid amber-orange
+  'Sewage':                                                         '#8b4513', // deep brown
+  'Sulfur':                                                         '#d4c600', // sharp yellow
+  'Burnt plastic or rubber':                                        '#cc3399', // hot magenta
+  'Chemical solvents (paint, fuel, glue, industrial chemicals)':   '#008ab8', // electric blue
+  'Waste / Trash / Garbage':                                        '#2a682a', // mid green
+  'Clean Air':                                                      '#3ec46d', // fresh leaf green
+  'Unknown':                                                        '#8342a1', // muted lavender
+  'Other':                                                          '#474747', // neutral grey
+};
+
+// SEPA's own AQI category colors (Serbian labels are what the API returns).
+const AQI_COLORS = {
+  'DOBAR':             '#4CAF50', // green
+  'PRIHVATLJIV':       '#8BC34A', // light green
+  'UMEREN':            '#FFC107', // amber
+  'ZAGAĐEN':           '#FF9800', // orange
+  'VEOMA ZAGAĐEN':     '#F44336', // red
+  'IZUZETNO ZAGAĐEN':  '#9C27B0', // purple
+};
+// Ordinal (0 = clean ... 5 = worst) version of the same scale, used to turn
+// a station reading into a numeric confidence boost for the source heatmap.
+const AQI_SEVERITY = {
+  'DOBAR': 0, 'PRIHVATLJIV': 1, 'UMEREN': 2,
+  'ZAGAĐEN': 3, 'VEOMA ZAGAĐEN': 4, 'IZUZETNO ZAGAĐEN': 5,
+};
+function aqiColor(cat) {
+  return AQI_COLORS[cat] || '#9e9e9e';
+}
+
+// Per-pollutant concentration breakpoints (µg/m3) for the same 6-tier scale
+// as AQI_COLORS/AQI_SEVERITY above (EU EEA European Air Quality Index bands,
+// which is what SEPA's own DOBAR..IZUZETNO ZAGAĐEN categories are aligned
+// to). Used to color each individual pollutant value next to station data,
+// since a single overall station category doesn't tell you which specific
+// pollutant is driving it.
+const POLLUTANT_BREAKPOINTS = {
+  pm25: [5, 15, 50, 90, 140],
+  pm10: [15, 45, 120, 195, 270],
+  o3:   [60, 100, 120, 160, 180],
+  no2:  [10, 25, 60, 100, 150],
+  so2:  [20, 40, 125, 190, 275],
+};
+const AQI_TIER_ORDER = ['DOBAR', 'PRIHVATLJIV', 'UMEREN', 'ZAGAĐEN', 'VEOMA ZAGAĐEN', 'IZUZETNO ZAGAĐEN'];
+
+// Returns the hex color for a single pollutant reading, or a neutral grey
+// if the value or pollutant key is unrecognized/missing.
+function pollutantValueColor(pollutantKey, value) {
+  if (value == null || isNaN(value)) return '#9e9e9e';
+  const breakpoints = POLLUTANT_BREAKPOINTS[pollutantKey];
+  if (!breakpoints) return '#9e9e9e';
+  const v = Number(value);
+  let tierIndex = breakpoints.findIndex(bp => v <= bp);
+  if (tierIndex === -1) tierIndex = AQI_TIER_ORDER.length - 1;
+  return aqiColor(AQI_TIER_ORDER[tierIndex]);
+}
+
+function categoryColor(cat) {
+  if (!cat) return '#aaaaaa';
+  // Normalize: strip trailing punctuation variants, try direct match first
+  if (CATEGORY_COLORS[cat]) return CATEGORY_COLORS[cat];
+  // Fallback: partial key match (handles Serbian DB values stored in English)
+  const key = Object.keys(CATEGORY_COLORS).find(k => cat.includes(k) || k.includes(cat));
+  return key ? CATEGORY_COLORS[key] : '#aaaaaa';
+}
+
+function degToCardinal(deg){
+  return ['N','NE','E','SE','S','SW','W','NW'][Math.round(deg/45)%8];
+}
+
+// Updates every place that shows "how many reports are currently visible":
+// the settings modal's filter section and the header badge. Both track the
+// same number (whatever loadPinsByWindow()/filterPinsBySourceTrajectory()
+// actually rendered after applying the map bounds + date filter), so this
+// keeps them from drifting out of sync with each other.
+// `total`, when given and different from `n`, switches the text to
+// "N of TOTAL Reports" — used by Trace Possible Source to show how many of
+// the currently-filtered reports were matched to the traced source.
+let lastKnownReportCount = null;
+let lastKnownReportTotal = null;
+function updateReportCountUI(n, total = null) {
+  lastKnownReportCount = n;
+  lastKnownReportTotal = (total != null && total !== n) ? total : null;
+  const noun = n === 1 ? t('reportCount1') : t('reportCount');
+  const text = lastKnownReportTotal != null
+    ? `${n} ${t('ofCount')} ${lastKnownReportTotal} ${noun}`
+    : `${n} ${noun}`;
+  const rcEl = document.getElementById('reportCount');
+  if (rcEl) rcEl.textContent = text;
+  const headerEl = document.getElementById('headerReportCount');
+  if (headerEl) headerEl.textContent = text;
+}
+
+/* ═══════════════════════════════════════════════════
+   WIND & GEOMETRY UTILITIES
+═══════════════════════════════════════════════════ */
+
+// Returns distance in km between two lat/lon points using the Haversine formula.
+function getHaversineDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371; 
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+// Perpendicular distance (km) from a point to the segment a→b, using a
+// local equirectangular projection (accurate to a fraction of a percent at
+// the few-km scale we match stations at). Also returns t (0–1), how far
+// along the segment the closest point falls, for interpolating time/distance.
+function pointToSegmentDistanceKm(plat, plon, alat, alon, blat, blon) {
+  const latRef = (alat + blat) / 2;
+  const kmPerDegLat = 111.32;
+  const kmPerDegLon = 111.32 * Math.cos(latRef * Math.PI / 180);
+  const ax = 0, ay = 0;
+  const bx = (blon - alon) * kmPerDegLon, by = (blat - alat) * kmPerDegLat;
+  const px = (plon - alon) * kmPerDegLon, py = (plat - alat) * kmPerDegLat;
+  const abx = bx - ax, aby = by - ay;
+  const abLenSq = abx * abx + aby * aby;
+  let t = abLenSq > 0 ? ((px - ax) * abx + (py - ay) * aby) / abLenSq : 0;
+  t = Math.max(0, Math.min(1, t));
+  const cx = ax + abx * t, cy = ay + aby * t;
+  const distanceKm = Math.sqrt((px - cx) ** 2 + (py - cy) ** 2);
+  return { distanceKm, t };
+}
+
+// Cumulative distance (km) walked along a trail up to each vertex —
+// index 0 is always 0, index i is the path length from rawTrail[0] to
+// rawTrail[i]. Shared by station-matching and spline-click interpolation
+// so both agree on what "how far along the path" means.
+function computeCumulativePathDistances(rawTrail) {
+  const cum = [0];
+  for (let i = 1; i < rawTrail.length; i++) {
+    cum.push(cum[i - 1] + getHaversineDistance(
+      rawTrail[i - 1].lat, rawTrail[i - 1].lon,
+      rawTrail[i].lat, rawTrail[i].lon
+    ));
+  }
+  return cum;
+}
+
+// Builds a {t, spd} profile (t = 0..1 fraction of the way along the
+// path by distance) from a raw point array carrying a `.spd` field.
+function buildTrailSpeedProfile(points) {
+  if (!points || points.length < 2) return null;
+  const cum = computeCumulativePathDistances(points);
+  const total = cum[cum.length - 1];
+  if (!total) return null;
+  return points.map((p, i) => ({ t: cum[i] / total, spd: p.spd ?? 0 }));
+}
+function speedAtT(profile, t) {
+  if (!profile || !profile.length) return null;
+  if (t <= profile[0].t) return profile[0].spd;
+  for (let i = 1; i < profile.length; i++) {
+    if (t <= profile[i].t) {
+      const a = profile[i - 1], b = profile[i];
+      const span = b.t - a.t;
+      const f = span > 0 ? (t - a.t) / span : 0;
+      return a.spd + (b.spd - a.spd) * f;
+    }
+  }
+  return profile[profile.length - 1].spd;
+}
+// Maps real historical wind speed onto a (possibly Chaikin-smoothed,
+// clipped, and/or rejoined) curve, by walking the curve's own arc length
+// and looking up the raw trail's speed profile at the matching distance
+// fraction. Computed fresh against whatever the FINAL rendered points
+// are, so it stays correct no matter how much smoothing/clipping/joining
+// happened to get there -- no index bookkeeping needed through those
+// steps. Assumes rawPoints and finalLatLngs start at (roughly) the same
+// place, which holds for every trail/tail built in this file.
+function mapSpeedsOntoPoints(rawPoints, finalLatLngs) {
+  const profile = buildTrailSpeedProfile(rawPoints);
+  if (!profile || !finalLatLngs || !finalLatLngs.length) return null;
+  const rawTotal = computeCumulativePathDistances(rawPoints).pop() || 0;
+  if (!rawTotal) return null;
+  const speeds = [speedAtT(profile, 0)];
+  let cum = 0;
+  for (let i = 1; i < finalLatLngs.length; i++) {
+    cum += getHaversineDistance(
+      finalLatLngs[i - 1][0], finalLatLngs[i - 1][1],
+      finalLatLngs[i][0], finalLatLngs[i][1]
+    );
+    speeds.push(speedAtT(profile, Math.min(1, cum / rawTotal)));
+  }
+  return speeds;
+}
+// Wind-speed -> line-weight mapping shared by every trail render. Calm air
+// still reads as a visible line (TRAIL_MIN_WEIGHT); anything at or above
+// TRAIL_SPEED_FOR_MAX_WEIGHT km/h reads as the thickest the line gets.
+const TRAIL_MIN_WEIGHT = 1.5;
+const TRAIL_MAX_WEIGHT = 5;
+const TRAIL_SPEED_FOR_MAX_WEIGHT_KMH = 40;
+function speedToWeight(spd) {
+  if (spd == null) return 2;
+  const clamped = Math.max(0, Math.min(TRAIL_SPEED_FOR_MAX_WEIGHT_KMH, spd));
+  return TRAIL_MIN_WEIGHT + (clamped / TRAIL_SPEED_FOR_MAX_WEIGHT_KMH) * (TRAIL_MAX_WEIGHT - TRAIL_MIN_WEIGHT);
+}
+
+// Finds the closest a wind trail's actual path (interpolated between hourly
+// points, not just the hourly vertices) comes to an arbitrary point — used
+// both for station-matching and for figuring out where along the trail a
+// map click landed. Returns null for trails with fewer than 2 points.
+function distanceToTrailPolyline(plat, plon, rawTrail, cumDist = null) {
+  if (!rawTrail || rawTrail.length < 2) return null;
+  cumDist = cumDist || computeCumulativePathDistances(rawTrail);
+  let best = null;
+  for (let i = 0; i < rawTrail.length - 1; i++) {
+    const a = rawTrail[i], b = rawTrail[i + 1];
+    const { distanceKm, t } = pointToSegmentDistanceKm(plat, plon, a.lat, a.lon, b.lat, b.lon);
+    if (!best || distanceKm < best.distanceKm) {
+      const aTime = new Date(a.time).getTime(), bTime = new Date(b.time).getTime();
+      best = {
+        distanceKm,
+        segmentIndex: i,
+        t,
+        atTime: new Date(aTime + t * (bTime - aTime)).toISOString(),
+        pathDistanceKm: cumDist[i] + t * (cumDist[i + 1] - cumDist[i]),
+      };
+    }
+  }
+  return best;
+}
+
+// Checks if wind data for this report is already in the session cache.
+// Must match the cache key format used in fetchHistoricWind exactly.
+function isWindCached(report) {
+  const reportTime = new Date(report.created_at);
+  const reportAgeHours = (Date.now() - reportTime.getTime()) / 3600000;
+  const availableHours = Math.min(Math.max(reportAgeHours, 0), TRAIL_WINDOW_HOURS);
+  const startTime = new Date(reportTime.getTime() - availableHours * 3600000);
+  const lat = parseFloat(report.latitude);
+  const lon = parseFloat(report.longitude);
+  const cacheKey = `${lat.toFixed(3)}_${lon.toFixed(3)}_${startTime.toISOString().slice(0,13)}`;
+  return !!weatherCache[cacheKey];
+}
+
+async function getHistoricAvgBearing(report) {
+  const reportTime = new Date(report.created_at);
+  const startTime = new Date(reportTime.getTime() - TRAIL_WINDOW_HOURS * 3600000);
+  const hourly = await fetchHistoricWind(
+    report.latitude, report.longitude,
+    startTime.toISOString(), reportTime.toISOString()
   );
-  $$
-);
+  if (!hourly?.time?.length) return null;
 
--- To check it's running:
--- select * from cron.job_run_details order by start_time desc limit 10;
-=================================================================== */
+  // Collect wind directions in the 6h window
+  const dirs = [];
+  for (let i = 0; i < hourly.time.length; i++) {
+    const ts = new Date(hourly.time[i] + 'Z');
+    if (ts >= startTime && ts <= reportTime) {
+      dirs.push(hourly.wind_direction_10m[i]);
+    }
+  }
+  if (!dirs.length) return null;
+
+  // Average using circular mean to handle 0/360 wrap-around
+  const sinSum = dirs.reduce((s, d) => s + Math.sin(d * Math.PI / 180), 0);
+  const cosSum = dirs.reduce((s, d) => s + Math.cos(d * Math.PI / 180), 0);
+  return (Math.atan2(sinSum / dirs.length, cosSum / dirs.length) * 180 / Math.PI + 360) % 360;
+}
+
+function smoothPathChaikin(points, iterations = 3) {
+  if (points.length < 3) return points;
+  let current = [...points];
+  
+  for (let iter = 0; iter < iterations; iter++) {
+    const nextArr = [];
+    nextArr.push(current[0]); 
+    
+    for (let i = 0; i < current.length - 1; i++) {
+      const p0 = current[i];
+      const p1 = current[i + 1];
+      
+      const q = {
+        lat: p0.lat * 0.75 + p1.lat * 0.25,
+        lon: p0.lon * 0.75 + p1.lon * 0.25
+      };
+      const r = {
+        lat: p0.lat * 0.25 + p1.lat * 0.75,
+        lon: p0.lon * 0.25 + p1.lon * 0.75
+      };
+      
+      nextArr.push(q);
+      nextArr.push(r);
+    }
+    nextArr.push(current[current.length - 1]);
+    current = nextArr;
+  }
+  return current;
+}
+
+
+function makeIcon(color, windDeg, catColor, category, windSpeed) {
+  const rotation = (windDeg !== undefined) ? parseFloat(windDeg) : 0;
+  const accent = catColor || 'white';
+  const isCleanAir = category === 'Clean Air';
+
+  // "Clean Air" reports keep the same circle every other category uses,
+  // just with 8 small petals ringed around it — needs a bit more canvas
+  // than the plain circle so the petals don't get clipped.
+  const size = isCleanAir ? 40 : 26;
+  const cx = size / 2, cy = size / 2;
+  const circleR = 11;
+
+  // Arrow length scales with wind speed (calm ~8px, 40+ km/h ~15px) so
+  // strength is visible at a glance, not just direction.
+  const spd = windSpeed != null ? parseFloat(windSpeed) : null;
+  const arrowLen = spd != null ? 8 + Math.min(40, Math.max(0, spd)) / 40 * 7 : 8;
+  const arrowTipY = cy - arrowLen - 3;
+  const arrowShoulderY = cy - arrowLen;
+
+  let petals = '';
+  if (isCleanAir) {
+    const petalCount = 8;
+    const orbitRadius = circleR + 4;
+    const petalRx = 2.6, petalRy = 4.4;
+    for (let i = 0; i < petalCount; i++) {
+      const angle = (360 / petalCount) * i;
+      const rad = angle * Math.PI / 180;
+      const px = cx + orbitRadius * Math.sin(rad);
+      const py = cy - orbitRadius * Math.cos(rad);
+      petals += `<ellipse cx="${px.toFixed(2)}" cy="${py.toFixed(2)}" rx="${petalRx}" ry="${petalRy}" fill="${accent}" stroke="${accent}" stroke-width="1" transform="rotate(${angle} ${px.toFixed(2)} ${py.toFixed(2)})"/>`;
+    }
+  }
+
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="overflow: visible;">
+      ${petals}
+      <circle cx="${cx}" cy="${cy}" r="${circleR}" fill="${color}" stroke="#fff" stroke-width="2"/>
+      <g transform="rotate(${rotation + 180} ${cx} ${cy})">
+        <line x1="${cx}" y1="${arrowShoulderY}" x2="${cx}" y2="${cy}" stroke="${accent}" stroke-width="3" stroke-linecap="round"/>
+        <polygon points="${cx},${arrowTipY} ${cx - 3},${arrowShoulderY + 2} ${cx + 3},${arrowShoulderY + 2}" fill="${accent}"/>
+      </g>
+    </svg>`;
+
+  return L.divIcon({ 
+    className: 'modern-marker-shadow report-pin-icon', 
+    html: svg, 
+    iconSize: [size, size], 
+    iconAnchor: [cx, cy], 
+    popupAnchor: [0, -14] 
+  });
+}
+
+// Zoom level below which report pins render as small plain dots (in the
+// report's category color) instead of the full detailed pin icon. Keeps
+// the map from turning into a wall of oversized pins when zoomed out,
+// while still marking every single report's location and letting its
+// cone stay visible (see updateConeVisibilityForClustering).
+const REPORT_DOT_ZOOM_THRESHOLD = 14;
+
+// Small flat dot used for a report's marker when zoomed out — just the
+// category color, no wind arrow/rotation/clean-air petals, since those
+// details aren't legible at that scale anyway.
+function makeDotIcon(catColor) {
+  const size = 14;
+  const cx = size / 2, cy = size / 2;
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="overflow:visible;">
+      <circle cx="${cx}" cy="${cy}" r="5" fill="${catColor}" stroke="#fff" stroke-width="1.5"/>
+    </svg>`;
+  return L.divIcon({
+    className: 'modern-marker-shadow report-pin-icon report-dot-icon',
+    html: svg,
+    iconSize: [size, size],
+    iconAnchor: [cx, cy],
+    popupAnchor: [0, -8]
+  });
+}
+
+// Picks the right icon for a report given the map's current zoom level.
+function pickReportIcon(report) {
+  const catCol = categoryColor(report.category);
+  if (map.getZoom() < REPORT_DOT_ZOOM_THRESHOLD) {
+    return makeDotIcon(catCol);
+  }
+  const color = ageColor(report.created_at);
+  return makeIcon(color, report.manual_wind_direction ?? report.wind_direction, catCol, report.category, report.wind_speed);
+}
+
+// Small diamond marker for government AQ stations — visually distinct
+// from the round smell-report pins so the two never get confused.
+function makeStationIcon(color) {
+  const size = 20;
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="overflow:visible;">
+      <rect x="3" y="3" width="14" height="14" rx="3" fill="${color}" stroke="white" stroke-width="2"
+            transform="rotate(45 10 10)"/>
+    </svg>`;
+  return L.divIcon({
+    className: 'modern-marker-shadow',
+    html: svg,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+    popupAnchor: [0, -12],
+  });
+}
+
+/* ═══════════════════════════════════════════════════
+   AIR QUALITY STATIONS (government monitoring network)
+═══════════════════════════════════════════════════ */
+let stationMarkers = [];
+// Raw station rows (id/name/lat/lon/...), kept alongside the Leaflet
+// markers so nearest-station lookups (report popups, CSV export) don't
+// need their own separate fetch.
+let airQualityStationsCache = [];
+
+function clearStationMarkers() {
+  stationMarkers.forEach(m => map.removeLayer(m));
+  stationMarkers = [];
+}
+
+function formatStationTime(iso) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  const pad = n => String(n).padStart(2, '0');
+  return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function buildStationPopupHtml(station, reading) {
+  const color = reading ? aqiColor(reading.category) : '#9e9e9e';
+
+  return `<div class="popup-inner" style="padding:0;min-width:220px;max-width:460px;font-family:sans-serif;">
+    <div style="background:${color};padding:4px 8px;border-radius:6px 6px 0 0;display:flex;flex-direction:column;align-items:flex-start;gap:1px;">
+      <span style="font-size:9px;color:rgba(255,255,255,.85);text-transform:uppercase;">${t('aqStationLabel')}</span>
+      <span style="font-size:11px;font-weight:700;color:white;">${station.name}</span>
+    </div>
+    <div style="padding:5px 8px;display:flex;flex-direction:column;gap:2px;">
+      ${reading ? `
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
+          <span style="font-size:10px;font-weight:700;" title="${reading.category || ''}">${reading.category || '–'}</span>
+          <span style="font-size:9px;color:var(--text-secondary);">${t('aqUpdated')} ${formatStationTime(reading.recorded_at)}</span>
+        </div>
+        <div style="height:1px;background:var(--border-color);margin:2px 0;"></div>
+        ${pollutantSummaryRowHtml(reading)}
+      ` : `<span style="font-size:11px;color:var(--text-secondary);">${t('aqNoData')}</span>`}
+      ${station.precision === 'city' ? `
+        <div style="font-size:9px;color:var(--text-secondary);font-style:italic;margin-top:2px;">${t('aqApprox')}</div>
+      ` : ''}
+    </div>
+  </div>`;
+}
+
+async function loadAirQualityStations() {
+  clearStationMarkers();
+  try {
+    const [{ data: stations, error: stErr }, { data: latest, error: rdErr }] = await Promise.all([
+      sb.from('air_quality_stations').select('*'),
+      sb.from('air_quality_latest').select('*'),
+    ]);
+    if (stErr) { console.error('Station load error:', stErr); return; }
+    if (rdErr) console.error('Latest reading load error:', rdErr);
+
+    airQualityStationsCache = stations || [];
+
+    const readingByStation = {};
+    (latest || []).forEach(r => { readingByStation[r.station_id] = r; });
+
+    (stations || []).forEach(station => {
+      const initialReading = readingByStation[station.id] || null;
+      const marker = L.marker([station.lat, station.lon], {
+        icon: makeStationIcon(initialReading ? aqiColor(initialReading.category) : '#9e9e9e'),
+        zIndexOffset: -1000, // keep beneath report pins
+      }).addTo(map);
+      marker.bindPopup(buildStationPopupHtml(station, initialReading), { maxWidth: 460, minWidth: 220 });
+
+      // Re-fetch this station's latest reading fresh, every time its popup
+      // is opened, so the numbers shown are never older than the click.
+      marker.on('popupopen', async () => {
+        try {
+          const { data, error } = await sb
+            .from('air_quality_readings')
+            .select('*')
+            .eq('station_id', station.id)
+            .order('recorded_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (error) { console.error('Station refresh error:', error); return; }
+          if (data) {
+            marker.setPopupContent(buildStationPopupHtml(station, data));
+            marker.setIcon(makeStationIcon(aqiColor(data.category)));
+          }
+        } catch (err) {
+          console.error('Station popup refresh failed:', err);
+        }
+      });
+
+      stationMarkers.push(marker);
+    });
+  } catch (err) {
+    console.error('loadAirQualityStations error:', err);
+  }
+}
+
+// Finds the nearest AQ station (straight-line) to a given point.
+// Returns { station, distanceKm } or null if no stations are loaded.
+function findNearestStation(lat, lon) {
+  if (!airQualityStationsCache.length) return null;
+  lat = parseFloat(lat);
+  lon = parseFloat(lon);
+  let nearest = null, minDist = Infinity;
+  for (const s of airQualityStationsCache) {
+    const d = getHaversineDistance(lat, lon, s.lat, s.lon);
+    if (d < minDist) { minDist = d; nearest = s; }
+  }
+  return nearest ? { station: nearest, distanceKm: minDist } : null;
+}
+
+// Fetches the most recent station reading recorded AT OR BEFORE targetIso —
+// i.e. what the station showed at that real historical hour.
+async function getStationReadingNear(stationId, targetIso) {
+  try {
+    const { data, error } = await sb
+      .from('air_quality_readings')
+      .select('*')
+      .eq('station_id', stationId)
+      .lte('recorded_at', targetIso)
+      .order('recorded_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) { console.error('Station reading lookup failed:', error); return null; }
+    return data;
+  } catch (err) {
+    console.error('Station reading lookup error:', err);
+    return null;
+  }
+}
+
+// Core station-matching logic, shared by getStationsAlongWindTrailForReport
+// (which then fetches each match's reading individually) and the CSV
+// export (which batches all its reading fetches together for performance)
+// — kept as one function so the two can never quietly drift apart. Returns
+// raw matches only (no station reading fetched yet), sorted chronologically
+// oldest-upwind to furthest-downwind. Empty array (not a fallback) if
+// nothing matched — callers decide what "nothing matched" means for them.
+async function findStationMatchesForReport(report, stations, maxDistanceKm = STATION_TRAIL_MATCH_RADIUS_KM) {
+  if (!stations?.length) return [];
+
+  const trailResult = await buildWindTrailForReport(report);
+  let matches = trailResult?.rawTrail?.length
+    ? findAllStationsAlongWindTrail(trailResult.rawTrail, stations, maxDistanceKm)
+        .map(m => ({ ...m, direction: 'before' }))
+    : [];
+
+  // Standard TRAIL_WINDOW_HOURS window came up empty — the wind may simply
+  // have travelled from further back than that window covers. Try
+  // progressively longer backward windows before giving up on this
+  // direction.
+  if (!matches.length) {
+    for (const extendedHours of STATION_MATCH_EXTENDED_HOURS_STEPS) {
+      const extendedRaw = await buildExtendedRawTrailForStationMatch(report, extendedHours);
+      if (!extendedRaw) continue;
+      const extendedMatches = findAllStationsAlongWindTrail(extendedRaw, stations, maxDistanceKm);
+      if (extendedMatches.length) {
+        console.info(`[station-match] report #${report.id}: found ${extendedMatches.length} station(s) only after extending the backward search to ${extendedHours}h`);
+        matches = extendedMatches.map(m => ({ ...m, direction: 'before' }));
+        break;
+      }
+    }
+  }
+
+  // Downwind: at most ONE station the plume would have reached just AFTER
+  // passing the report. This list should mainly answer "where did the wind
+  // come from" (upwind/backward, matched above) -- a single next-station
+  // downwind is included for context, but we deliberately don't pile on
+  // every station within the generous 300km forward window, which used to
+  // make it look like the list favored where the wind was GOING over where
+  // it had BEEN. findAllStationsAlongWindTrail already sorts its matches by
+  // pathDistanceKm ascending, so [0] is the closest/first one the plume
+  // would reach after the report -- the actual "next station".
+  try {
+    const forwardTail = await computeForwardWindExtension(report, STATION_MATCH_FORWARD_MAX_KM, STATION_MATCH_FORWARD_HOURS);
+    if (forwardTail.length) {
+      const forwardRaw = [
+        { lat: parseFloat(report.latitude), lon: parseFloat(report.longitude), time: report.created_at },
+        ...forwardTail
+      ];
+      const forwardMatches = findAllStationsAlongWindTrail(forwardRaw, stations, maxDistanceKm)
+        .map(m => ({ ...m, direction: 'after' }));
+      if (forwardMatches.length) matches = matches.concat(forwardMatches[0]);
+    }
+  } catch (e) {
+    console.warn('Downwind station match failed for report', report.id, e);
+  }
+
+  // Chronological order: oldest upwind station first, through the report's
+  // own time, out to the furthest-reached downwind station last.
+  matches.sort((a, b) => new Date(a.atTime) - new Date(b.atTime));
+  return matches;
+}
+
+// Returns every station a report's wind actually passed near — both
+// upwind and downwind (see findStationMatchesForReport) — each with its
+// station reading fetched. Falls back to plain nearest-station (a 1-item
+// list, matchType: 'nearest-fallback') only if nothing matched at all.
+async function getStationsAlongWindTrailForReport(report, maxDistanceKm = STATION_TRAIL_MATCH_RADIUS_KM) {
+  if (!airQualityStationsCache.length) return null;
+
+  const reportAgeHoursDbg = (Date.now() - new Date(report.created_at).getTime()) / 3600000;
+  let matches = await findStationMatchesForReport(report, airQualityStationsCache, maxDistanceKm);
+
+  if (!matches.length) {
+    console.warn(
+      `[station-match] report #${report.id}: using plain-nearest fallback ` +
+      `(age ${reportAgeHoursDbg.toFixed(1)}h)`
+    );
+    const nearest = findNearestStation(report.latitude, report.longitude);
+    if (!nearest) return null;
+    matches = [{
+      station: nearest.station, distanceKm: nearest.distanceKm, atTime: report.created_at,
+      pathDistanceKm: null, direction: null, matchType: 'nearest-fallback'
+    }];
+  } else {
+    console.info(
+      `[station-match] report #${report.id}: matched ${matches.length} station(s) via wind trail ` +
+      matches.map(m => `"${m.station.name}" (${m.distanceKm.toFixed(1)}km, ${m.direction} report, ${m.atTime})`).join(', ')
+    );
+  }
+
+  return Promise.all(matches.map(async (match) => {
+    const reading = await getStationReadingNear(match.station.id, match.atTime);
+    return {
+      station: match.station,
+      distanceKm: match.distanceKm,
+      pathDistanceKm: match.pathDistanceKm,
+      targetTime: new Date(match.atTime),
+      direction: match.direction ?? 'before',
+      matchType: match.matchType ?? 'trail',
+      reading
+    };
+  }));
+}
+
+/* ═══════════════════════════════════════════════════
+   BACKTRACK ENGINE
+═══════════════════════════════════════════════════ */
+let btLayers    = []; 
+let bgTrailLayers = [];
+const splineByReport = {}; 
+let btAnimFrame = null;
+
+// "Solo" focus mode: while a report's popup is open, every OTHER report's
+// trail (and marker) dims down so the one you're actually looking at
+// isn't lost in a tangle of dozens of overlapping dashed lines. Cleared
+// automatically when that popup closes (see renderPin's popupopen/close).
+let focusedTrailReportId = null;
+const TRAIL_DIMMED_OPACITY = 0.08;
+const MARKER_DIMMED_OPACITY = 0.35;
+function setTrailFocus(reportId) {
+  focusedTrailReportId = reportId;
+  Object.keys(splineByReport).forEach(id => {
+    const isFocused = reportId == null || String(id) === String(reportId);
+    (splineByReport[id] || []).forEach(seg => {
+      seg.setStyle({ opacity: isFocused ? (seg._baseOpacity ?? 0.85) : TRAIL_DIMMED_OPACITY });
+    });
+  });
+  Object.keys(markerByReportId).forEach(id => {
+    const m = markerByReportId[id];
+    if (!m) return;
+    const isFocused = reportId == null || String(id) === String(reportId);
+    m.setOpacity(isFocused ? 1 : MARKER_DIMMED_OPACITY);
+  });
+}
+function clearTrailFocus() {
+  setTrailFocus(null);
+}
+
+function clearBacktrack(){
+  btLayers.forEach(l=>map.removeLayer(l));
+  btLayers=[];
+  if(btAnimFrame){ cancelAnimationFrame(btAnimFrame); btAnimFrame=null; }
+}
+
+// Projects a point in the direction windFromDeg (meteorological: direction wind is BLOWING TOWARD)
+// by distKm kilometres. Wind FROM 270° blows eastward, so this moves the point east.
+// Used to trace where wind carries odours from a report location.
+function moveUpwind(lat,lon,windFromDeg,distKm){
+  const R=6371, br=(windFromDeg*Math.PI)/180, d=distKm/R;
+  const lat1=lat*Math.PI/180, lon1=lon*Math.PI/180;
+  const lat2=Math.asin(Math.sin(lat1)*Math.cos(d)+Math.cos(lat1)*Math.sin(d)*Math.cos(br));
+  const lon2=lon1+Math.atan2(Math.sin(br)*Math.sin(d)*Math.cos(lat1),Math.cos(d)-Math.sin(lat1)*Math.sin(lat2));
+  return { lat:lat2*180/Math.PI, lon:lon2*180/Math.PI };
+}
+
+// Same great-circle projection as moveUpwind, just the physically-forward
+// direction (bearing flipped 180°) -- where the air a report's wind
+// reading describes actually continues TO, used to project where the
+// smell might have drifted after the report was made.
+function moveDownwind(lat, lon, windFromDeg, distKm) {
+  return moveUpwind(lat, lon, (windFromDeg + 180) % 360, distKm);
+}
+
+/* ═══════════════════════════════════════════════════
+   HISTORICAL WEATHER & SPLINE GENERATION
+═══════════════════════════════════════════════════ */
+
+// Fetches hourly wind data from Open-Meteo for a given location and time window.
+// Uses forecast API for data < 7 days old, archive API for older data.
+// Results are cached by location+hour to avoid redundant API calls.
+async function fetchHistoricWind(lat,lon,isoStart,isoEnd){
+// Supabase can return numeric columns as strings; coerce defensively so
+// .toFixed() below never throws regardless of what the caller passed in.
+lat = parseFloat(lat);
+lon = parseFloat(lon);
+const cacheKey = `${lat.toFixed(3)}_${lon.toFixed(3)}_${isoStart.slice(0,13)}`;
+// Age of the window's END (i.e. the report's own time) — NOT the window's
+// start, which is always TRAIL_WINDOW_HOURS further back and would make
+// this check fire far too late.
+const windowEndAgeHours = (Date.now() - new Date(isoEnd).getTime()) / 3600000;
+
+// Skip entirely if there's not yet even TRAIL_MIN_HOURS of settled data
+if (windowEndAgeHours < TRAIL_MIN_HOURS) return null;
+
+// For archive data (>7 days), cache permanently — it never changes
+// For recent data (6h–7d), cache is valid for the session since we only
+// enter this branch once the report is old enough to have settled data
+if (weatherCache[cacheKey]) return weatherCache[cacheKey];
+
+  // Multiple reports at the same spot/hour would otherwise each fire their
+  // own identical request while the first is still in flight — share it.
+  if (weatherFetchInFlight[cacheKey]) return weatherFetchInFlight[cacheKey];
+
+  const daysDiff=(Date.now()-new Date(isoStart))/86400000;
+  let url = '';
+  if(daysDiff<7){
+    url=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=wind_speed_10m,wind_direction_10m,pressure_msl&wind_speed_unit=kmh&timezone=UTC&past_days=7&forecast_days=1`;
+  } else {
+    const sd=isoStart.slice(0,10), ed=isoEnd.slice(0,10);
+    url=`https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${sd}&end_date=${ed}&hourly=wind_speed_10m,wind_direction_10m,pressure_msl&wind_speed_unit=kmh&timezone=UTC`;
+  }
+
+  const doFetch = async () => {
+    // Up to 3 attempts total with growing backoff before giving up — a
+    // burst of concurrent reports used to 429 after just one quick retry.
+    const backoffMs = [1500, 3500];
+    let r;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        r = await fetch(url);
+      } catch (e) {
+        return null;
+      }
+      if (r.status !== 429 || attempt >= backoffMs.length) break;
+      await new Promise(res => setTimeout(res, backoffMs[attempt]));
+    }
+    if (!r.ok) return null;
+    try {
+      const d = await r.json();
+      if (!d.hourly) return null;
+      weatherCache[cacheKey] = d.hourly;
+      return d.hourly;
+    } catch (e) {
+      return null;
+    }
+  };
+
+  const p = runWithOpenMeteoLimit(doFetch).finally(() => {
+    delete weatherFetchInFlight[cacheKey];
+  });
+  weatherFetchInFlight[cacheKey] = p;
+  return p;
+}
+
+// Same shape as fetchHistoricWind, minus its TRAIL_MIN_HOURS settle-gate.
+// That gate exists there because backward trail data gets persisted to
+// Supabase as if final/authoritative -- it deliberately waits for
+// Open-Meteo's numbers to stop being forecast estimates. This is used
+// only for the trace heatmap's transient "after the report" tail, never
+// persisted, so a fresh report showing its likely next few hours via
+// forecast data (rather than nothing at all until 5+ hours later) is the
+// right tradeoff here.
+async function fetchForwardWind(lat, lon, isoStart, isoEnd) {
+  lat = parseFloat(lat);
+  lon = parseFloat(lon);
+  const cacheKey = `fwd_${lat.toFixed(3)}_${lon.toFixed(3)}_${isoStart.slice(0,13)}`;
+  if (weatherCache[cacheKey]) return weatherCache[cacheKey];
+  if (weatherFetchInFlight[cacheKey]) return weatherFetchInFlight[cacheKey];
+
+  const daysDiff = (Date.now() - new Date(isoStart)) / 86400000;
+  let url = '';
+  if (daysDiff < 7) {
+    // forecast_days:2 (vs fetchHistoricWind's 1) so even a report made
+    // this minute has forecasted hours past "now" to cover its forward
+    // window with.
+    url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=wind_speed_10m,wind_direction_10m,pressure_msl&wind_speed_unit=kmh&timezone=UTC&past_days=7&forecast_days=2`;
+  } else {
+    const sd = isoStart.slice(0, 10), ed = isoEnd.slice(0, 10);
+    url = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${sd}&end_date=${ed}&hourly=wind_speed_10m,wind_direction_10m,pressure_msl&wind_speed_unit=kmh&timezone=UTC`;
+  }
+
+  const doFetch = async () => {
+    const backoffMs = [1500, 3500];
+    let r;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        r = await fetch(url);
+      } catch (e) {
+        return null;
+      }
+      if (r.status !== 429 || attempt >= backoffMs.length) break;
+      await new Promise(res => setTimeout(res, backoffMs[attempt]));
+    }
+    if (!r.ok) return null;
+    try {
+      const d = await r.json();
+      if (!d.hourly) return null;
+      weatherCache[cacheKey] = d.hourly;
+      return d.hourly;
+    } catch (e) {
+      return null;
+    }
+  };
+
+  const p = runWithOpenMeteoLimit(doFetch).finally(() => {
+    delete weatherFetchInFlight[cacheKey];
+  });
+  weatherFetchInFlight[cacheKey] = p;
+  return p;
+}
+
+// Wraps fetchHistoricWind with Supabase-backed persistence for a specific report.
+// This function only ever runs for reports old enough to pass TRAIL_SETTLED_GATE_HOURS
+// (renderHistoricSplineTrailForReport already gates on that), and that gate is what
+// matters here: the report's relevant TRAIL_WINDOW_HOURS wind window
+// (created_at - TRAIL_WINDOW_HOURS to created_at) is fully in the past by then, so
+// Open-Meteo's returned values for that window are settled and won't change again —
+// regardless of whether fetchHistoricWind happens to route to the forecast API
+// (< 7 days old) or the archive API (>= 7 days old). Those are two unrelated things:
+// the forecast/archive split is about which Open-Meteo endpoint has finalized data;
+// this persistence cache is about whether THIS report's own wind window has settled.
+// So we persist as soon as the report itself is old enough, not after a 7-day wait.
+async function fetchHistoricWindForReport(report, isoStart, isoEnd) {
+  const reportTime = new Date(report.created_at);
+  const reportAgeHours = (Date.now() - reportTime.getTime()) / 3600000;
+  const isSettled = reportAgeHours >= TRAIL_SETTLED_GATE_HOURS;
+
+  // 0. historic_wind_json is deliberately left out of the bulk list query
+  // (fetchAll) — it's a multi-KB blob per report and most loaded reports
+  // never have their trail built, so shipping it for all of them wastes
+  // bandwidth on every page load. `undefined` means "not fetched yet" (vs.
+  // `null`, which would mean "fetched, and there's genuinely nothing
+  // cached"), so lazily pull just this one report's column the first time
+  // its trail is actually needed.
+  if (isSettled && report.historic_wind_json === undefined) {
+    try {
+      const { data, error } = await sb
+        .from('air_reports')
+        .select('historic_wind_json')
+        .eq('id', report.id)
+        .maybeSingle();
+      report.historic_wind_json = (!error && data) ? data.historic_wind_json : null;
+    } catch (e) {
+      report.historic_wind_json = null;
+    }
+  }
+
+  // 1. Try the persisted column first (instant, no network call at all)
+  if (isSettled && report.historic_wind_json) {
+    try {
+      const cached = typeof report.historic_wind_json === 'string'
+        ? JSON.parse(report.historic_wind_json)
+        : report.historic_wind_json;
+      if (cached?.time?.length) {
+        // Also warm the in-memory cache so other helpers (e.g. getHistoricAvgBearing)
+        // that call fetchHistoricWind directly for this same location/hour benefit too
+        const cacheKey = `${parseFloat(report.latitude).toFixed(3)}_${parseFloat(report.longitude).toFixed(3)}_${isoStart.slice(0,13)}`;
+        weatherCache[cacheKey] = cached;
+        return cached;
+      }
+    } catch (e) {
+      // fall through to network fetch if stored JSON is malformed
+    }
+  }
+
+  // 2. Not cached (or not settled yet) — fetch normally
+  const hourly = await fetchHistoricWind(report.latitude, report.longitude, isoStart, isoEnd);
+
+  // 3. Persist to Supabase only once this report's own wind window is settled
+  if (isSettled && hourly?.time?.length) {
+    report.historic_wind_json = hourly; // update local copy so this session won't refetch
+    backfillHistoricWind(report.id, hourly); // fire-and-forget; drawing doesn't wait on this
+  }
+
+  return hourly;
+}
+
+async function backfillHistoricWind(reportId, hourlyData) {
+  try {
+    const result = await sb
+      .from("air_reports")
+      .update({ historic_wind_json: hourlyData })
+      .eq("id", Number(reportId))
+      .select();
+    console.log("BACKFILL historic_wind_json:", result);
+    return result;
+  } catch (e) {
+    console.warn('Failed to persist historic_wind_json for report', reportId, e);
+  }
+}
+
+// Builds a raw upwind vector trail from a series of hourly wind steps.
+// Each step moves the trail in the wind direction by wind_speed km.
+// Returns array of {lat, lon} points starting from the pin origin.
+function buildRawVectorTrail(baseLat, baseLon, steps) {
+  const trail = [{ lat: baseLat, lon: baseLon }];
+  let cLat = baseLat, cLon = baseLon;
+  
+steps.forEach(s => {
+  const upwindDir = (s.dir) % 360;
+  const m = moveUpwind(cLat, cLon, upwindDir, s.spd * 1.0);
+  cLat = m.lat; cLon = m.lon;
+  trail.push({ lat: cLat, lon: cLon });
+});
+  
+  return trail;
+}
+
+async function backfillPressure(reportId, avgPressure) {
+  const result = await sb
+    .from("air_reports")
+    .update({ sea_level_pressure: parseFloat(avgPressure.toFixed(1)) })
+    .eq("id", Number(reportId))
+    .select();
+  console.log("BACKFILL sea_level_pressure:", result);
+  return result;
+}
+
+async function backfillWindSpeed(reportId, avgSpeed) {
+  const result = await sb
+    .from("air_reports")
+    .update({ wind_speed: avgSpeed })
+    .eq("id", Number(reportId))
+    .select();
+  console.log("BACKFILL wind_speed:", result);
+  return result;
+}
+
+// Overwrites wind_direction with the Open-Meteo historical circular-mean average.
+// manual_wind_direction (user-reported from Windfinder) is never touched.
+async function backfillWindDirection(reportId, avgDirection) {
+  const result = await sb
+    .from("air_reports")
+    .update({ wind_direction: parseFloat(avgDirection.toFixed(1)) })
+    .eq("id", Number(reportId))
+    .select();
+  console.log("BACKFILL wind_direction:", result);
+  return result;
+}
+
+// Fetches TRAIL_WINDOW_HOURS of historical wind data and builds a smoothed Chaikin spline trail
+// Builds the full backtracked wind trail for a report: an hour-by-hour walk
+// from the report's own location/time backward toward where the wind came
+// from. Returns { rawTrail, spline } where rawTrail carries a real `time`
+// (ISO string) per point, and spline is the Chaikin-smoothed version drawn
+// on the map. This is the single place that does the Open-Meteo fetch +
+// backtrack math — renderHistoricSplineTrailForReport (map line) and
+// getStationsAlongWindTrailForReport (station matching) both build on top of it.
+async function buildWindTrailForReport(report) {
+
+  const reportTime = new Date(report.created_at);
+  const reportAgeHours =
+    (Date.now() - reportTime.getTime()) / 3600000;
+
+  // Not even TRAIL_MIN_HOURS of data could exist yet
+  if (reportAgeHours < TRAIL_MIN_HOURS) {
+    console.warn(`[wind-trail] report #${report.id}: too new (${reportAgeHours.toFixed(2)}h old, needs ${TRAIL_MIN_HOURS}h) — no wind trail yet, will fall back to nearest-station`);
+    return null;
+  }
+
+  // The trail is only "final" once the report has cleared the full
+  // TRAIL_WINDOW_HOURS + settle buffer — before that, more hours of wind
+  // data become available every hour, so the trail should keep growing.
+  const isSettled = reportAgeHours >= TRAIL_SETTLED_GATE_HOURS;
+
+  // Only return the cached trail once it's the final, full-window version.
+  // Growing trails are recomputed each call so newly-available hours show up.
+  if (isSettled && windTrailCache[report.id]) {
+    return windTrailCache[report.id];
+  }
+
+  try {
+
+    // Use whatever historical window is actually available so far, capped
+    // at TRAIL_WINDOW_HOURS — a 3h-old report gets a 3h trail, which then
+    // keeps extending hour by hour until it reaches the full window.
+    const availableHours = Math.min(reportAgeHours, TRAIL_WINDOW_HOURS);
+    const startTime = new Date(reportTime.getTime() - availableHours * 3600000);
+
+    const hourly = await fetchHistoricWindForReport(
+      report,
+      startTime.toISOString(),
+      reportTime.toISOString()
+    );
+
+    if (!hourly?.time?.length) {
+      console.warn(`[wind-trail] report #${report.id}: Open-Meteo returned no hourly data (fetch failed, rate-limited, or empty) — falling back to nearest-station`);
+      return null;
+    }
+
+    const steps = [];
+
+    for (let i = 0; i < hourly.time.length; i++) {
+
+      const ts = Date.parse(hourly.time[i] + "Z");
+
+      if (
+        ts < startTime.getTime() ||
+        ts > reportTime.getTime()
+      ) {
+        continue;
+      }
+
+      const spd = hourly.wind_speed_10m[i];
+      const dir = hourly.wind_direction_10m[i];
+      const pres = hourly.pressure_msl?.[i] ?? null;
+
+      if (spd == null || dir == null) {
+        continue;
+      }
+
+      steps.push({ spd, dir, pres, ts });
+
+    }
+
+    if (!steps.length) {
+      console.warn(`[wind-trail] report #${report.id}: Open-Meteo data present but none of it fell inside [${startTime.toISOString()}, ${reportTime.toISOString()}] — falling back to nearest-station`);
+      return null;
+    }
+
+    // Backfill wind_speed if missing (null at insert time means live fetch failed)
+    if (report.wind_speed == null) {
+      const avgSpeed = Number(
+        (steps.reduce((sum, s) => sum + s.spd, 0) / steps.length).toFixed(1)
+      );
+      report.wind_speed = avgSpeed;
+      await backfillWindSpeed(report.id, avgSpeed);
+    }
+
+    // Find the single hourly reading closest to the report time.
+    // This is what Open-Meteo says the wind was at that moment —
+    // a fair comparison to what the user read on Windfinder.
+    let closestStep = null;
+    let closestDiff = Infinity;
+    for (let i = 0; i < hourly.time.length; i++) {
+      const ts = Date.parse(hourly.time[i] + "Z");
+      const diff = Math.abs(ts - reportTime.getTime());
+      if (diff < closestDiff) {
+        closestDiff = diff;
+        closestStep = i;
+      }
+    }
+    const historicalDir = closestStep != null ? hourly.wind_direction_10m[closestStep] : null;
+    // Only ever set this once -- a DB trigger enforces write-once semantics
+    // on these backfill fields (rejects the update with a 400 otherwise),
+    // so recomputing a slightly different value on a later call (different
+    // window, revised Open-Meteo data, floating-point drift, etc.) must
+    // never attempt to overwrite whatever's already stored.
+    if (historicalDir != null && report.wind_direction == null) {
+      report.wind_direction = historicalDir;
+      await backfillWindDirection(report.id, historicalDir);
+    }
+
+    const validPres = steps.filter(s => s.pres != null);
+    if (validPres.length && report.sea_level_pressure == null) {
+      const avgPressure = validPres.reduce((sum, s) => sum + s.pres, 0) / validPres.length;
+      report.sea_level_pressure = avgPressure;
+      await backfillPressure(report.id, avgPressure);
+    }
+
+    steps.reverse(); // walk backwards from report time toward the source
+    const rawTrail = buildRawVectorTrail(
+      report.latitude,
+      report.longitude,
+      steps
+    );
+
+    // rawTrail[0] is the report's own point/time; rawTrail[i] (i>=1) comes
+    // from steps[i-1] (post-reverse), so it inherits that step's real hour
+    // and wind speed (used to vary trail thickness on the map).
+    rawTrail[0].time = reportTime.toISOString();
+    rawTrail[0].spd = steps[0]?.spd ?? report.wind_speed ?? null;
+    for (let i = 1; i < rawTrail.length; i++) {
+      rawTrail[i].time = new Date(steps[i - 1].ts).toISOString();
+      rawTrail[i].spd = steps[i - 1].spd;
+    }
+
+    const spline = smoothPathChaikin(rawTrail, 2);
+
+    const result = { rawTrail, spline };
+
+    if (isSettled) {
+      windTrailCache[report.id] = result;
+    }
+
+    return result;
+
+  } catch (err) {
+
+    console.error(
+      `Historic spline generation failed for report ${report.id}`,
+      err
+    );
+
+    return null;
+
+  }
+
+}
+
+// Thin wrapper kept for the map-rendering call sites: same trail-building
+// logic as buildWindTrailForReport, just returning the drawable spline.
+async function renderHistoricSplineTrailForReport(report) {
+  const result = await buildWindTrailForReport(report);
+  return result ? result.spline : null;
+}
+
+// Builds a raw backward wind trail for STATION MATCHING ONLY, looking back
+// up to `maxHours` instead of the map's fixed TRAIL_WINDOW_HOURS. Used when
+// the standard window's trail doesn't pass near any station -- the wind may
+// simply have travelled from further away than that window covers. Kept
+// entirely separate from buildWindTrailForReport: this never backfills the
+// report's wind_speed/direction/pressure fields (those represent conditions
+// AT the report's own time, unrelated to how far back we search here) and
+// never touches the persisted historic_wind_json cache (that column is
+// specifically the standard window, reused for fast reloads of the map
+// trail) -- just a plain in-memory Open-Meteo fetch via fetchHistoricWind.
+async function buildExtendedRawTrailForStationMatch(report, maxHours) {
+  const reportTime = new Date(report.created_at);
+  const reportAgeHours = (Date.now() - reportTime.getTime()) / 3600000;
+  const availableHours = Math.min(reportAgeHours, maxHours);
+  if (availableHours < TRAIL_MIN_HOURS) return null;
+
+  const startTime = new Date(reportTime.getTime() - availableHours * 3600000);
+  const hourly = await fetchHistoricWind(report.latitude, report.longitude, startTime.toISOString(), reportTime.toISOString());
+  if (!hourly?.time?.length) return null;
+
+  const steps = [];
+  for (let i = 0; i < hourly.time.length; i++) {
+    const ts = Date.parse(hourly.time[i] + 'Z');
+    if (ts < startTime.getTime() || ts > reportTime.getTime()) continue;
+    const spd = hourly.wind_speed_10m[i];
+    const dir = hourly.wind_direction_10m[i];
+    if (spd == null || dir == null) continue;
+    steps.push({ spd, dir, ts });
+  }
+  if (!steps.length) return null;
+
+  steps.reverse(); // walk backwards from report time toward the source
+  const rawTrail = buildRawVectorTrail(report.latitude, report.longitude, steps);
+  rawTrail[0].time = reportTime.toISOString();
+  rawTrail[0].spd = steps[0]?.spd ?? report.wind_speed ?? null;
+  for (let i = 1; i < rawTrail.length; i++) {
+    rawTrail[i].time = new Date(steps[i - 1].ts).toISOString();
+    rawTrail[i].spd = steps[i - 1].spd;
+  }
+  return rawTrail;
+}
+
+// Projects roughly maxKm forward from a report's own location using
+// hourly wind readings for the hours right AFTER it was made -- i.e.
+// where the smell likely continued drifting once someone noticed and
+// reported it, as opposed to buildWindTrailForReport's rawTrail, which
+// walks backward in time toward the source. Used only by the
+// trace-heatmap's yellow "after the report" tail (never persisted), via
+// fetchForwardWind so even a very fresh report gets a forward tail from
+// forecast data rather than nothing until it's 5+ hours old.
+async function computeForwardWindExtension(report, maxKm = 5, maxHoursForward = 6) {
+  const reportTime = new Date(report.created_at);
+  const forwardEnd = new Date(reportTime.getTime() + maxHoursForward * 3600000);
+
+  const hourly = await fetchForwardWind(
+    report.latitude, report.longitude,
+    reportTime.toISOString(), forwardEnd.toISOString()
+  );
+  if (!hourly?.time) return [];
+
+  const steps = [];
+  for (let i = 0; i < hourly.time.length; i++) {
+    const ts = new Date(hourly.time[i] + 'Z');
+    if (ts > reportTime && ts <= forwardEnd) {
+      steps.push({ spd: hourly.wind_speed_10m[i], dir: hourly.wind_direction_10m[i], ts: ts.getTime() });
+    }
+  }
+  if (!steps.length) return [];
+
+  const points = [];
+  let cLat = parseFloat(report.latitude), cLon = parseFloat(report.longitude);
+  let travelled = 0;
+  for (const s of steps) {
+    if (travelled >= maxKm) break;
+    const stepKm = Math.min(s.spd * 1.0, maxKm - travelled); // spd is km/h, 1h per hourly step
+    const m = moveDownwind(cLat, cLon, s.dir, stepKm);
+    cLat = m.lat; cLon = m.lon;
+    travelled += stepKm;
+    points.push({ lat: cLat, lon: cLon, spd: s.spd, time: new Date(s.ts).toISOString() });
+  }
+  return points;
+}
+
+// Like findAllStationsAlongWindTrail's per-station closest-approach search,
+// one — each matched to its own closest approach along the path (using
+// distanceToTrailPolyline, so it catches close approaches between hourly
+// points too, not just at the hourly vertices). Sorted with the station
+// closest to the report (least travel time/distance, i.e. the one the wind
+// passed MOST RECENTLY before arriving) first, and the farthest-back /
+// oldest station last — the order the wind actually encountered them,
+// reversed, so the popup reads "most recent first".
+function findAllStationsAlongWindTrail(rawTrail, stations, maxDistanceKm = STATION_TRAIL_MATCH_RADIUS_KM) {
+  if (!rawTrail?.length || rawTrail.length < 2 || !stations?.length) return [];
+
+  const cumDist = computeCumulativePathDistances(rawTrail);
+
+  const matches = [];
+  for (const s of stations) {
+    const best = distanceToTrailPolyline(s.lat, s.lon, rawTrail, cumDist);
+    // Exclude a match whose closest approach is right at the start of the
+    // trail — that's the wind not having travelled anywhere yet, i.e. the
+    // station is just near the incident, not somewhere it was carried to.
+    // See MIN_TRAIL_MATCH_PATH_KM above.
+    if (best && best.pathDistanceKm >= MIN_TRAIL_MATCH_PATH_KM && best.distanceKm <= maxDistanceKm) {
+      matches.push({
+        station: s,
+        distanceKm: best.distanceKm,
+        atTime: best.atTime,
+        pathDistanceKm: best.pathDistanceKm,
+      });
+    }
+  }
+
+  // pathDistanceKm only grows as we walk further back in time, so sorting
+  // by it ascending is the same as sorting "closest to report time" first.
+  matches.sort((a, b) => a.pathDistanceKm - b.pathDistanceKm);
+  return matches;
+}
+
+// Handles a click anywhere along a report's spline. Shows the AVERAGE
+// reading across whichever matched stations the wind had already passed
+// BEFORE reaching the clicked point — not the station(s) further along
+// the path toward the report, since the wind hasn't gotten there yet from
+// this point's perspective. "Already passed" = matched further back along
+// the path (larger pathDistanceKm) than the click itself.
+async function startBacktrack(lat, lon, createdAt) {
+  clearBacktrack();
+  const HOURS = TRAIL_WINDOW_HOURS;
+  
+  // Define variables here, at the top level of the function
+  const reportTime = new Date(createdAt);
+  const startTime = new Date(reportTime.getTime() - HOURS * 3600000);
+
+  try {
+    // Now startTime is guaranteed to be defined
+    const hourly = await fetchHistoricWind(lat, lon, startTime.toISOString(), reportTime.toISOString());
+    if (!hourly?.time?.length) return;
+
+    const steps = [];
+    for(let i = 0; i < hourly.time.length; i++) {
+      const ts = new Date(hourly.time[i] + 'Z');
+      if(ts >= startTime && ts <= reportTime)
+        steps.push({ spd: hourly.wind_speed_10m[i], dir: hourly.wind_direction_10m[i] });
+    }
+    
+    if(!steps.length) return;
+
+    // steps is currently oldest→newest (Open-Meteo returns it chronologically
+    // ascending). buildRawVectorTrail() applies steps[0]'s wind vector at the
+    // walk's starting point (lat,lon) and each subsequent step further along
+    // the trail — so without reversing, the report's own pin would be walked
+    // using the OLDEST hour in the window instead of the one closest to
+    // report time, and the freshest reading would land many km away at the
+    // far end of the trail. Mirrors the steps.reverse() already done in
+    // buildWindTrailForReport() for exactly this reason.
+    steps.reverse();
+
+    const rawTrail = buildRawVectorTrail(lat, lon, steps);
+    const smoothed = smoothPathChaikin(rawTrail, 3);
+
+    if (smoothed.length < 2) return;
+
+  } catch(err) { 
+    console.error('Backtrack Error:', err); 
+  }
+}
+
+/* ═══════════════════════════════════════════════════
+   BACKGROUND TRAIL RENDERING
+═══════════════════════════════════════════════════ */
+
+function clearBackgroundTrails() {
+  bgTrailLayers.forEach(l => map.removeLayer(l));
+  bgTrailLayers = [];
+}
+
+// Color stops for the Trace Possible Source spline gradient (only used
+// when tracerCoords is set): the backtrail reads purple (at the presumed
+// source, farthest back) -> red (mid-trail) -> orange (arriving at the
+// report), then a short forward tail continues orange -> pale yellow for
+// the ~1h of real wind data right after the report was made.
+const TRACE_SPLINE_BACK_STOPS = [
+  [0.0, [245, 124, 0]],   // f57c00 orange -- at the report
+  [0.5, [196, 30, 39]],   // c41e27 red -- mid-trail
+  [1.0, [142, 36, 170]]   // 8e24aa purple -- at the presumed source
+];
+const TRACE_SPLINE_FORWARD_STOPS = [
+  [0.0, [245, 124, 0]],   // f57c00 orange -- at the report
+  [1.0, [255, 245, 157]]  // fff59d pale yellow -- ~1h past the report
+];
+function traceGradientColor(stops, t) {
+  t = Math.max(0, Math.min(1, t));
+  for (let i = 0; i < stops.length - 1; i++) {
+    const [t0, c0] = stops[i], [t1, c1] = stops[i + 1];
+    if (t >= t0 && t <= t1) {
+      const f = t1 === t0 ? 0 : (t - t0) / (t1 - t0);
+      const r = Math.round(c0[0] + (c1[0] - c0[0]) * f);
+      const g = Math.round(c0[1] + (c1[1] - c0[1]) * f);
+      const b = Math.round(c0[2] + (c1[2] - c0[2]) * f);
+      return `rgb(${r},${g},${b})`;
+    }
+  }
+  const last = stops[stops.length - 1][1];
+  return `rgb(${last[0]},${last[1]},${last[2]})`;
+}
+// Draws one logical trail as a series of short segments (Leaflet
+// polylines can only take a single color/weight each, so a gradient --
+// or wind-speed-varying thickness -- means many small ones). `stops` is
+// optional (omit for a single fixedColor); `speedProfile` is optional
+// (omit to keep a flat default weight). Returns the array of layers added.
+function drawGradientSpline(points, stops, report, tracerCoords, animationClass = 'trace-pulse-spline', opts = {}) {
+  const { fixedColor, pointSpeeds, baseOpacity = 0.85 } = opts;
+  const layers = [];
+  for (let i = 0; i < points.length - 1; i++) {
+    const t = points.length > 2 ? (i + 0.5) / (points.length - 1) : 0.5;
+    const color = stops ? traceGradientColor(stops, t) : fixedColor;
+    let weight = 2;
+    if (pointSpeeds) {
+      const a = pointSpeeds[i], b = pointSpeeds[i + 1] ?? a;
+      weight = speedToWeight(a != null && b != null ? (a + b) / 2 : null);
+    }
+    const segment = L.polyline([points[i], points[i + 1]], {
+      color,
+      weight,
+      opacity: baseOpacity,
+      dashArray: '4, 7',
+      lineCap: 'round',
+      lineJoin: 'round',
+      className: `spline-report-${report.id}${tracerCoords ? ' ' + animationClass : ''}`,
+      interactive: false,
+      pane: 'splinePane'
+    }).addTo(map);
+    // Focus mode (see setTrailFocus) dims every trail except the one
+    // whose popup is open, then needs to restore this exact opacity --
+    // stash it here since setStyle() overwrites options.opacity itself.
+    segment._baseOpacity = baseOpacity;
+    layers.push(segment);
+  }
+  return layers;
+}
+
+// The backtrail (report->source) and forward tail (report->future) are
+// built from two different data sources and were previously just stuck
+// together at the report point, leaving a visible kink there. This joins
+// them into one continuous raw path, runs one more Chaikin pass across
+// the whole thing so the seam rounds off like the rest of the curve, then
+// splits it back into the two portions (sharing their shared point) so
+// each can still get its own gradient.
+function smoothTraceJoin(backLatLngs, tailPoints) {
+  if (!tailPoints || !tailPoints.length) {
+    return { backSmoothed: backLatLngs, forwardSmoothed: [] };
+  }
+
+  const sourceToReport = [...backLatLngs].reverse().map(([lat, lon]) => ({ lat, lon }));
+  const future = tailPoints.map(p => ({ lat: p.lat, lon: p.lon }));
+  const combinedRaw = sourceToReport.concat(future);
+  const reportLatLng = backLatLngs[0]; // exact report coordinate, pre-smoothing
+
+  const combinedSmoothed = smoothPathChaikin(combinedRaw, 1);
+
+  // Whichever point in the freshly-smoothed path now sits closest to the
+  // report's real coordinates is the back/forward split point.
+  let splitIdx = 0, splitDist = Infinity;
+  combinedSmoothed.forEach((p, i) => {
+    const d = getHaversineDistance(p.lat, p.lon, reportLatLng[0], reportLatLng[1]);
+    if (d < splitDist) { splitDist = d; splitIdx = i; }
+  });
+
+  const backSmoothed = combinedSmoothed.slice(0, splitIdx + 1).reverse().map(p => [p.lat, p.lon]);
+  const forwardSmoothed = combinedSmoothed.slice(splitIdx).map(p => [p.lat, p.lon]);
+  return { backSmoothed, forwardSmoothed };
+}
+
+async function generateAllBackgroundTrails(reports, tracerCoords = null) {
+  clearBackgroundTrails();
+
+  // Create a shallow copy and sort it so that older reports are drawn first, 
+  // and the newest reports are drawn LAST (putting them on top visually)
+  const sortedReports = [...reports].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
+  // PASS 1: Draw all solid cones synchronously (no API calls needed)
+  const coneEdges = new Map(); // report.id -> { left: [], right: [] }
+  sortedReports.forEach((report) => {
+    const startLat = parseFloat(report.latitude);
+    const startLon = parseFloat(report.longitude);
+    const windDeg = parseFloat(report.manual_wind_direction ?? report.wind_direction);
+
+
+    const totalDistKm = 1.5;
+    const totalSegments = 5;
+    const stepDistKm = totalDistKm / totalSegments;
+    const expansionAngleDeg = 30;
+
+    const baseColor = categoryColor(report.category);
+    const upwindBearingRad = ((windDeg + 180) % 360) * Math.PI / 180;
+
+    coneEdges.set(report.id, { left: [], right: [] });
+
+    const coneClipDistKm = tracerCoords ? (() => {
+      const distToSource = getHaversineDistance(startLat, startLon, tracerCoords.lat, tracerCoords.lon);
+      return distToSource + 5.0;
+    })() : Infinity;
+
+    for (let i = 0; i < totalSegments; i++) {
+      const currentSegmentDistStart = i * stepDistKm;
+      const currentSegmentDistEnd = (i + 1) * stepDistKm;
+      if (currentSegmentDistStart >= coneClipDistKm) continue;
+
+      const pStart = moveUpwind(startLat, startLon, windDeg, currentSegmentDistStart);
+      const pEnd = moveUpwind(startLat, startLon, windDeg, currentSegmentDistEnd);
+
+      const widthStart = currentSegmentDistStart * Math.sin(expansionAngleDeg * Math.PI / 180);
+      const widthEnd = currentSegmentDistEnd * Math.sin(expansionAngleDeg * Math.PI / 180);
+
+      const leftAngle = upwindBearingRad - Math.PI / 2;
+      const rightAngle = upwindBearingRad + Math.PI / 2;
+
+      const cosStartLat = Math.cos(pStart.lat * Math.PI / 180);
+      const cosEndLat = Math.cos(pEnd.lat * Math.PI / 180);
+
+      const pStartLeftLat = pStart.lat + (Math.cos(leftAngle) * widthStart) / 111.32;
+      const pStartLeftLon = pStart.lon + (Math.sin(leftAngle) * widthStart) / (111.32 * cosStartLat);
+      const pStartRightLat = pStart.lat + (Math.cos(rightAngle) * widthStart) / 111.32;
+      const pStartRightLon = pStart.lon + (Math.sin(rightAngle) * widthStart) / (111.32 * cosStartLat);
+      const pEndLeftLat = pEnd.lat + (Math.cos(leftAngle) * widthEnd) / 111.32;
+      const pEndLeftLon = pEnd.lon + (Math.sin(leftAngle) * widthEnd) / (111.32 * cosEndLat);
+      const pEndRightLat = pEnd.lat + (Math.cos(rightAngle) * widthEnd) / 111.32;
+      const pEndRightLon = pEnd.lon + (Math.sin(rightAngle) * widthEnd) / (111.32 * cosEndLat);
+
+      const edges = coneEdges.get(report.id);
+
+      const leftLine = L.polyline(edges.left, {
+        color: baseColor,
+        weight: 1,
+        opacity: 0.5,
+        className: `bg-trail-teal cone-report-${report.id}`,
+        interactive: false,
+        pane: 'conePane'
+      }).addTo(map);
+
+      const rightLine = L.polyline(edges.right, {
+        color: baseColor,
+        weight: 1,
+        opacity: 0.5,
+        className: `bg-trail-teal cone-report-${report.id}`,
+        interactive: false,
+        pane: 'conePane'
+      }).addTo(map);
+
+      bgTrailLayers.push(leftLine, rightLine);
+
+      // build continuous left/right boundary lines
+      if (i === 0) {
+        edges.left.push([pStartLeftLat, pStartLeftLon]);
+        edges.right.push([pStartRightLat, pStartRightLon]);
+      }
+
+      edges.left.push([pEndLeftLat, pEndLeftLon]);
+      edges.right.push([pEndRightLat, pEndRightLon]);
+
+
+      const segmentEnvelope = [
+        [pStartLeftLat, pStartLeftLon],
+        [pEndLeftLat, pEndLeftLon],
+        [pEndRightLat, pEndRightLon],
+        [pStartRightLat, pStartRightLon]
+      ];
+
+      const segmentFactor = i / totalSegments;
+      const segmentFillOpacity = 0.35 * (1.0 - segmentFactor);
+      const segmentStrokeOpacity = 0.15 * (1.0 - segmentFactor);
+
+      const coneSegment = L.polygon(segmentEnvelope, {
+        color: baseColor,
+        fillColor: baseColor,
+        weight: 1,
+        fillOpacity: segmentFillOpacity,
+        opacity: segmentStrokeOpacity,
+        className: `bg-trail-teal cone-report-${report.id}`,
+        interactive: false,
+        pane: 'conePane'
+      }).addTo(map);
+
+      bgTrailLayers.push(coneSegment);
+    }
+  });
+
+// PASS 2: Fetch historic wind trails concurrently — safe to parallelize now that
+// archival reports (>7 days) are served from the persisted historic_wind_json
+// column instead of hitting Open-Meteo every time. Only genuinely new/uncached
+// fetches go to the network, so rate-limit pressure stays low even running in parallel.
+  const trailResults = await Promise.all(
+    sortedReports.map(report => buildWindTrailForReport(report))
+  );
+
+  const displayHours = getTrailDisplayHours();
+
+  // Phase 2a: work out each report's own (un-bundled) spline coordinates —
+  // same logic as before, just collected into an array instead of being
+  // drawn immediately, so Edge Bundling (below) has the complete set of
+  // trails to bundle against each other before anything hits the map.
+  const trailsToRender = [];
+  sortedReports.forEach((report, idx) => {
+    const trailResult = trailResults[idx];
+    if (!trailResult?.rawTrail?.length) return;
+
+    // Normal browsing only draws the last `displayHours` of the trail (much
+    // cheaper to render); the tracer needs the FULL calculated trail so the
+    // line can visibly reach the source point, even if that's further back
+    // than the display setting.
+    let smoothedTrail;
+    let rawPointsUsed;
+    if (tracerCoords) {
+      smoothedTrail = trailResult.spline;
+      rawPointsUsed = trailResult.rawTrail;
+    } else {
+      const cutoffMs = new Date(report.created_at).getTime() - displayHours * 3600000;
+      const trimmedRaw = trailResult.rawTrail.filter(p => new Date(p.time).getTime() >= cutoffMs);
+      smoothedTrail = trimmedRaw.length >= 2 ? smoothPathChaikin(trimmedRaw, 2) : trimmedRaw;
+      rawPointsUsed = trimmedRaw;
+    }
+    if (!smoothedTrail || smoothedTrail.length < 2) return;
+
+    let splineLatLngs = smoothedTrail.map(p => [p.lat, p.lon]);
+
+    // If called from tracer, clip the spline a short buffer distance PAST
+    // wherever the trail last falls within the tracer-match tolerance
+    // envelope (same growing radius used to confirm the match in
+    // filterPinsBySourceTrajectory) -- i.e. the FARTHEST-back point that
+    // still counts as "reaching" the tracer, not just the single nearest
+    // vertex. (Straight-line "nearest vertex" sounds equivalent but isn't:
+    // a winding/looping trail can swing briefly close to the tracer early
+    // on -- geometrically nearer than its real, later approach -- and
+    // cutting there chopped off the rest of a perfectly good trail well
+    // before it actually reached the source area. Reusing the matching
+    // envelope and walking from the far end in finds the true full extent
+    // instead.)
+    if (tracerCoords) {
+      let matchIdx = -1;
+      for (let i = splineLatLngs.length - 1; i >= 0; i--) {
+        const d = getHaversineDistance(
+          splineLatLngs[i][0], splineLatLngs[i][1],
+          tracerCoords.lat, tracerCoords.lon
+        );
+        const maxAllowedDistance = TRACER_BASE_RADIUS_KM +
+          (TRACER_DISPERSION_RATE_KM_H * (i + 1) * (6 / splineLatLngs.length));
+        if (d <= maxAllowedDistance) { matchIdx = i; break; }
+      }
+
+      let closestIdx;
+      if (matchIdx >= 0) {
+        closestIdx = matchIdx;
+      } else {
+        // Shouldn't normally happen -- this report only got here because
+        // it already matched the tracer once in filterPinsBySourceTrajectory
+        // -- but fall back to the plain nearest-vertex if it ever does.
+        closestIdx = 0;
+        let closestDist = Infinity;
+        for (let i = 0; i < splineLatLngs.length; i++) {
+          const d = getHaversineDistance(
+            splineLatLngs[i][0], splineLatLngs[i][1],
+            tracerCoords.lat, tracerCoords.lon
+          );
+          if (d < closestDist) { closestDist = d; closestIdx = i; }
+        }
+      }
+
+      // Walk a small fixed buffer past that point so the line visibly
+      // passes through the trace point rather than stopping dead on it.
+      const bufferPastPointKm = 1.0;
+      let cumDist = 0;
+      let cutIdx = splineLatLngs.length - 1;
+      for (let i = closestIdx + 1; i < splineLatLngs.length; i++) {
+        cumDist += getHaversineDistance(
+          splineLatLngs[i-1][0], splineLatLngs[i-1][1],
+          splineLatLngs[i][0], splineLatLngs[i][1]
+        );
+        if (cumDist >= bufferPastPointKm) {
+          cutIdx = i;
+          break;
+        }
+      }
+
+      splineLatLngs = splineLatLngs.slice(0, cutIdx + 1);
+    }
+
+    trailsToRender.push({ report, trailResult, splineLatLngs, rawPointsUsed });
+  });
+
+  // Trace mode only: one more hour of REAL forward wind data past each
+  // report, for the yellow continuation past the orange report point.
+  const forwardTails = tracerCoords
+    ? await Promise.all(trailsToRender.map(({ report }) => computeForwardWindExtension(report, 5, 1).catch(() => [])))
+    : [];
+
+  trailsToRender.forEach(({ report, trailResult, splineLatLngs, rawPointsUsed }, idx) => {
+    const baseColor = categoryColor(report.category);
+    let segments;
+
+    if (tracerCoords) {
+      // Backtrail + forward tail, smoothed together across the report
+      // point so the whole thing reads as one continuous curve instead of
+      // a smooth backtrail stuck to a straight little forward stub.
+      const tail = forwardTails[idx];
+      const { backSmoothed, forwardSmoothed } = smoothTraceJoin(splineLatLngs, tail);
+
+      const backSpeeds = mapSpeedsOntoPoints(rawPointsUsed, backSmoothed);
+      segments = drawGradientSpline(backSmoothed, TRACE_SPLINE_BACK_STOPS, report, tracerCoords, 'trace-pulse-spline', { pointSpeeds: backSpeeds });
+
+      if (forwardSmoothed.length >= 2) {
+        const tailRawWithReport = [
+          { lat: splineLatLngs[0][0], lon: splineLatLngs[0][1], spd: tail?.[0]?.spd },
+          ...(tail || [])
+        ];
+        const forwardSpeeds = mapSpeedsOntoPoints(tailRawWithReport, forwardSmoothed);
+        segments = segments.concat(
+          drawGradientSpline(forwardSmoothed, TRACE_SPLINE_FORWARD_STOPS, report, tracerCoords, 'trace-pulse-spline-forward', { pointSpeeds: forwardSpeeds })
+        );
+      }
+    } else {
+      const speeds = mapSpeedsOntoPoints(rawPointsUsed, splineLatLngs);
+      segments = drawGradientSpline(splineLatLngs, null, report, tracerCoords, undefined, { fixedColor: baseColor, pointSpeeds: speeds, baseOpacity: 0.75 });
+    }
+
+    bgTrailLayers.push(...segments);
+    splineByReport[report.id] = segments;
+  });
+
+  // Splines default to hidden (Settings toggle, off by default) — apply
+  // that state to whatever we just drew, same as toggling it live does.
+  applySplineVisibility();
+
+  // Chunked cluster loading (see reportClusterGroup's options) processes
+  // marker additions across a few animation frames for large datasets, so
+  // give it a moment to settle before checking which reports ended up
+  // individually visible vs. clustered.
+  setTimeout(updateConeVisibilityForClustering, 60);
+}
+
+/* ═══════════════════════════════════════════════════
+   CROWD VALIDATION & CLUSTERING ENGINE
+═══════════════════════════════════════════════════ */
+function evaluateActiveNearbyClusters() {
+  const currentLoc = pinMode && manualCoords ? manualCoords : userCoords;
+  if (!currentLoc || !globalActiveData.length) {
+    return;
+  }
+
+  const now = Date.now();
+  const CLUSTER_RADIUS_KM = 3.0;
+  const CLUSTER_TIME_WINDOW_MS = 2 * 3600 * 1000; 
+
+  const candidateReports = globalActiveData.filter(r => {
+    const ageMs = now - new Date(r.created_at).getTime();
+    if (ageMs > CLUSTER_TIME_WINDOW_MS) return false;
+    
+    const distance = getHaversineDistance(currentLoc.lat, currentLoc.lon, r.latitude, r.longitude);
+    return distance <= CLUSTER_RADIUS_KM;
+  });
+
+  if (!candidateReports.length) {
+    return;
+  }
+
+  const categoryCounts = {};
+  candidateReports.forEach(r => {
+    categoryCounts[r.category] = (categoryCounts[r.category] || 0) + 1;
+  });
+
+  let topCategory = '';
+  let maxCount = 0;
+  for (const cat in categoryCounts) {
+    if (categoryCounts[cat] > maxCount) {
+      maxCount = categoryCounts[cat];
+      topCategory = cat;
+    }
+  }
+
+  if (maxCount >= 2) {
+    console.log(`Active community cluster detected for category: ${topCategory} (${maxCount} reports)`);
+  }
+}
+/* ═══════════════════════════════════════════════════
+   PINS RENDER ENGINE
+═══════════════════════════════════════════════════ */
+function clearMarkers(){
+  reportClusterGroup.clearLayers();
+  reportMarkers=[];
+  markerByReportId = {};
+}
+
+// Cones now always render, even when a report's pin has collapsed into a
+// cluster badge or shrunk to a small dot while zoomed out (previously this
+// hid a clustered report's cone entirely; now the dot-icon zoom behavior
+// in updateMarkerIconsForZoom() keeps the map from getting cluttered with
+// full-size pins instead, so the cones can stay visible). Kept as a no-op
+// pass-through (rather than deleting every call site) in case anything
+// still wants a single hook to re-assert cone visibility.
+function updateConeVisibilityForClustering() {
+  Object.keys(markerByReportId).forEach(id => {
+    document.querySelectorAll(`.cone-report-${id}`).forEach(el => {
+      el.style.display = '';
+    });
+  });
+}
+/* ═══════════════════════════════════════════════════
+   PROBABLE SOURCE HEATMAP (report concentration)
+   Toggled via the flame button. This is a plain concentration heatmap:
+   one point per active report, weighted by how strong/recent it is (and
+   nudged up a little if a nearby air-quality station's own reading
+   corroborates it around the same time). Leaflet.heat's additive
+   blending does the rest -- more overlapping reports simply read
+   brighter/redder. No wind trails, dispersion modeling, or triangulation
+   are involved; this earlier version tried walking each report's wind
+   trail backward to guess a plume origin, but that made the heatmap
+   balloon out across the wind trails themselves rather than showing
+   where reports actually cluster, so it's back to measuring report
+   density.
+═══════════════════════════════════════════════════ */
+let sourceHeatVisible = (function () {
+  try { return localStorage.getItem('ttt_source_heat_visible') === 'true'; } catch (e) { return false; }
+})();
+let sourceHeatLayer = null;
+
+// Sets heat-layer data without ever touching a layer that's currently
+// detached from the map. leaflet.heat's own setLatLngs() unconditionally
+// calls redraw(), which reaches into this._map -- if the layer was
+// map.removeLayer()'d earlier (leaving this._map null) that throws
+// "Cannot read properties of null". Assigning _latlngs directly and only
+// calling redraw() while actually on the map avoids that; addTo(map)
+// later picks up the freshly-assigned points on its own via _reset().
+function safeSetHeatData(layer, points) {
+  if (!layer) return;
+  layer._latlngs = points;
+  if (layer._map) layer.redraw();
+}
+
+// Per-report weight: stronger/more recent reports (and ones corroborated
+// by a nearby air-quality station reading around the same time) weigh
+// more heavily into the concentration heatmap.
+async function computeReportWeightFactor(report) {
+  const intensity = parseInt(report.intensity, 10);
+  const intensityFactor = isNaN(intensity) ? 1 : Math.max(0.3, intensity / 5); // 5/10 (wizard default) = neutral 1.0
+
+  const ageHours = (Date.now() - new Date(report.created_at).getTime()) / 3600000;
+  const DECAY_HALF_LIFE_HOURS = 18;
+  const timeDecayFactor = Math.max(0.25, Math.pow(0.5, ageHours / DECAY_HALF_LIFE_HOURS));
+
+  let corroborationFactor = 1.0;
+  try {
+    const lat = parseFloat(report.latitude), lon = parseFloat(report.longitude);
+    const nearest = !isNaN(lat) && !isNaN(lon) ? findNearestStation(lat, lon) : null;
+    if (nearest && nearest.distanceKm <= STATION_TRAIL_MATCH_RADIUS_KM) {
+      const reading = await getStationReadingNear(nearest.station.id, report.created_at);
+      const severity = reading?.category != null ? AQI_SEVERITY[reading.category] : undefined;
+      if (severity != null) corroborationFactor = 1.0 + severity * 0.15; // up to +0.75 at the worst AQI category
+    }
+  } catch (e) { /* corroboration is a bonus, never block the heatmap on it */ }
+
+  return intensityFactor * timeDecayFactor * corroborationFactor;
+}
+
+// One heat point per report at its own location -- plain concentration,
+// no wind-trail spreading.
+async function buildReportConcentrationHeatPoints(reports) {
+  const points = [];
+  await Promise.all(reports.map(async (report) => {
+    const lat = parseFloat(report.latitude);
+    const lon = parseFloat(report.longitude);
+    if (isNaN(lat) || isNaN(lon)) return;
+    const weight = await computeReportWeightFactor(report);
+    points.push([lat, lon, weight * 3]); // scaled so a single strong report still reads clearly against the fixed `max` below
+  }));
+  return points;
+}
+
+// (Re)builds the heat layer from the given active reports. Safe to call
+// even when the heatmap is currently hidden -- it just won't be added to
+// the map until toggleSourceHeat() turns it on.
+async function renderSourceHeatLayer(reports) {
+  const points = await buildReportConcentrationHeatPoints(reports || globalActiveData);
+  if (sourceHeatLayer) {
+    safeSetHeatData(sourceHeatLayer, points);
+  } else {
+    sourceHeatLayer = L.heatLayer(points, {
+      radius: 30,
+      blur: 22,
+      maxZoom: 17,
+      max: 6.5, // fixed scale so color meaning (red=dense) stays consistent regardless of how many reports are on screen
+      minOpacity: 0.25,
+      gradient: { 0.15: '#fff59d', 0.4: '#ffca28', 0.65: '#f57c00', 1.0: '#c41e27' }
+    });
+  }
+  if (sourceHeatVisible && !map.hasLayer(sourceHeatLayer)) {
+    sourceHeatLayer.addTo(map);
+  }
+  updateSourceHeatBadge(reports || globalActiveData);
+}
+
+// Small "N reports" badge near the flame button, just so it's clear what
+// the heatmap on screen is summarizing.
+function updateSourceHeatBadge(reports) {
+  const badge = document.getElementById('sourceHeatConfidenceBadge');
+  if (!badge) return;
+  if (!sourceHeatVisible) {
+    badge.style.display = 'none';
+    return;
+  }
+  const totalReports = (reports || globalActiveData || []).length;
+  badge.style.display = 'flex';
+  badge.style.removeProperty('--confidence-color');
+  badge.innerHTML = `${totalReports} report${totalReports === 1 ? '' : 's'}`;
+}
+
+function toggleSourceHeat() {
+  sourceHeatVisible = !sourceHeatVisible;
+  try { localStorage.setItem('ttt_source_heat_visible', String(sourceHeatVisible)); } catch (e) {}
+
+  const btn = document.getElementById('sourceHeatBtn');
+  if (btn) btn.classList.toggle('active', sourceHeatVisible);
+
+  if (sourceHeatVisible) {
+    renderSourceHeatLayer(globalActiveData);
+  } else {
+    if (sourceHeatLayer && map.hasLayer(sourceHeatLayer)) map.removeLayer(sourceHeatLayer);
+    updateSourceHeatBadge(globalActiveData);
+  }
+}
+
+
+
+function translateCategory(category) {
+  const srToEn = {
+    "Dim": "Smoke",
+    "Kanalizacija": "Sewage",
+    "Sumpor": "Sulfur",
+    "Spaljena plastika / guma": "Burnt plastic or rubber",
+    "Hemijski rastvarači (farba, benzin, lepak, industrijske hemikalije)":
+      "Chemical solvents (paint, fuel, glue, industrial chemicals)",
+    "Otpad / kompost / vlaga": "Waste / Trash / Garbage",
+    "Čist vazduh": "Clean Air",
+    "Nepoznato": "Unknown",
+    "Ostalo": "Other"
+  };
+
+  const enToSr = Object.fromEntries(
+    Object.entries(srToEn).map(([sr, en]) => [en, sr])
+  );
+
+  return lang === 'en'
+    ? (srToEn[category] || category)
+    : (enToSr[category] || category);
+
+  return map[category] || category;
+}
+
+// Shared compact pollutant summary — all five values on ONE row (label +
+// number pairs separated by dots) instead of a stacked list, reused by the
+// station popup, the report-details modal, and the spline-click average
+// popup so all three stay visually consistent and compact.
+function pollutantSummaryRowHtml(reading) {
+  if (!reading) return `<span style="font-size:10px;color:var(--text-secondary);">${t('aqNoData')}</span>`;
+  const entries = [
+    ['PM10', 'pm10', reading.pm10],
+    ['PM2.5', 'pm25', reading.pm25],
+    ['SO2', 'so2', reading.so2],
+    ['NO2', 'no2', reading.no2],
+    ['O3', 'o3', reading.o3],
+  ];
+  const parts = entries.map(([label, key, val]) => {
+    const display = (val != null && !isNaN(val)) ? Number(val).toFixed(1) : '–';
+    const color = (val != null && !isNaN(val)) ? pollutantValueColor(key, val) : 'var(--text-primary)';
+    return `<span style="white-space:nowrap;"><span style="color:var(--text-secondary);">${label}</span> <span style="font-weight:700;color:${color};">${display}</span></span>`;
+  });
+  return `<div style="display:flex;flex-wrap:nowrap;gap:5px 8px;font-size:10px;align-items:baseline;overflow-x:auto;">${parts.join(`<span style="color:var(--border-color-strong);">·</span>`)}</div>`;
+}
+
+// Averages pollutant values across however many station readings are
+// passed in (nulls/missing values are ignored per-pollutant). Optional
+// `weights` (same length/order as readings) lets a station the wind
+// passed very close to count for more than one it only barely grazed at
+// the edge of the match radius -- defaults to an equal, unweighted mean
+// when omitted. Used by the report popup's average-at-time-and-place row
+// (buildReportStationSectionHtml).
+function averagePollutantReadings(readings, weights = null) {
+  const w = (weights && weights.length === readings.length) ? weights : readings.map(() => 1);
+  const avg = (vals) => {
+    let sum = 0, wsum = 0;
+    vals.forEach((v, i) => {
+      if (v != null && !isNaN(v)) { sum += Number(v) * w[i]; wsum += w[i]; }
+    });
+    return wsum ? sum / wsum : null;
+  };
+  return {
+    pm10: avg(readings.map(r => r?.pm10)),
+    pm25: avg(readings.map(r => r?.pm25)),
+    so2:  avg(readings.map(r => r?.so2)),
+    no2:  avg(readings.map(r => r?.no2)),
+    o3:   avg(readings.map(r => r?.o3)),
+  };
+}
+
+// Renders every station the report's wind actually passed near — upwind
+// (before reaching the report) and downwind (after it), plus an extended
+// backward search if the standard window found nothing — directly inline.
+function buildReportStationSectionHtml(stationList, reportCreatedAt, reportId) {
+  if (stationList === undefined) {
+    return `<div style="font-size:9px;color:var(--text-secondary);font-style:italic;margin-top:2px;">${t('stationDataLoading')}</div>`;
+  }
+  if (stationList === null || !stationList.length) {
+    return `<div style="font-size:9px;color:var(--text-secondary);font-style:italic;margin-top:2px;">${t('stationNoneNearby')}</div>`;
+  }
+
+  // Averaged reading across every matched station, at the time/place the
+  // report itself was made — a single at-a-glance number in addition to
+  // the per-station breakdown below, since with more than one matched
+  // station no single one of them best represents "what it was like here".
+  // Weighted by proximity: a station the wind passed within half a km of
+  // says more about actual conditions there than one only barely inside
+  // the match radius, so it counts for more in this average.
+  const withReadings = stationList.filter(s => s.reading);
+  const readings = withReadings.map(s => s.reading);
+  const weights = withReadings.map(s => 1 / (1 + (s.distanceKm ?? 0)));
+  const avgSectionHtml = readings.length ? `
+    <div style="margin-top:2px;">
+      <span style="font-size:9px;color:var(--text-secondary);text-transform:uppercase;">${t('avgAtReportTime')}</span>
+      <div style="margin-top:2px;">${pollutantSummaryRowHtml(averagePollutantReadings(readings, weights))}</div>
+    </div>
+    <div style="height:1px;background:var(--border-color);margin:6px 0;"></div>` : '';
+
+  const isFallback = stationList.length === 1 && stationList[0].matchType === 'nearest-fallback';
+  const header = `<span style="font-size:9px;color:var(--text-secondary);text-transform:uppercase;">${isFallback ? t('nearestStation') : t('stationsAlongTrail')}</span>`;
+
+  // Only worth tagging upwind/downwind on each row when the list actually
+  // mixes both directions — with everything on one side it's just noise.
+  const hasMixedDirections = !isFallback && stationList.some(s => s.direction === 'before') && stationList.some(s => s.direction === 'after');
+
+  const rows = stationList.map(({ station, pathDistanceKm, targetTime, reading, direction }, i) => {
+    const isAfter = direction === 'after';
+    const hoursDiff = reportCreatedAt
+      ? Math.abs((isAfter ? targetTime.getTime() - new Date(reportCreatedAt).getTime() : new Date(reportCreatedAt).getTime() - targetTime.getTime())) / 3600000
+      : null;
+    const dateLabel = formatStationTime(reading ? reading.recorded_at : targetTime);
+    const directionTag = hasMixedDirections
+      ? ` <span style="font-weight:400;color:var(--text-secondary);">(${isAfter ? t('windDownwindTag') : t('windUpwindTag')})</span>`
+      : '';
+    const travelLabel = isAfter ? t('windArrivedAfter') : t('windTravelTime');
+    return `
+      <div style="margin-top:${i > 0 ? '7px' : '2px'};${i > 0 ? 'padding-top:6px;border-top:1px solid var(--border-color);' : ''}">
+        <span style="font-size:10px;color:var(--text-primary);font-weight:600;">${station.name}${directionTag}${dateLabel ? ` <span style="font-weight:400;color:var(--text-secondary);">(${dateLabel})</span>` : ''}</span>
+        ${hoursDiff != null && hoursDiff > 0.05 ? `<div style="font-size:9px;color:var(--text-secondary);">${travelLabel}: ~${hoursDiff.toFixed(1)}h${pathDistanceKm != null ? ` · ${t('windTravelDist')}: ~${pathDistanceKm.toFixed(1)} km` : ''}</div>` : ''}
+        <div style="margin-top:2px;">${pollutantSummaryRowHtml(reading)}</div>
+      </div>`;
+  }).join('');
+
+  return `<div style="display:flex;flex-direction:column;margin-top:1px;">${avgSectionHtml}${header}${rows}</div>`;
+}
+
+// Builds the full report popup. stationSectionHtml is passed in separately
+// since it's resolved asynchronously (nearest-station lookup + a Supabase
+// query), while the rest of the popup can render immediately.
+function buildReportPopupHtml(report, stationSectionHtml) {
+  const formatDate = (dateStr) => {
+    if (!dateStr) return null;
+    const d = new Date(dateStr);
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
+  const formattedDate = formatDate(report.created_at);
+  const catCol = categoryColor(report.category);
+  const card  = degToCardinal(report.wind_direction);
+
+  return `<div class="popup-inner" style="padding:0;min-width:220px;max-width:460px;font-family:sans-serif;">
+  <div style="background:${catCol};padding:4px 8px;border-radius:6px 6px 0 0;display:flex;flex-direction:column;align-items:flex-start;gap:1px;">
+    <span style="font-size:11px;font-weight:700;color:white;">
+      ${translateCategory(report.category)}
+    </span>
+    <span style="font-size:9px;color:rgba(255,255,255,.8);">
+      ${formattedDate}
+    </span>
+  </div>
+
+  <div style="padding:5px 8px;display:flex;flex-direction:column;gap:2px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <span style="font-size:9px;color:var(--text-secondary);text-transform:uppercase;">${t('popupInt')}</span>
+      <span style="font-size:11px;font-weight:600;color:var(--text-primary);">${report.intensity}/10</span>
+    </div>
+
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <span style="font-size:9px;color:var(--text-secondary);text-transform:uppercase;">${t('popupDuration')}</span>
+      <span style="font-size:11px;font-weight:600;color:var(--text-primary);">${report.duration || 1}${t('hours')}</span>
+    </div>
+
+    <div style="height:1px;background:var(--border-color);margin:2px 0;"></div>
+
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <span style="font-size:9px;color:var(--text-secondary);text-transform:uppercase;">${t('popupDir')}</span>
+      <span style="font-size:11px;font-weight:600;color:var(--text-primary);white-space:nowrap;">
+        ${report.manual_wind_direction != null ? report.manual_wind_direction + '°' : '–'}
+      </span>
+    </div>
+
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <span style="font-size:9px;color:var(--text-secondary);" title="${t('historical')}">${t('historical')}</span>
+      <span style="font-size:10px;font-weight:400;color:var(--text-secondary);white-space:nowrap;">
+        ${report.wind_direction != null ? Math.round(report.wind_direction) + '°' + (card ? ` ${card}` : '') : '–'}
+      </span>
+    </div>
+
+    <div style="display:flex;justify-content:flex-end;align-items:center;margin-top:1px;">
+      <span style="font-size:10px;color:var(--text-secondary);white-space:nowrap;">
+        ${report.wind_speed != null ? report.wind_speed + ' km/h' : '–'} •
+        ${report.sea_level_pressure != null ? Number(report.sea_level_pressure).toFixed(1) + ' hPa' : '–'}
+      </span>
+    </div>
+
+    <div style="height:1px;background:var(--border-color);margin:2px 0;"></div>
+    ${stationSectionHtml}
+
+    ${report.comment ? `
+    <div style="height:1px;background:var(--border-color);margin:2px 0;"></div>
+    <div style="font-size:10px;color:var(--text-secondary);font-style:italic;line-height:1.2;">
+      ${report.comment}
+    </div>` : ''}
+  </div>
+</div>`;
+}
+
+function renderPin(report, index = 0){
+  const zIndexPriority = 10000 - index;
+  const marker=L.marker([report.latitude,report.longitude],{
+    icon: pickReportIcon(report),
+
+    zIndexOffset: zIndexPriority 
+  });
+  marker._reportRef = report; // used by updateMarkerIconsForZoom() to redraw icons on zoom change
+  reportClusterGroup.addLayer(marker);
+  markerByReportId[report.id] = marker;
+
+  // Initial popup shows a loading state for the nearest-station block;
+  // it's filled in once the lookup resolves, on first open.
+  marker.bindPopup(buildReportPopupHtml(report, buildReportStationSectionHtml(undefined, report.created_at, report.id)), { maxWidth: 460, minWidth: 220 });
+
+  marker.on('popupopen', () => {
+    // startBacktrack(...) used to be called here but its result was never
+    // used anywhere (dead code) — it just fired an extra Open-Meteo request
+    // on every popup open, competing with the real wind-trail fetch below
+    // and making it more likely to get rate-limited into a silent fallback.
+    const splines = splineByReport[report.id];
+    if (splines) {
+      splines.forEach(spline => {
+        const el = spline.getElement();
+        if (el) {
+          clearTimeout(el._animTimer);
+          el.classList.add('bg-trail-animated');
+        }
+      });
+    }
+
+    // Solo mode: dim every other report's trail/marker while this one's
+    // popup is open, so it's not lost in a tangle of overlapping trails.
+    setTrailFocus(report.id);
+
+    // Refresh nearest-station data on every open, same pattern as the AQ
+    // station markers themselves — the numbers shown are never older than
+    // the click that revealed them.
+    getStationsAlongWindTrailForReport(report).then(stationList => {
+      marker.setPopupContent(buildReportPopupHtml(report, buildReportStationSectionHtml(stationList, report.created_at, report.id)));
+    }).catch(err => {
+      console.error('Nearest station lookup failed for report', report.id, err);
+      marker.setPopupContent(buildReportPopupHtml(report, buildReportStationSectionHtml(null, report.created_at, report.id)));
+    });
+  });
+  marker.on('popupclose', () => {
+    const splines = splineByReport[report.id];
+    if (splines) {
+      splines.forEach(spline => {
+        const el = spline.getElement();
+        if (el) {
+          el._animTimer = setTimeout(() => el.classList.remove('bg-trail-animated'), 5000);
+        }
+      });
+    }
+
+    // Only clear solo focus if this report is still the focused one --
+    // if a different marker's popup already took over focus, its own
+    // popupclose (not this stale one) is what should eventually clear it.
+    if (focusedTrailReportId === report.id) clearTrailFocus();
+  });
+  reportMarkers.push(marker);
+}
+
+/* ═══════════════════════════════════════════════════
+   CORE DATA RETRIEVAL
+═══════════════════════════════════════════════════ */
+// historic_wind_json is deliberately excluded here: it's a multi-KB
+// Open-Meteo hourly blob per report (avg ~6KB, up to ~7.4KB as of this
+// writing), and this query loads EVERY report on EVERY page load
+// regardless of which ones are ever traced. Most loaded reports never
+// have their trail built, so shipping that blob for all of them wasted
+// the majority of this query's payload for nothing. Reports needing it
+// (buildWindTrailForReport → fetchHistoricWindForReport) now lazily pull
+// just that one column, just for that one report, the first time it's
+// actually needed.
+const AIR_REPORTS_LIST_COLUMNS = [
+  'id', 'created_at', 'latitude', 'longitude', 'wind_speed', 'wind_direction',
+  'sea_level_pressure', 'comment', 'category', 'duration', 'intensity',
+  'formatted_id', 'manual_wind_direction', 'updated_at', 'confidence', 'location_name'
+].join(',');
+
+async function fetchAll(){
+  const {data,error}=await sb.from('air_reports').select(AIR_REPORTS_LIST_COLUMNS).order('created_at',{ascending:false});
+  if(error){ console.error(error); return []; }
+  return data;
+}
+
+async function loadPinsByWindow() {
+  clearMarkers(); clearBacktrack(); clearBackgroundTrails();
+  const data = await fetchAll();
+  globalActiveData = data; 
+  
+  if (data.length > 0) {
+      lastSyncTimestamp = data[0].created_at;
+  }
+
+  if (!mapFp || !mapFp.selectedDates || mapFp.selectedDates.length < 2) return;
+
+  const filterStart = new Date(mapFp.selectedDates[0]);
+  filterStart.setHours(0, 0, 0, 0);
+  const filterEnd = new Date(mapFp.selectedDates[1]);
+  filterEnd.setHours(23, 59, 59, 999);
+
+  let n = 0;
+  let activeReports = [];
+
+  data.forEach((r, index) => {
+    const reportTimestamp = new Date(r.created_at).getTime();
+    if (reportTimestamp < filterStart.getTime() || reportTimestamp > filterEnd.getTime()) return;
+
+    n++;
+    renderPin(r, index);
+    activeReports.push(r);
+  });
+
+  updateReportCountUI(n);
+
+  evaluateActiveNearbyClusters();
+  if (!traceMode) generateAllBackgroundTrails(activeReports);
+  if (sourceHeatVisible) renderSourceHeatLayer(activeReports);
+}
+
+/* ═══════════════════════════════════════════════════
+   HIGH-PRECISION SPLINE SEGMENT INTERCEPT TRACER
+═══════════════════════════════════════════════════ */
+let activeTraceRequestId = 0;
+
+function distanceToSegment(p, p1, p2) {
+  const R = 6371; // Earth's radius in km
+  const latMid = (p1.lat + p2.lat) / 2 * Math.PI / 180;
+  const cosLat = Math.cos(latMid);
+  
+  const x = p.lon * cosLat;
+  const y = p.lat;
+  const x1 = p1.lon * cosLat;
+  const y1 = p1.lat;
+  const x2 = p2.lon * cosLat;
+  const y2 = p2.lat;
+  
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const l2 = dx * dx + dy * dy;
+  
+  let tVal = 0;
+  if (l2 > 0) {
+    tVal = ((x - x1) * dx + (y - y1) * dy) / l2;
+    tVal = Math.max(0, Math.min(1, tVal));
+  }
+  
+  const closestLat = y1 + tVal * dy;
+  const closestLon = (x1 + tVal * dx) / cosLat;
+  
+  const dLat = (p.lat - closestLat) * Math.PI / 180;
+  const dLon = (p.lon - closestLon) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(closestLat*Math.PI/180) * Math.cos(p.lat*Math.PI/180) * Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+/* ═══════════════════════════════════════════════════
+   TRACE-SOURCE HEATMAP
+   Optional overlay (Settings toggle) shown alongside the normal dashed
+   trails while using Trace Possible Source. One shared Leaflet.heat
+   layer, built from three kinds of weighted points per matched report,
+   reading as a single gradient from the tracer pin outward:
+     - The tracer pin itself -- highest weight, purple.
+     - Points along that report's own backtrajectory, from the report out
+       to wherever it passes closest to the tracer -- weight ramps up
+       from "orange near the report" to "red near the source", so it
+       reads as one continuous purple -> red -> orange gradient with the
+       tracer cluster above.
+     - A short tail continuing ~5km past the report, using REAL wind data
+       for the hours after the report was made (computeForwardWindExtension)
+       -- low weight, fading from orange into yellow. Where two reports'
+       tails (or a tail and another report's backtrajectory) happen to
+       cross, Leaflet.heat just adds the weights together automatically --
+       no extra intersection math needed -- which is what pushes that
+       overlap up into a hotter color.
+═══════════════════════════════════════════════════ */
+let traceHeatLayer = null;
+let lastTraceTracerCoords = null;
+let lastTraceMatchedReports = [];
+
+async function buildTraceHeatPoints(tracerCoords, matchedReports) {
+  const points = [];
+
+  // Tracer pin -- highest weight, purple end of the gradient.
+  points.push([tracerCoords.lat, tracerCoords.lon, 4]);
+  points.push([tracerCoords.lat, tracerCoords.lon, 4]);
+
+  const trails = await Promise.all(matchedReports.map(r => renderHistoricSplineTrailForReport(r)));
+  const forwardTails = await Promise.all(matchedReports.map(r => computeForwardWindExtension(r)));
+
+  matchedReports.forEach((report, idx) => {
+    const trail = trails[idx];
+    if (trail && trail.length >= 2) {
+      // Closest-approach point on this report's trail to the tracer --
+      // only the report→source portion matters for the heatmap; anything
+      // further back in the trail than that is past the source already.
+      let closestIdx = 0, closestDist = Infinity;
+      trail.forEach((pt, i) => {
+        const d = getHaversineDistance(pt.lat, pt.lon, tracerCoords.lat, tracerCoords.lon);
+        if (d < closestDist) { closestDist = d; closestIdx = i; }
+      });
+      for (let i = 0; i <= closestIdx; i++) {
+        const t = closestIdx > 0 ? i / closestIdx : 1; // 0 at the report (orange), 1 at the source (red)
+        const weight = 1.4 + t * 2.0; // 1.4 (report end, orange) ramping to 3.4 (source end, red, just under the tracer's purple)
+        points.push([trail[i].lat, trail[i].lon, weight]);
+      }
+    }
+
+    const tail = forwardTails[idx];
+    if (tail && tail.length) {
+      tail.forEach((pt, i) => {
+        const weight = Math.max(0.3, 1.0 - 0.7 * (i / tail.length)); // starts near the report's orange, fades down into yellow
+        points.push([pt.lat, pt.lon, weight]);
+      });
+    }
+  });
+
+  return points;
+}
+
+async function renderTraceHeatLayer(tracerCoords, matchedReports) {
+  const points = await buildTraceHeatPoints(tracerCoords, matchedReports);
+  if (traceHeatLayer) {
+    safeSetHeatData(traceHeatLayer, points);
+  } else {
+    traceHeatLayer = L.heatLayer(points, {
+      radius: 24,
+      blur: 18,
+      maxZoom: 17,
+      max: 4.2, // fixed scale so the tracer pin reliably reaches full purple regardless of how many reports are on screen
+      minOpacity: 0.25,
+      gradient: {
+        0.05: '#fff59d', // pale yellow -- far end of the forward tail
+        0.20: '#ffca28', // yellow-orange -- tail approaching the report
+        0.35: '#f57c00', // orange -- at/near the report
+        0.55: '#e64a19', // red-orange -- partway back along the trail
+        0.75: '#c41e27', // red -- approaching the source
+        0.92: '#8e24aa', // purple -- right at the tracer pin
+        1.0: '#6a1b9a'
+      }
+    });
+  }
+  if (traceHeatmapEnabled && !map.hasLayer(traceHeatLayer)) {
+    traceHeatLayer.addTo(map);
+  }
+}
+
+
+async function filterPinsBySourceTrajectory(tracerCoords) {
+  const BASE_RADIUS_KM = TRACER_BASE_RADIUS_KM;
+  const DISPERSION_RATE_KM_H = TRACER_DISPERSION_RATE_KM_H;
+  const currentRequestId = ++activeTraceRequestId;
+
+  clearMarkers();
+  clearBackgroundTrails();
+  tracerVisualCircles.forEach(c => map.removeLayer(c));
+  tracerVisualCircles = [];
+
+  // Red radius circle around tracer dot
+  const primaryRadiusCircle = L.circle([tracerCoords.lat, tracerCoords.lon], {
+    radius: BASE_RADIUS_KM * 1000,
+    color: '#ff4d4d',
+    fillColor: '#ff4d4d',
+    fillOpacity: 0.15,
+    weight: 1.5,
+    dashArray: '3, 4',
+    interactive: false,
+    className: 'trace-pulse-circle'
+  }).addTo(map);
+  tracerVisualCircles.push(primaryRadiusCircle);
+
+  // Apply the on-map filter's date window (mapFp) — NOT the Settings/export
+  // filter (fp). Possible-source tracing works over whatever's currently
+  // shown on the map, same as everything else the map filter scopes.
+  if (!mapFp || !mapFp.selectedDates || mapFp.selectedDates.length < 2) return;
+  const filterStart = new Date(mapFp.selectedDates[0]); filterStart.setHours(0, 0, 0, 0);
+  const filterEnd = new Date(mapFp.selectedDates[1]); filterEnd.setHours(23, 59, 59, 999);
+  const timeFilteredData = globalActiveData.filter(r => {
+    const ts = new Date(r.created_at).getTime();
+    return ts >= filterStart.getTime() && ts <= filterEnd.getTime();
+  });
+
+  const activeReportsToDrawTrails = [];
+  const results = [];
+
+  for (const [index, report] of timeFilteredData.entries()) {
+    if (currentRequestId !== activeTraceRequestId) return;
+
+    const reportAgeHours = (Date.now() - new Date(report.created_at).getTime()) / 3600000;
+    if (reportAgeHours < 6) {
+      results.push(null);
+      continue;
+    }
+
+    // Use the same trail as drawn on map — downwind from pin
+    const trailCoordinates = await renderHistoricSplineTrailForReport(report);
+
+    if (!trailCoordinates || trailCoordinates.length < 2) {
+      results.push(null);
+      if (!isWindCached(report)) await new Promise(r => setTimeout(r, 100));
+      continue;
+    }
+
+    let matchFound = false;
+    for (let i = 0; i < trailCoordinates.length - 1; i++) {
+      const p1 = trailCoordinates[i];
+      const p2 = trailCoordinates[i + 1];
+      const distanceKM = distanceToSegment(tracerCoords, p1, p2);
+      const maxAllowedDistance = BASE_RADIUS_KM + (DISPERSION_RATE_KM_H * (i + 1) * (6 / trailCoordinates.length));
+
+      if (distanceKM <= maxAllowedDistance) {
+        matchFound = true;
+        break;
+      }
+    }
+
+    results.push(matchFound ? { report, index } : null);
+    if (!isWindCached(report)) await new Promise(r => setTimeout(r, 100));
+  }
+
+  if (currentRequestId !== activeTraceRequestId) return;
+
+  results.forEach(res => {
+    if (res) {
+      renderPin(res.report, res.index);
+      activeReportsToDrawTrails.push(res.report);
+    }
+  });
+
+  generateAllBackgroundTrails(activeReportsToDrawTrails, tracerCoords);
+  if (sourceHeatVisible) renderSourceHeatLayer(activeReportsToDrawTrails);
+
+  lastTraceTracerCoords = tracerCoords;
+  lastTraceMatchedReports = activeReportsToDrawTrails;
+  if (traceHeatmapEnabled) renderTraceHeatLayer(tracerCoords, activeReportsToDrawTrails);
+
+  const n = reportMarkers.length;
+  updateReportCountUI(n, timeFilteredData.length);
+}
+
+
+/* ═══════════════════════════════════════════════════
+   REPORT ACTION
+═══════════════════════════════════════════════════ */
+function resetReportingForm() {
+  // If the user manually dropped a pin to file this report, turn pin-drop
+  // mode back off so the pin doesn't stay "clicked"/active after submit.
+  if (pinMode) {
+    pinMode = false;
+    const pinBtn = document.getElementById('pinMapBtn');
+    if (pinBtn) pinBtn.classList.remove('active');
+  }
+  if (manualMarker) { map.removeLayer(manualMarker); manualMarker = null; }
+  manualCoords = null;
+  checkFormReady();
+}
+
+async function reportBadAir(){
+  // Spam protection: at most one report per device per hour.
+  const remaining = getReportCooldownRemainingMs();
+  if (remaining > 0) {
+    const mins = Math.ceil(remaining / 60000);
+    alert(t('cooldownActive').replace('{n}', mins));
+    return;
+  }
+
+  const coords = pinMode && manualCoords ? manualCoords : userCoords;
+  if(!coords){ alert(t('waitGps')); return; }
+
+  const category  = wizState.category;
+  const intensity = wizState.intensity;
+  const comment   = document.getElementById('comment').value;
+  const durationInput = document.getElementById('duration').value;
+  const durationValue = durationInput && durationInput !== "" ? parseInt(durationInput) : 1;
+
+  // New input values
+  const timeVal = document.getElementById('reportTime').value; // "HH:MM"
+  const manualWind = document.getElementById('manualWind').value; // number string or ""
+
+  // Create Date object for current date + user-selected time
+  const reportDate = new Date();
+  const [hours, minutes] = timeVal.split(':');
+  reportDate.setHours(hours, minutes, 0, 0);
+
+  // Parse manual wind direction — this is the user-reported value from Windfinder,
+  // stored permanently in manual_wind_direction and used as the initial wind_direction
+  // until the spline engine backfills it with Open-Meteo historical data.
+  const manualWindNum = manualWind !== "" ? parseFloat(manualWind) : null;
+
+  // Fetch weather separately so a failure doesn't block the report insert
+  let finalSpeed = null;
+  let finalPressure = 0;
+  try {
+    // NOTE: previously pinned `models=icon_d2` here -- same bug identified
+    // in the get-wind-direction edge function and getWeatherData: that
+    // model only covers a Central-European domain and this app's
+    // coordinates sit right at its edge, so this silently failed into the
+    // catch block (and a null wind_speed/pressure on the report) far more
+    // often than it should have. Dropped so Open-Meteo auto-selects the
+    // best globally-available model.
+    const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lon}&current=wind_speed_10m,wind_direction_10m,pressure_msl&timezone=UTC`);
+    if (r.ok) {
+      const w = await r.json();
+      const c = w.current;
+      if (c) {
+        finalSpeed    = c.wind_speed_10m    != null ? parseFloat(parseFloat(c.wind_speed_10m).toFixed(1))  : null;
+        finalPressure = c.pressure_msl      != null ? parseFloat(c.pressure_msl) : 0;
+      }
+    }
+  } catch (weatherErr) {
+    console.warn('Weather fetch failed at report time, wind_speed will be backfilled later:', weatherErr);
+  }
+
+  // Resolve a human-readable place name once, now, and store it on the row.
+  // Previously this only ever happened at CSV-export time, for every report
+  // in the export, every single time it was exported — a burst of dozens of
+  // Nominatim requests per download that regularly tripped their rate limit
+  // (see reverseGeocodeAll). Doing it once per report, right when it's
+  // created, means a real export only ever needs to look up whatever's left
+  // over from before this existed (see the backfill-and-persist step in
+  // downloadCSV).
+  let locationName = null;
+  try {
+    locationName = await reverseGeocodeLocation(coords.lat, coords.lon);
+  } catch (geocodeErr) {
+    console.warn('Reverse geocode failed at report time, will be backfilled on next CSV export:', geocodeErr);
+  }
+
+  try {
+    const { error } = await sb.from('air_reports').insert([{
+      latitude:              parseFloat(coords.lat),
+      longitude:             parseFloat(coords.lon),
+      // manual_wind_direction: the user-reported value — never updated after this
+      manual_wind_direction: manualWindNum,
+      // wind_direction: starts as the manual value; overwritten by backfillWindDirection()
+      // once historical Open-Meteo data is available (>7h after report)
+      wind_direction:        null,
+      // wind_speed: from live Open-Meteo at submit time; null if that fetch
+      // failed, in which case buildWindTrailForReport() backfills it later
+      // once historical data is available.
+      wind_speed:            finalSpeed,
+      sea_level_pressure:    finalPressure || null,
+      location_name:         locationName || null,
+      comment,
+      category,
+      intensity:             parseInt(intensity),
+      duration:              durationValue,
+      created_at:            reportDate.toISOString()
+    }]);
+
+    if (error) throw error;
+
+    markReportSubmittedNow();
+    alert(t('submitted'));
+    resetReportingForm();
+    closeReportWizard();
+    await loadPinsByWindow();
+
+  } catch(err) {
+    alert(err.message);
+  }
+}
+
+/* ═══════════════════════════════════════════════════
+   CSV EXPORT
+═══════════════════════════════════════════════════ */
+// Escapes a value for safe CSV output: wraps in quotes (and doubles
+// internal quotes) whenever the value contains a comma, quote, or newline.
+function csvField(val) {
+  const s = (val === null || val === undefined) ? '' : String(val);
+  if (/[",\n\r]/.test(s)) {
+    return `"${s.replace(/"/g, '""')}"`;
+  }
+  return s;
+}
+
+// Formats a stored UTC timestamp (or Date) as this device's local date/time
+// for CSV export — spreadsheet readers expect the time they actually
+// experienced, not the raw +00:00 value Postgres/Supabase returns.
+function formatLocalDateTimeForCsv(dateVal) {
+  if (!dateVal) return '';
+  const d = (dateVal instanceof Date) ? dateVal : new Date(dateVal);
+  if (isNaN(d.getTime())) return '';
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+// Reverse-geocodes lat/lon into a short place name for the CSV's "Location"
+// column, via OSM's free Nominatim API. Cached by coordinate rounded to 3
+// decimals (~100m) so nearby reports/stations in the same export reuse one
+// lookup, and paced ~1.1s apart for actual (uncached) network calls to stay
+// within Nominatim's usage policy of roughly one request per second.
+const reverseGeocodeCache = new Map();
+async function reverseGeocodeLocation(lat, lon) {
+  const key = `${Number(lat).toFixed(3)},${Number(lon).toFixed(3)}`;
+  if (reverseGeocodeCache.has(key)) return reverseGeocodeCache.get(key);
+  try {
+    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=14&addressdetails=1`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const addr = data.address || {};
+    const place = addr.suburb || addr.neighbourhood || addr.quarter || addr.village
+      || addr.town || addr.city_district || addr.city || addr.municipality
+      || addr.county || data.display_name || '';
+    reverseGeocodeCache.set(key, place);
+    return place;
+  } catch (err) {
+    console.error('Reverse geocode failed:', err);
+    reverseGeocodeCache.set(key, '');
+    return '';
+  }
+}
+
+// Resolves the "Location" text for a whole batch of lat/lon pairs (report
+// list or station list) in original order, respecting the rate-limit pacing
+// described above. Returns a same-length array of place-name strings.
+async function reverseGeocodeAll(coordPairs) {
+  const results = [];
+  for (const { lat, lon } of coordPairs) {
+    const key = `${Number(lat).toFixed(3)},${Number(lon).toFixed(3)}`;
+    const wasCached = reverseGeocodeCache.has(key);
+    results.push(await reverseGeocodeLocation(lat, lon));
+    if (!wasCached) await new Promise(resolve => setTimeout(resolve, 1100));
+  }
+  return results;
+}
+
+// Builds a CSV filename suffixed with the given date range (or no suffix
+// if the range isn't a full 2-date selection), and triggers the browser
+// download. Shared by both CSV export buttons.
+function triggerCsvDownload(csv, baseName, selectedDates) {
+  let filename = `${baseName}.csv`;
+  if (selectedDates && selectedDates.length === 2) {
+    const pad = (n) => String(n).padStart(2, '0');
+    const d1 = selectedDates[0];
+    const d2 = selectedDates[1];
+    const startStr = `${pad(d1.getDate())}${pad(d1.getMonth() + 1)}${d1.getFullYear()}`;
+    const endStr = `${pad(d2.getDate())}${pad(d2.getMonth() + 1)}${d2.getFullYear()}`;
+    filename = `${baseName}_${startStr}_${endStr}.csv`;
+  }
+
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+// Guards against downloadCSV() being kicked off again (e.g. an impatient
+// second click) while a previous export is still resolving location names —
+// running two passes concurrently doubles the effective request rate against
+// Nominatim's shared rate limit, which is exactly what was tripping it.
+let csvExportInProgress = false;
+
+async function downloadCSV() {
+  if (csvExportInProgress) return;
+  csvExportInProgress = true;
+  try {
+    await downloadCSVInner();
+  } finally {
+    csvExportInProgress = false;
+  }
+}
+
+async function downloadCSVInner() {
+  const bounds = map.getBounds();
+  const filterStart = fp.selectedDates[0] ? fp.selectedDates[0].getTime() : 0;
+  const filterEnd = fp.selectedDates[1] ? fp.selectedDates[1].getTime() : Infinity;
+
+  const visible = globalActiveData.filter(r => {
+    if(!bounds.contains(L.latLng(r.latitude, r.longitude))) return false;
+    const ts = new Date(r.created_at).getTime();
+    if(ts < filterStart || ts > filterEnd) return false;
+    return true;
+  });
+
+  if(!visible.length){ alert(t('noReports')); return; }
+
+  // Use each report's already-stored location_name where we have it (set at
+  // submission time going forward -- see submitReport). Only reverse-geocode
+  // the ones that don't (older reports from before that existed), and
+  // persist the result back to the row so this exact report never needs
+  // Nominatim again. This is what turns "a burst of dozens of Nominatim
+  // requests on every single export" into a one-time backfill that shrinks
+  // toward zero as more reports already have it stored.
+  const reportLocations = new Array(visible.length);
+  const toBackfill = [];
+  visible.forEach((r, i) => {
+    if (r.location_name) {
+      reportLocations[i] = r.location_name;
+    } else {
+      toBackfill.push({ index: i, id: r.id, lat: r.latitude, lon: r.longitude });
+    }
+  });
+
+  if (toBackfill.length) {
+    const fetched = await reverseGeocodeAll(toBackfill.map(b => ({ lat: b.lat, lon: b.lon })));
+    await Promise.all(toBackfill.map(async (b, j) => {
+      const name = fetched[j] || '';
+      reportLocations[b.index] = name;
+      if (name) {
+        const { error } = await sb.from('air_reports').update({ location_name: name }).eq('id', b.id);
+        if (error) console.error('Failed to backfill location_name for report', b.id, error);
+      }
+    }));
+  }
+
+  // Make sure we have a station list to measure distances from — reuse the
+  // already-loaded cache when possible, otherwise fetch fresh.
+  let stationsForExport = airQualityStationsCache;
+  if (!stationsForExport.length) {
+    try {
+      const { data, error } = await sb.from('air_quality_stations').select('*');
+      if (!error) stationsForExport = data || [];
+      else console.error('Station fetch failed for CSV:', error);
+    } catch (err) {
+      console.error('Station fetch error for CSV:', err);
+    }
+  }
+
+  // For each report, find the station its actual wind (upwind or downwind,
+  // extending the backward search further if needed) passed closest to in
+  // time, and the real hour that happened — same matching logic as the
+  // report popup (findStationMatchesForReport), so the CSV and the UI never
+  // disagree. Falls back to plain nearest-station-at-report-time only when
+  // nothing matched at all.
+  const perReport = await Promise.all(visible.map(async (r) => {
+    const matches = await findStationMatchesForReport(r, stationsForExport);
+    // One row per report in a CSV, so pick the single match closest in time
+    // to the report itself as "the" representative station for this row.
+    let match = matches.length
+      ? matches.reduce((best, m) =>
+          Math.abs(new Date(m.atTime) - new Date(r.created_at)) < Math.abs(new Date(best.atTime) - new Date(r.created_at)) ? m : best)
+      : null;
+
+    if (!match) {
+      let nearest = null, minDist = Infinity;
+      for (const s of stationsForExport) {
+        const d = getHaversineDistance(r.latitude, r.longitude, s.lat, s.lon);
+        if (d < minDist) { minDist = d; nearest = s; }
+      }
+      match = nearest ? { station: nearest, distanceKm: minDist, atTime: r.created_at } : null;
+    }
+
+    return {
+      report: r,
+      station: match?.station ?? null,
+      distanceKm: match?.distanceKm ?? null,
+      targetTime: match ? new Date(match.atTime) : new Date(r.created_at)
+    };
+  }));
+
+  // Batch-fetch every referenced station's readings across the full span of
+  // target times in one query, rather than one round trip per report.
+  const stationIds = [...new Set(perReport.filter(p => p.station).map(p => p.station.id))];
+  const readingsByStation = {};
+  if (stationIds.length) {
+    const targetMs = perReport.map(p => p.targetTime.getTime());
+    const rangeStart = new Date(Math.min(...targetMs) - 3600000).toISOString();
+    const rangeEnd = new Date(Math.max(...targetMs) + 3600000).toISOString();
+    try {
+      const { data, error } = await sb
+        .from('air_quality_readings')
+        .select('*')
+        .in('station_id', stationIds)
+        .gte('recorded_at', rangeStart)
+        .lte('recorded_at', rangeEnd)
+        .order('recorded_at', { ascending: true });
+      if (error) {
+        console.error('Batch station reading fetch failed for CSV:', error);
+      } else {
+        (data || []).forEach(reading => {
+          if (!readingsByStation[reading.station_id]) readingsByStation[reading.station_id] = [];
+          readingsByStation[reading.station_id].push(reading);
+        });
+      }
+    } catch (err) {
+      console.error('Batch station reading fetch error for CSV:', err);
+    }
+  }
+
+  // Picks the latest reading at or before targetTime from a station's
+  // ascending, pre-sorted reading list.
+  const pickReadingAtOrBefore = (readings, targetTime) => {
+    if (!readings || !readings.length) return null;
+    let result = null;
+    for (const reading of readings) {
+      if (new Date(reading.recorded_at).getTime() <= targetTime.getTime()) result = reading;
+      else break;
+    }
+    return result;
+  };
+
+  let csv = `Report Generated/Downloaded On: ${new Date().toLocaleString()}\n\n`;
+  csv += 'ID,Date,Location,Latitude,Longitude,Category,Intensity,WindSpeed,WindDirection,HistoryWindDirection,SeaLevelPressure,Comment,' +
+         'NearestStation,StationDistanceKm,StationDataTime,HoursBeforeReport,StationPM10,StationPM2.5,StationSO2,StationNO2,StationO3\n';
+
+  perReport.forEach(({ report: r, station, distanceKm, targetTime }, i) => {
+    const reading = station ? pickReadingAtOrBefore(readingsByStation[station.id], targetTime) : null;
+    const hoursBefore = station ? (new Date(r.created_at).getTime() - targetTime.getTime()) / 3600000 : null;
+    csv += [
+      csvField(r.id),
+      csvField(formatLocalDateTimeForCsv(r.created_at)),
+      csvField(reportLocations[i] || ''),
+      csvField(r.latitude != null ? Number(r.latitude).toFixed(4) : ''),
+      csvField(r.longitude != null ? Number(r.longitude).toFixed(4) : ''),
+      csvField(r.category),
+      csvField(r.intensity || ''),
+      csvField(r.wind_speed || 0),
+      // WindDirection: the user-reported value; HistoryWindDirection: the
+      // Open-Meteo historical value for the same time/place — kept as
+      // adjacent columns so the two are easy to compare.
+      csvField(r.manual_wind_direction != null ? r.manual_wind_direction : ''),
+      csvField(r.wind_direction != null ? r.wind_direction : ''),
+      csvField(r.sea_level_pressure != null ? Number(r.sea_level_pressure).toFixed(1) : ''),
+      csvField(r.comment || ''),
+      csvField(station ? station.name : ''),
+      csvField(distanceKm != null ? distanceKm.toFixed(2) : ''),
+      csvField(targetTime ? formatLocalDateTimeForCsv(targetTime) : ''),
+      csvField(hoursBefore != null ? hoursBefore.toFixed(2) : ''),
+      csvField(reading ? reading.pm10 : ''),
+      csvField(reading ? reading.pm25 : ''),
+      csvField(reading ? reading.so2 : ''),
+      csvField(reading ? reading.no2 : ''),
+      csvField(reading ? reading.o3 : '')
+    ].join(',') + '\n';
+  });
+
+  triggerCsvDownload(csv, 'TraceTheToxin', fp.selectedDates);
+}
+
+// Exports raw station readings for whatever stations are currently visible
+// in the map viewport, filtered by the SAME Settings date range as the
+// report CSV above — but entirely independent from the on-map filter
+// button, which only controls what's rendered, not what gets exported.
+async function downloadStationCSV() {
+  if (csvExportInProgress) return;
+  csvExportInProgress = true;
+  try {
+    await downloadStationCSVInner();
+  } finally {
+    csvExportInProgress = false;
+  }
+}
+
+async function downloadStationCSVInner() {
+  const bounds = map.getBounds();
+  const filterStart = fp.selectedDates[0] ? new Date(fp.selectedDates[0]) : null;
+  if (filterStart) filterStart.setHours(0, 0, 0, 0);
+  const filterEnd = fp.selectedDates[1] ? new Date(fp.selectedDates[1]) : null;
+  if (filterEnd) filterEnd.setHours(23, 59, 59, 999);
+
+  let stationsForExport = airQualityStationsCache;
+  if (!stationsForExport.length) {
+    try {
+      const { data, error } = await sb.from('air_quality_stations').select('*');
+      if (!error) stationsForExport = data || [];
+      else console.error('Station fetch failed for station CSV:', error);
+    } catch (err) {
+      console.error('Station fetch error for station CSV:', err);
+    }
+  }
+
+  const visibleStations = stationsForExport.filter(s => bounds.contains(L.latLng(s.lat, s.lon)));
+
+  if (!visibleStations.length) { alert(t('noStations')); return; }
+
+  const stationIds = visibleStations.map(s => s.id);
+  const stationById = {};
+  visibleStations.forEach(s => { stationById[s.id] = s; });
+
+  // Same pattern as downloadCSV: use each station's already-stored
+  // location_name where we have it, only reverse-geocode (and persist) the
+  // ones missing it. Stations are fixed and few, so this converges to zero
+  // Nominatim calls after the first export.
+  const stationLocationById = {};
+  const stationsToBackfill = [];
+  visibleStations.forEach(s => {
+    if (s.location_name) stationLocationById[s.id] = s.location_name;
+    else stationsToBackfill.push(s);
+  });
+
+  if (stationsToBackfill.length) {
+    const fetched = await reverseGeocodeAll(stationsToBackfill.map(s => ({ lat: s.lat, lon: s.lon })));
+    await Promise.all(stationsToBackfill.map(async (s, j) => {
+      const name = fetched[j] || '';
+      stationLocationById[s.id] = name;
+      if (name) {
+        const { error } = await sb.from('air_quality_stations').update({ location_name: name }).eq('id', s.id);
+        if (error) console.error('Failed to backfill location_name for station', s.id, error);
+      }
+    }));
+  }
+
+  let query = sb
+    .from('air_quality_readings')
+    .select('*')
+    .in('station_id', stationIds)
+    .order('recorded_at', { ascending: true });
+  if (filterStart) query = query.gte('recorded_at', filterStart.toISOString());
+  if (filterEnd) query = query.lte('recorded_at', filterEnd.toISOString());
+
+  const { data: readings, error } = await query;
+  if (error) {
+    console.error('Station readings fetch failed for CSV:', error);
+    alert(t('noStations'));
+    return;
+  }
+
+  if (!readings || !readings.length) { alert(t('noStations')); return; }
+
+  let csv = `Report Generated/Downloaded On: ${new Date().toLocaleString()}\n\n`;
+  csv += 'StationID,StationName,Location,Latitude,Longitude,RecordedAt,PM10,PM2.5,SO2,NO2,O3,Category\n';
+
+  readings.forEach(r => {
+    const station = stationById[r.station_id];
+    csv += [
+      csvField(r.station_id),
+      csvField(station ? station.name : ''),
+      csvField(station ? (stationLocationById[station.id] || '') : ''),
+      csvField(station ? Number(station.lat).toFixed(4) : ''),
+      csvField(station ? Number(station.lon).toFixed(4) : ''),
+      csvField(formatLocalDateTimeForCsv(r.recorded_at)),
+      csvField(r.pm10),
+      csvField(r.pm25),
+      csvField(r.so2),
+      csvField(r.no2),
+      csvField(r.o3),
+      csvField(r.category)
+    ].join(',') + '\n';
+  });
+
+  triggerCsvDownload(csv, 'TraceTheToxin_Stations', fp.selectedDates);
+}
+
+/* ═══════════════════════════════════════════════════
+   ORCHESTRATION ARCHITECTURE
+═══════════════════════════════════════════════════ */
+initTheme();
+
+// Reflect the persisted source-heatmap toggle on the button; the actual
+// layer gets built the first time loadPinsByWindow() runs (it checks
+// sourceHeatVisible itself once reports are loaded).
+document.getElementById('sourceHeatBtn')?.classList.toggle('active', sourceHeatVisible);
+
+try {
+  const savedLangMode = localStorage.getItem('ttt_lang_mode');
+  if (savedLangMode) {
+    if (savedLangMode === 'auto') {
+      detectAutoLang();
+    } else {
+      lang = savedLangMode;
+    }
+  }
+} catch (e) {}
+
+// Reflect the active language/theme selection in the Settings modal segments
+document.querySelectorAll('#langSegment .theme-segment-btn').forEach(b=>{
+  const savedMode = (function(){ try { return localStorage.getItem('ttt_lang_mode') || 'sr'; } catch(e){ return 'sr'; } })();
+  b.classList.toggle('active', b.getAttribute('onclick') && b.getAttribute('onclick').includes("'"+savedMode+"'"));
+});
+
+initCalendarFilter();
+initMapCalendarFilter();
+document.querySelectorAll('#trailHoursSegment .theme-segment-btn').forEach(b => {
+  b.classList.toggle('active', b.getAttribute('onclick') === `setTrailDisplayHours(${getTrailDisplayHours()})`);
+});
+applyLang(); 
+
+// Auto-show the "How to Use" help popup at most once a day per device.
+// The help (?) button always still opens it on demand regardless.
+(function maybeAutoShowHelpModal(){
+  const HELP_MODAL_STORAGE_KEY = 'helpModalLastShownAt';
+  const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+  let lastShownAt = 0;
+  try {
+    lastShownAt = parseInt(localStorage.getItem(HELP_MODAL_STORAGE_KEY), 10) || 0;
+  } catch (e) { /* localStorage unavailable — fall back to showing it */ }
+
+  if (Date.now() - lastShownAt > ONE_DAY_MS) {
+    showHelpModal();
+    try {
+      localStorage.setItem(HELP_MODAL_STORAGE_KEY, Date.now().toString());
+    } catch (e) { /* ignore write failures (private browsing, etc.) */ }
+  }
+})();
+
+function hideSplashScreen() {
+  const el = document.getElementById('splashScreen');
+  if (el) el.classList.add('splash-hidden');
+}
+
+loadPinsByWindow().finally(hideSplashScreen);
+loadAirQualityStations();
+
+// Stations are only fetched once on cold load — if this is a PWA that gets
+// backgrounded and resumed (rather than fully reloaded), that snapshot can
+// go stale for as long as the tab stays open. Re-fetch whenever the app
+// becomes visible again so reopening it always shows current data.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    loadAirQualityStations();
+  }
+});
+// Fallback in case the map/data takes unusually long or errors out silently —
+// never leave the user stuck behind the splash screen.
+setTimeout(hideSplashScreen, 6000);
+
+/* ═══════════════════════════════════════════════════
+   PULL-TO-REFRESH
+   Body has overflow:hidden (so map gestures don't scroll the page),
+   which also suppresses the browser's native overscroll refresh. This
+   reproduces just that gesture, scoped to touches that start on the
+   header itself, so it can't be triggered by panning the map.
+═══════════════════════════════════════════════════ */
+(function setupPullToRefresh() {
+  const headerEl = document.querySelector('header');
+  const indicator = document.getElementById('pullRefreshIndicator');
+  const label = document.getElementById('pullRefreshLabel');
+  if (!headerEl || !indicator) return;
+
+  const PULL_THRESHOLD = 70;   // px of pull before release triggers a refresh
+  const MAX_PULL = 110;        // px cap so it doesn't drag forever
+  let startY = null;
+  let pulling = false;
+  let armed = false; // past the threshold, will refresh on release
+
+  if (label) label.textContent = t('pullToRefresh');
+
+  function setPull(dist, animate) {
+    indicator.classList.toggle('animate', !!animate);
+    headerEl.classList.toggle('animate', !!animate);
+    const eased = Math.min(dist, MAX_PULL);
+    headerEl.style.transform = `translateY(${eased}px)`;
+    indicator.style.transform = `translate(-50%, ${eased - 60}px)`;
+  }
+
+  headerEl.addEventListener('touchstart', (e) => {
+    if (e.touches.length !== 1) return;
+    startY = e.touches[0].clientY;
+    pulling = true;
+    armed = false;
+  }, { passive: true });
+
+  const DEADZONE = 8; // px of movement ignored before this counts as an intentional pull, not tap jitter
+
+  headerEl.addEventListener('touchmove', (e) => {
+    if (!pulling || startY == null) return;
+    const dy = e.touches[0].clientY - startY;
+    if (dy <= DEADZONE) { return; }
+    // Once it's clearly a downward pull (past the deadzone), own the
+    // gesture so the page doesn't try to do anything else with it.
+    if (e.cancelable) e.preventDefault();
+    const wasArmed = armed;
+    armed = dy > PULL_THRESHOLD;
+    if (armed !== wasArmed) {
+      indicator.classList.toggle('ready', armed);
+      if (label) label.textContent = t(armed ? 'releaseToRefresh' : 'pullToRefresh');
+    }
+    setPull(dy - DEADZONE, false);
+  }, { passive: false });
+
+  function endPull() {
+    if (!pulling) return;
+    pulling = false;
+    if (armed) {
+      indicator.classList.add('refreshing');
+      indicator.classList.remove('ready');
+      if (label) label.textContent = t('refreshing');
+      setPull(60, true); // settle at a spot that keeps the spinner visible
+      setTimeout(() => location.reload(), 300);
+    } else {
+      setPull(0, true);
+    }
+    startY = null;
+  }
+
+  headerEl.addEventListener('touchend', endPull);
+  headerEl.addEventListener('touchcancel', endPull);
+})();
+
+
+</script>
+
+</body>
+</html>
