@@ -3119,6 +3119,33 @@ function aqiColor(cat) {
   return AQI_COLORS[cat] || '#9e9e9e';
 }
 
+// Per-pollutant concentration breakpoints (µg/m3) for the same 6-tier scale
+// as AQI_COLORS/AQI_SEVERITY above (EU EEA European Air Quality Index bands,
+// which is what SEPA's own DOBAR..IZUZETNO ZAGAĐEN categories are aligned
+// to). Used to color each individual pollutant value next to station data,
+// since a single overall station category doesn't tell you which specific
+// pollutant is driving it.
+const POLLUTANT_BREAKPOINTS = {
+  pm25: [5, 15, 50, 90, 140],
+  pm10: [15, 45, 120, 195, 270],
+  o3:   [60, 100, 120, 160, 180],
+  no2:  [10, 25, 60, 100, 150],
+  so2:  [20, 40, 125, 190, 275],
+};
+const AQI_TIER_ORDER = ['DOBAR', 'PRIHVATLJIV', 'UMEREN', 'ZAGAĐEN', 'VEOMA ZAGAĐEN', 'IZUZETNO ZAGAĐEN'];
+
+// Returns the hex color for a single pollutant reading, or a neutral grey
+// if the value or pollutant key is unrecognized/missing.
+function pollutantValueColor(pollutantKey, value) {
+  if (value == null || isNaN(value)) return '#9e9e9e';
+  const breakpoints = POLLUTANT_BREAKPOINTS[pollutantKey];
+  if (!breakpoints) return '#9e9e9e';
+  const v = Number(value);
+  let tierIndex = breakpoints.findIndex(bp => v <= bp);
+  if (tierIndex === -1) tierIndex = AQI_TIER_ORDER.length - 1;
+  return aqiColor(AQI_TIER_ORDER[tierIndex]);
+}
+
 function categoryColor(cat) {
   if (!cat) return '#aaaaaa';
   // Normalize: strip trailing punctuation variants, try direct match first
@@ -4945,15 +4972,16 @@ function translateCategory(category) {
 function pollutantSummaryRowHtml(reading) {
   if (!reading) return `<span style="font-size:10px;color:var(--text-secondary);">${t('aqNoData')}</span>`;
   const entries = [
-    ['PM10', reading.pm10],
-    ['PM2.5', reading.pm25],
-    ['SO2', reading.so2],
-    ['NO2', reading.no2],
-    ['O3', reading.o3],
+    ['PM10', 'pm10', reading.pm10],
+    ['PM2.5', 'pm25', reading.pm25],
+    ['SO2', 'so2', reading.so2],
+    ['NO2', 'no2', reading.no2],
+    ['O3', 'o3', reading.o3],
   ];
-  const parts = entries.map(([label, val]) => {
+  const parts = entries.map(([label, key, val]) => {
     const display = (val != null && !isNaN(val)) ? Number(val).toFixed(1) : '–';
-    return `<span style="white-space:nowrap;"><span style="color:var(--text-secondary);">${label}</span> <span style="font-weight:700;color:var(--text-primary);">${display}</span></span>`;
+    const color = (val != null && !isNaN(val)) ? pollutantValueColor(key, val) : 'var(--text-primary)';
+    return `<span style="white-space:nowrap;"><span style="color:var(--text-secondary);">${label}</span> <span style="font-weight:700;color:${color};">${display}</span></span>`;
   });
   return `<div style="display:flex;flex-wrap:nowrap;gap:5px 8px;font-size:10px;align-items:baseline;overflow-x:auto;">${parts.join(`<span style="color:var(--border-color-strong);">·</span>`)}</div>`;
 }
