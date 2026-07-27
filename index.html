@@ -2085,6 +2085,16 @@ const WILDFIRE_BBOX = '15,40,26,47';
 const WILDFIRE_DAY_RANGE = 1;
 // Re-fetch at most this often while the layer stays toggled on.
 const WILDFIRE_REFRESH_MS = 15 * 60 * 1000;
+// Declared here (not down with the rest of the wildfire code below) because
+// the map-control registration further down needs to read wildfireVisible
+// at script-execution time, and a `let` isn't usable before its own
+// declaration runs even though the function declarations around it are
+// hoisted.
+let wildfireVisible = (function () {
+  try { return localStorage.getItem('ttt_wildfire_visible') === 'true'; } catch (e) { return false; }
+})();
+let wildfireLayer = null;
+let wildfireLastFetchedAt = 0;
 
 /* ═══════════════════════════════════════════════════
    i18n
@@ -5065,14 +5075,9 @@ function toggleSourceHeat() {
    WILDFIRES (NASA FIRMS) -- satellite-detected hotspot dots,
    toggled via the button just above the source-heat flame button.
    See the FIRMS_MAP_KEY/WILDFIRE_* constants near the Supabase config
-   for setup and region/source tuning.
+   for setup, state (wildfireVisible/wildfireLayer/wildfireLastFetchedAt),
+   and region/source tuning.
 ═══════════════════════════════════════════════════ */
-let wildfireVisible = (function () {
-  try { return localStorage.getItem('ttt_wildfire_visible') === 'true'; } catch (e) { return false; }
-})();
-let wildfireLayer = null;
-let wildfireLastFetchedAt = 0;
-
 // FIRMS returns plain CSV (no quoted/escaped commas in its own columns),
 // so a straightforward split is enough -- no need to pull in a CSV library
 // just for this one feed.
