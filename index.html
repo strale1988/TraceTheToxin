@@ -411,6 +411,21 @@ button{
   0%   { transform: scale(0.9); opacity: 0.6; }
   100% { transform: scale(2.4); opacity: 0; }
 }
+/* A plain expanding ring around every fire dot regardless of wind, so the
+   point itself always reads as "active" -- the directional/calm pulse on
+   top of it is the wind-specific layer. Slight negative delay staggers it
+   against wildfireWindPulse/wildfireCalmPulse so the two don't sync up and
+   blur into one shape. */
+@keyframes wildfireRingPulse {
+  0%   { transform: scale(0.85); opacity: 0.55; }
+  100% { transform: scale(2.8); opacity: 0; }
+}
+.wildfire-icon .wildfire-ring-pulse{
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: wildfireRingPulse 1.8s ease-out infinite;
+  animation-delay: -0.6s;
+}
 .wildfire-icon .wildfire-wind-pulse{
   transform-box: fill-box;
   transform-origin: center;
@@ -5209,13 +5224,13 @@ function computeWildfireBbox(lat, lon, radiusKm) {
   return `${west.toFixed(4)},${south.toFixed(4)},${east.toFixed(4)},${north.toFixed(4)}`;
 }
 
-// windDeg is the CURRENT meteorological wind direction (the direction the
-// wind is blowing FROM) at the fire layer's fetch center -- see
-// loadWildfireData(). Same convention as makeUserLocationIcon(): rotate a
-// shape that defaults to pointing "up" by (windDeg + 180) so it visually
-// points where the wind is blowing TO.
+// windDeg/windSpeed are the wind reading for THIS fire's own grid cell (see
+// fetchWildfireWindByCell) -- not a single shared reading for the layer.
+// Same rotation convention as makeUserLocationIcon(): a shape that defaults
+// to pointing "up" gets rotated by (windDeg + 180) so it visually points
+// where the wind is blowing TO.
 function makeWildfireIcon(color, windDeg, windSpeed) {
-  const size = 30, cx = size / 2, cy = size / 2;
+  const size = 34, cx = size / 2, cy = size / 2;
   const hasDirection = windDeg != null && !isNaN(windDeg) &&
     windSpeed != null && !isNaN(windSpeed) && windSpeed >= WILDFIRE_CALM_THRESHOLD_KMH;
   const visualAngle = hasDirection ? (parseFloat(windDeg) + 180) % 360 : 0;
@@ -5228,6 +5243,7 @@ function makeWildfireIcon(color, windDeg, windSpeed) {
 
   const svg = `
     <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="overflow:visible;">
+      <circle class="wildfire-ring-pulse" cx="${cx}" cy="${cy}" r="6" fill="none" stroke="${color}" stroke-width="2"/>
       ${pulseSvg}
       <circle cx="${cx}" cy="${cy}" r="5" fill="${color}" stroke="#fff" stroke-width="1.25"/>
     </svg>`;
@@ -5235,18 +5251,77 @@ function makeWildfireIcon(color, windDeg, windSpeed) {
   return L.divIcon({ className: 'wildfire-icon', html: svg, iconSize: [size, size], iconAnchor: [cx, cy] });
 }
 
-function renderWildfireMarkers(rows, windDeg, windSpeed) {
+// windByCell: Map from wildfireWindGridKey() -> {wind_direction, wind_speed}
+// (or null), one lookup per fire's own location rather than a single
+// layer-wide reading -- see fetchWildfireWindByCell().
+function renderWildfireMarkers(rows, windByCell) {
   if (wildfireLayer) map.removeLayer(wildfireLayer);
   wildfireLayer = L.layerGroup();
   rows.forEach(row => {
     const lat = parseFloat(row.latitude), lon = parseFloat(row.longitude);
     if (isNaN(lat) || isNaN(lon)) return;
     const { color } = wildfireConfidenceInfo(row);
-    L.marker([lat, lon], { icon: makeWildfireIcon(color, windDeg, windSpeed) })
+    const wind = windByCell?.get(wildfireWindGridKey(lat, lon));
+    L.marker([lat, lon], { icon: makeWildfireIcon(color, wind?.wind_direction, wind?.wind_speed) })
       .bindPopup(buildWildfirePopupHtml(row), { maxWidth: 460, minWidth: 220 })
       .addTo(wildfireLayer);
   });
   if (wildfireVisible) wildfireLayer.addTo(map);
+}
+
+// Wind is fetched per grid cell, not once for the whole layer and not once
+// per exact fire coordinate -- either extreme is wrong. A single shared
+// reading is inaccurate at the far edge of a 100km radius; a call per fire
+// is wasteful when a dozen hotspots sit meters apart in the same burn area.
+// ~0.2° ≈ 20km per cell is a reasonable middle ground for how far wind
+// direction meaningfully drifts.
+const WILDFIRE_WIND_GRID_DEG = 0.2;
+// Hard cap on concurrent wind lookups per load, regardless of how many
+// distinct grid cells the fires fall into -- protects against a burst of
+// scattered hotspots turning one layer load into dozens of parallel
+// requests. Cells beyond the cap fall back to the layer-center reading.
+const WILDFIRE_MAX_WIND_CELLS = 10;
+
+function wildfireWindGridKey(lat, lon) {
+  const g = WILDFIRE_WIND_GRID_DEG;
+  return `${(Math.round(lat / g) * g).toFixed(2)},${(Math.round(lon / g) * g).toFixed(2)}`;
+}
+
+// Returns a Map of grid-key -> {wind_direction, wind_speed} (or null on a
+// failed lookup), covering every cell the given fire rows fall into, up to
+// WILDFIRE_MAX_WIND_CELLS. `centerWind` is used as the value for any cell
+// that gets skipped for being over the cap.
+async function fetchWildfireWindByCell(rows, centerLat, centerLon, centerWind) {
+  const cells = new Map(); // key -> representative {lat, lon}
+  rows.forEach(row => {
+    const lat = parseFloat(row.latitude), lon = parseFloat(row.longitude);
+    if (isNaN(lat) || isNaN(lon)) return;
+    const key = wildfireWindGridKey(lat, lon);
+    if (!cells.has(key)) cells.set(key, { lat, lon });
+  });
+
+  // Closest-to-center cells first, so if we're over the cap it's the
+  // farthest-flung stragglers that fall back to the center reading rather
+  // than an arbitrary subset.
+  const orderedCells = [...cells.entries()].sort((a, b) =>
+    getHaversineDistance(centerLat, centerLon, a[1].lat, a[1].lon) -
+    getHaversineDistance(centerLat, centerLon, b[1].lat, b[1].lon)
+  );
+
+  const windByCell = new Map();
+  const toFetch = orderedCells.slice(0, WILDFIRE_MAX_WIND_CELLS);
+  const overflow = orderedCells.slice(WILDFIRE_MAX_WIND_CELLS);
+  overflow.forEach(([key]) => windByCell.set(key, centerWind));
+
+  await Promise.all(toFetch.map(async ([key, { lat, lon }]) => {
+    try {
+      windByCell.set(key, await getWeatherData(lat, lon));
+    } catch (e) {
+      windByCell.set(key, centerWind); // one cell's failed lookup shouldn't blank out its fires' pulses
+    }
+  }));
+
+  return windByCell;
 }
 
 // Returns true on success, false on failure (missing key or fetch/parse
@@ -5264,13 +5339,11 @@ async function loadWildfireData(silent) {
     const bbox = computeWildfireBbox(lat, lon, WILDFIRE_RADIUS_KM);
     const url = `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${FIRMS_MAP_KEY}/${WILDFIRE_SOURCE}/${bbox}/${WILDFIRE_DAY_RANGE}`;
     // Fetched together: FIRMS for the fire points themselves, Open-Meteo for
-    // the current wind reading used to orient each fire's pulse animation.
-    // One shared reading for the whole 100km layer (not one per fire) --
-    // wind direction doesn't vary enough over that range to be worth a
-    // separate API call per dot, and this keeps the request count sane.
-    const [res, wind] = await Promise.all([
+    // a center-point wind reading used as the fallback for any fire whose
+    // own grid cell doesn't get its own lookup (see fetchWildfireWindByCell).
+    const [res, centerWind] = await Promise.all([
       fetch(url),
-      getWeatherData(lat, lon).catch(() => null) // missing wind just means a non-directional pulse, not a failed layer
+      getWeatherData(lat, lon).catch(() => null)
     ]);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const text = await res.text();
@@ -5282,7 +5355,8 @@ async function loadWildfireData(silent) {
       return !isNaN(flat) && !isNaN(flon) &&
         getHaversineDistance(lat, lon, flat, flon) <= WILDFIRE_RADIUS_KM;
     });
-    renderWildfireMarkers(rows, wind?.wind_direction, wind?.wind_speed);
+    const windByCell = await fetchWildfireWindByCell(rows, lat, lon, centerWind);
+    renderWildfireMarkers(rows, windByCell);
     wildfireLastFetchedAt = Date.now();
     wildfireLastFetchedAround = { lat, lon };
     return true;
@@ -5292,6 +5366,7 @@ async function loadWildfireData(silent) {
     return false;
   }
 }
+
 
 async function toggleWildfireLayer() {
   const turningOn = !wildfireVisible;
