@@ -607,8 +607,8 @@ span.flatpickr-weekday {
 }
 .source-heat-btn:active{ transform:scale(.9); }
 .source-heat-btn.active{ background:#f5a623; border-color:#f5a623; }
-.source-heat-btn svg{ stroke:var(--text-secondary); transition:stroke .15s ease; }
-.source-heat-btn.active svg{ stroke:#fff; }
+.source-heat-btn .icon-img{ filter:var(--icon-tint-filter); }
+.source-heat-btn.active .icon-img{ filter:none; }
 .map-filter-btn{
   background:var(--floating-bg);
   border:1px solid var(--floating-border);
@@ -1012,10 +1012,7 @@ span.flatpickr-weekday {
     <img class="icon-img" src="icons/search.png" alt="Trace">
   </div>
   <div id="sourceHeatBtn" class="source-heat-btn" style="display:none" title="Show probable source heatmap" onclick="toggleSourceHeat()">
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M12 2c-1.5 3-4 5.5-4 9a4 4 0 0 0 8 0c0-1-.3-1.8-.8-2.6C14.8 9.6 14 11 12 11c1-2 .5-4.5-1-6.5C11.3 6 12 4 12 2z"/>
-      <path d="M8.5 13.5A3.5 3.5 0 0 0 12 20a3.5 3.5 0 0 0 3.5-6.5"/>
-    </svg>
+    <img class="icon-img" src="icons/fire.png" alt="Fire">
   </div>
   <div id="sourceHeatConfidenceBadge" class="source-heat-confidence-badge" style="display:none"></div>
 </div>
@@ -3133,17 +3130,37 @@ const POLLUTANT_BREAKPOINTS = {
   so2:  [20, 40, 125, 190, 275],
 };
 const AQI_TIER_ORDER = ['DOBAR', 'PRIHVATLJIV', 'UMEREN', 'ZAGAĐEN', 'VEOMA ZAGAĐEN', 'IZUZETNO ZAGAĐEN'];
+// Bilingual tier labels, reused as-is from the map legend's own text so the
+// hover tooltip on a colored pollutant value always matches what the legend
+// says that color means.
+const AQI_TIER_LABELS = {
+  'DOBAR':            'Dobar (good)',
+  'PRIHVATLJIV':       'Prihvatljiv (acceptable)',
+  'UMEREN':            'Umeren (moderate)',
+  'ZAGAĐEN':           'Zagađen (polluted)',
+  'VEOMA ZAGAĐEN':     'Veoma zagađen (very polluted)',
+  'IZUZETNO ZAGAĐEN':  'Izuzetno zagađen (extremely polluted)',
+};
+
+// Shared lookup: which of the 6 tiers a given pollutant+value falls into,
+// or null if the pollutant/value isn't recognized. Both the color and the
+// tooltip label are derived from this single source so they can't drift
+// out of sync with each other.
+function pollutantValueTier(pollutantKey, value) {
+  if (value == null || isNaN(value)) return null;
+  const breakpoints = POLLUTANT_BREAKPOINTS[pollutantKey];
+  if (!breakpoints) return null;
+  const v = Number(value);
+  let tierIndex = breakpoints.findIndex(bp => v <= bp);
+  if (tierIndex === -1) tierIndex = AQI_TIER_ORDER.length - 1;
+  return AQI_TIER_ORDER[tierIndex];
+}
 
 // Returns the hex color for a single pollutant reading, or a neutral grey
 // if the value or pollutant key is unrecognized/missing.
 function pollutantValueColor(pollutantKey, value) {
-  if (value == null || isNaN(value)) return '#9e9e9e';
-  const breakpoints = POLLUTANT_BREAKPOINTS[pollutantKey];
-  if (!breakpoints) return '#9e9e9e';
-  const v = Number(value);
-  let tierIndex = breakpoints.findIndex(bp => v <= bp);
-  if (tierIndex === -1) tierIndex = AQI_TIER_ORDER.length - 1;
-  return aqiColor(AQI_TIER_ORDER[tierIndex]);
+  const tier = pollutantValueTier(pollutantKey, value);
+  return tier ? aqiColor(tier) : '#9e9e9e';
 }
 
 function categoryColor(cat) {
@@ -4961,8 +4978,6 @@ function translateCategory(category) {
   return lang === 'en'
     ? (srToEn[category] || category)
     : (enToSr[category] || category);
-
-  return map[category] || category;
 }
 
 // Shared compact pollutant summary — all five values on ONE row (label +
@@ -4981,7 +4996,9 @@ function pollutantSummaryRowHtml(reading) {
   const parts = entries.map(([label, key, val]) => {
     const display = (val != null && !isNaN(val)) ? Number(val).toFixed(1) : '–';
     const color = (val != null && !isNaN(val)) ? pollutantValueColor(key, val) : 'var(--text-primary)';
-    return `<span style="white-space:nowrap;"><span style="color:var(--text-secondary);">${label}</span> <span style="font-weight:700;color:${color};">${display}</span></span>`;
+    const tier = (val != null && !isNaN(val)) ? pollutantValueTier(key, val) : null;
+    const tooltip = tier ? ` title="${AQI_TIER_LABELS[tier]}"` : '';
+    return `<span style="white-space:nowrap;"><span style="color:var(--text-secondary);">${label}</span> <span style="font-weight:700;color:${color};"${tooltip}>${display}</span></span>`;
   });
   return `<div style="display:flex;flex-wrap:nowrap;gap:5px 8px;font-size:10px;align-items:baseline;overflow-x:auto;">${parts.join(`<span style="color:var(--border-color-strong);">·</span>`)}</div>`;
 }
