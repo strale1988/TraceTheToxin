@@ -2120,7 +2120,7 @@ const WILDFIRE_SOURCE = 'VIIRS_SNPP_NRT';
 // available, else the manual pin, else the fixed fallback -- same
 // precedence as activeWizLocation()), not a fixed region or the whole
 // world. See computeWildfireBbox()/loadWildfireData() below.
-const WILDFIRE_RADIUS_KM = 100;
+const WILDFIRE_RADIUS_KM = 500;
 // Below this wind speed, direction readings get noisy/unreliable and a
 // directional pulse would be misleading -- fall back to a plain radial
 // pulse instead (see makeWildfireIcon()).
@@ -5271,16 +5271,18 @@ function renderWildfireMarkers(rows, windByCell) {
 
 // Wind is fetched per grid cell, not once for the whole layer and not once
 // per exact fire coordinate -- either extreme is wrong. A single shared
-// reading is inaccurate at the far edge of a 100km radius; a call per fire
+// reading is inaccurate at the far edge of a 500km radius; a call per fire
 // is wasteful when a dozen hotspots sit meters apart in the same burn area.
-// ~0.2° ≈ 20km per cell is a reasonable middle ground for how far wind
-// direction meaningfully drifts.
-const WILDFIRE_WIND_GRID_DEG = 0.2;
+// ~0.5° ≈ 50km per cell -- bigger than at the old 100km radius, since a
+// 500km radius covers a lot more ground and a finer grid would mean either
+// far more API calls or a much lower cap swallowing most of that area into
+// the center fallback anyway.
+const WILDFIRE_WIND_GRID_DEG = 0.5;
 // Hard cap on concurrent wind lookups per load, regardless of how many
 // distinct grid cells the fires fall into -- protects against a burst of
 // scattered hotspots turning one layer load into dozens of parallel
 // requests. Cells beyond the cap fall back to the layer-center reading.
-const WILDFIRE_MAX_WIND_CELLS = 10;
+const WILDFIRE_MAX_WIND_CELLS = 16;
 
 function wildfireWindGridKey(lat, lon) {
   const g = WILDFIRE_WIND_GRID_DEG;
