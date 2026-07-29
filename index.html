@@ -2867,6 +2867,11 @@ function startWatching() {
       } else {
         userMarker.setLatLng([userCoords.lat, userCoords.lon]);
       }
+      // Get a fresh wind reading for wherever GPS just landed. Not forced --
+      // triggerWindUpdate's own distance gate (WIND_REFETCH_MIN_KM) means this
+      // only actually re-fetches once the fix has moved meaningfully, so it's
+      // safe to call on every 5s watch tick without spamming Open-Meteo.
+      triggerWindUpdate();
       checkFormReady();
       evaluateActiveNearbyClusters();
     },
@@ -3013,6 +3018,9 @@ function togglePinMode() {
     manualCoords = null; 
     // Restore the GPS dot now that manual placement is done.
     if (userMarker && !map.hasLayer(userMarker)) userMarker.addTo(map);
+    // Active location just switched back from the pin to GPS -- get a fresh
+    // reading for wherever the GPS dot actually is now.
+    forceWindRefresh();
     loadPinsByWindow();
   }
   checkFormReady();
@@ -3076,6 +3084,11 @@ map.on('click', async function(e) {
         pane: 'userLocationPane'
       }).addTo(map);
     }
+
+    // Dropping/moving the pin is a deliberate location change, so always get
+    // a fresh wind reading for it right away rather than waiting on the
+    // routine distance-gated refresh (see WIND_REFETCH_MIN_KM).
+    forceWindRefresh();
 
     checkFormReady();
     return;
@@ -3186,26 +3199,42 @@ async function getWeatherData(lat, lng, datetime = null) {
 // so the GPS marker can be (re)built with the right arrow even if the wind
 // reading arrives before or after the marker itself exists.
 let currentWindDegForMarker = null;
-// "Just on load, static until refresh" per product decision — once we have
-// a real reading the compass widget and GPS-dot arrow stop updating, even
-// though triggerWindUpdate itself keeps refreshing currentWeatherData every
-// 5 minutes for whatever else in the app wants fresher data.
-let windMarkerLocked = false;
 // Assigned by triggerWindUpdate on every refresh; not currently read
 // elsewhere, but declared properly (was previously an implicit global).
 let currentWeatherData = null;
+// The lat/lon the compass + GPS/pin-marker arrow currently reflect, so a
+// routine 5-min/5s tick only re-fetches once the active location has moved
+// meaningfully (avoids hammering Open-Meteo on every GPS poll) while a real
+// location change (new GPS fix far from the last one, or a pin drop/move)
+// can still force an immediate refresh via forceWindRefresh() below.
+let lastWindFetchLoc = null;
+const WIND_REFETCH_MIN_KM = 0.3; // ~300m of movement before re-fetching on a routine tick
 
-async function triggerWindUpdate() {
+async function triggerWindUpdate(force = false) {
   const activeLoc = (pinMode && manualCoords) ? manualCoords : userCoords;
   if (!activeLoc) return;
+
+  if (!force && lastWindFetchLoc) {
+    const moved = getHaversineDistance(lastWindFetchLoc.lat, lastWindFetchLoc.lon, activeLoc.lat, activeLoc.lon);
+    if (moved < WIND_REFETCH_MIN_KM) return;
+  }
 
   const weather = await getWeatherData(activeLoc.lat, activeLoc.lon);
   currentWeatherData = weather;
 
-  if (!windMarkerLocked && weather.source !== 'Offline/Default' && weather.wind_direction != null) {
+  if (weather.source !== 'Offline/Default' && weather.wind_direction != null) {
+    lastWindFetchLoc = { lat: activeLoc.lat, lon: activeLoc.lon };
     updateWindMarker(weather.wind_direction);
-    windMarkerLocked = true;
   }
+}
+
+// Called whenever the active location just changed for a reason that should
+// always get a fresh reading regardless of the routine distance gating
+// above: a GPS fix landing at a genuinely new spot, or a manual pin being
+// dropped/moved. triggerWindUpdate still no-ops if there's no activeLoc yet,
+// so this is safe to call before GPS/pin placement has actually settled.
+function forceWindRefresh() {
+  triggerWindUpdate(true);
 }
 
 // Draws the wind reading fetched at load onto the map: rotates the corner
