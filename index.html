@@ -2128,6 +2128,13 @@ const WILDFIRE_CALM_THRESHOLD_KMH = 3;
 // Detections older than this are dropped from the FIRMS request entirely
 // (the API's own day-range granularity is whole days, so 1 = "today").
 const WILDFIRE_DAY_RANGE = 1;
+// A 500km radius during active fire season can return dozens-to-hundreds
+// of hotspots, and each one runs 3 separate infinite CSS animations (see
+// makeWildfireIcon()). That's fine for a handful of fires but adds up fast
+// as a continuous compositing cost, especially felt during pan/zoom.
+// Beyond this many, extra fires fall back to a plain static dot -- same
+// color/size, no animation -- instead of dropping them from the map.
+const WILDFIRE_MAX_ANIMATED_MARKERS = 40;
 // Re-fetch at most this often while the layer stays toggled on.
 const WILDFIRE_REFRESH_MS = 15 * 60 * 1000;
 // Declared here (not down with the rest of the wildfire code below) because
@@ -5279,8 +5286,20 @@ function computeWildfireBbox(lat, lon, radiusKm) {
 // Same rotation convention as makeUserLocationIcon(): a shape that defaults
 // to pointing "up" gets rotated by (windDeg + 180) so it visually points
 // where the wind is blowing TO.
-function makeWildfireIcon(color, windDeg, windSpeed) {
+function makeWildfireIcon(color, windDeg, windSpeed, animated = true) {
   const size = 34, cx = size / 2, cy = size / 2;
+
+  if (!animated) {
+    // Same dot, ring omitted and no looping animations -- used past
+    // WILDFIRE_MAX_ANIMATED_MARKERS so a big fire count doesn't mean a big
+    // pile of simultaneously-animating SVGs.
+    const svg = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="overflow:visible;">
+        <circle cx="${cx}" cy="${cy}" r="5" fill="${color}" stroke="#fff" stroke-width="1.25"/>
+      </svg>`;
+    return L.divIcon({ className: 'wildfire-icon', html: svg, iconSize: [size, size], iconAnchor: [cx, cy] });
+  }
+
   const hasDirection = windDeg != null && !isNaN(windDeg) &&
     windSpeed != null && !isNaN(windSpeed) && windSpeed >= WILDFIRE_CALM_THRESHOLD_KMH;
   const visualAngle = hasDirection ? (parseFloat(windDeg) + 180) % 360 : 0;
@@ -5307,12 +5326,13 @@ function makeWildfireIcon(color, windDeg, windSpeed) {
 function renderWildfireMarkers(rows, windByCell) {
   if (wildfireLayer) map.removeLayer(wildfireLayer);
   wildfireLayer = L.layerGroup();
-  rows.forEach(row => {
+  rows.forEach((row, index) => {
     const lat = parseFloat(row.latitude), lon = parseFloat(row.longitude);
     if (isNaN(lat) || isNaN(lon)) return;
     const { color } = wildfireConfidenceInfo(row);
     const wind = windByCell?.get(wildfireWindGridKey(lat, lon));
-    L.marker([lat, lon], { icon: makeWildfireIcon(color, wind?.wind_direction, wind?.wind_speed) })
+    const animated = index < WILDFIRE_MAX_ANIMATED_MARKERS;
+    L.marker([lat, lon], { icon: makeWildfireIcon(color, wind?.wind_direction, wind?.wind_speed, animated) })
       .bindPopup(buildWildfirePopupHtml(row), { maxWidth: 460, minWidth: 220 })
       .addTo(wildfireLayer);
   });
