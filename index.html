@@ -2593,6 +2593,12 @@ map.attributionControl.setPosition('bottomleft');
 map.createPane('conePane');
 map.getPane('conePane').style.zIndex = 390; // below splinePane
 map.getPane('conePane').style.pointerEvents = 'none';
+// Cones are drawn as up to 15 polylines/polygons per report (see
+// generateAllBackgroundTrails). At any real report count that's hundreds
+// of SVG <path> elements needing per-frame repositioning on pan/zoom.
+// A canvas renderer paints them all onto one <canvas> in this pane
+// instead, which is far cheaper to redraw during map movement.
+const coneRenderer = L.canvas({ pane: 'conePane' });
 map.createPane('splinePane');
 map.getPane('splinePane').style.zIndex = 450;
 map.getPane('splinePane').style.pointerEvents = 'none';
@@ -4720,6 +4726,12 @@ async function generateAllBackgroundTrails(reports, tracerCoords = null) {
 
     coneEdges.set(report.id, { left: [], right: [] });
 
+    // Collected here and added to the map as a single L.layerGroup once
+    // this report's segments are all built, instead of each polyline/
+    // polygon calling .addTo(map) individually (up to 15 separate add
+    // operations per report otherwise).
+    const reportConeLayers = [];
+
     const coneClipDistKm = tracerCoords ? (() => {
       const distToSource = getHaversineDistance(startLat, startLon, tracerCoords.lat, tracerCoords.lon);
       return distToSource + 5.0;
@@ -4759,8 +4771,9 @@ async function generateAllBackgroundTrails(reports, tracerCoords = null) {
         opacity: 0.5,
         className: `bg-trail-teal cone-report-${report.id}`,
         interactive: false,
-        pane: 'conePane'
-      }).addTo(map);
+        pane: 'conePane',
+        renderer: coneRenderer
+      });
 
       const rightLine = L.polyline(edges.right, {
         color: baseColor,
@@ -4768,10 +4781,11 @@ async function generateAllBackgroundTrails(reports, tracerCoords = null) {
         opacity: 0.5,
         className: `bg-trail-teal cone-report-${report.id}`,
         interactive: false,
-        pane: 'conePane'
-      }).addTo(map);
+        pane: 'conePane',
+        renderer: coneRenderer
+      });
 
-      bgTrailLayers.push(leftLine, rightLine);
+      reportConeLayers.push(leftLine, rightLine);
 
       // build continuous left/right boundary lines
       if (i === 0) {
@@ -4802,11 +4816,18 @@ async function generateAllBackgroundTrails(reports, tracerCoords = null) {
         opacity: segmentStrokeOpacity,
         className: `bg-trail-teal cone-report-${report.id}`,
         interactive: false,
-        pane: 'conePane'
-      }).addTo(map);
+        pane: 'conePane',
+        renderer: coneRenderer
+      });
 
-      bgTrailLayers.push(coneSegment);
+      reportConeLayers.push(coneSegment);
     }
+
+    // One addTo(map) call for this report's whole cone instead of up to
+    // 15. clearBackgroundTrails() removes the group the same way it
+    // removed individual layers before (map.removeLayer cascades to a
+    // layer group's children).
+    bgTrailLayers.push(L.layerGroup(reportConeLayers).addTo(map));
   });
 
 // PASS 2: Fetch historic wind trails concurrently — safe to parallelize now that
@@ -5021,11 +5042,11 @@ function clearMarkers(){
 // pass-through (rather than deleting every call site) in case anything
 // still wants a single hook to re-assert cone visibility.
 function updateConeVisibilityForClustering() {
-  Object.keys(markerByReportId).forEach(id => {
-    document.querySelectorAll(`.cone-report-${id}`).forEach(el => {
-      el.style.display = '';
-    });
-  });
+  // Intentionally empty: cones no longer need visibility toggling (see
+  // comment above), and the old body did a querySelectorAll scan per
+  // report on every zoomend/animationend for no visible effect. Left as
+  // a stub since map.on('zoomend', ...) and the cluster group's
+  // 'animationend' listener still call it.
 }
 /* ═══════════════════════════════════════════════════
    PROBABLE SOURCE HEATMAP (report concentration)
