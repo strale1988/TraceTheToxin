@@ -395,24 +395,37 @@ button{
   animation: traceFlowDashReverse 0.9s linear infinite;
 }
 
-/* Wildfire markers: a single flame-shaped pin per fire (distinct from the
-   round report dots and the diamond AQ-station markers), leaning toward
-   wherever the wind is currently blowing TO at that fire's location --
-   same "add 180° to the meteorological wind direction" convention used by
-   the GPS arrow and wind compass elsewhere. That lean is a plain static
-   transform set once in makeWildfireIcon(), not an animation. The only
-   animation is one cheap opacity/scale flicker on the flame itself --
-   replaces the old 3-layer animated-circle pulse (a ring + a comet pulse
-   + a breathing pulse, each its own continuously-animating <circle>),
-   which got expensive with many fires on screen at once. */
-@keyframes wildfireFlicker {
-  0%, 100% { transform: scale(1);     opacity: 1;   }
-  50%      { transform: scale(1.06);  opacity: 0.85; }
-}
+/* Wildfire markers: icons/fire.png tinted per-fire via a CSS mask (same
+   background-color + mask-image technique used for the category wizard
+   tiles), leaning toward wherever the wind is currently blowing TO at
+   that fire's location -- same "add 180° to the meteorological wind
+   direction" convention used by the GPS arrow and wind compass elsewhere.
+   That lean, and the size (bigger = higher radiative power = a more
+   serious fire), are both static, set once in makeWildfireIcon() -- no
+   animation at all, unlike the old pulsing-circle version. */
 .wildfire-icon .wildfire-flame{
-  transform-box: fill-box;
-  transform-origin: 50% 100%;
-  animation: wildfireFlicker 1.6s ease-in-out infinite;
+  width:100%; height:100%;
+  -webkit-mask-size:contain; mask-size:contain;
+  -webkit-mask-repeat:no-repeat; mask-repeat:no-repeat;
+  -webkit-mask-position:center; mask-position:center;
+  filter:drop-shadow(0 0 1px #fff) drop-shadow(0 0 1px #fff);
+}
+
+/* ═══════════════════════════════════════════════════
+   WILDFIRE MARKER CLUSTERING -- same badge-on-circle
+   pattern as report clustering, tinted fire-orange so
+   the two cluster types stay visually distinct too.
+═══════════════════════════════════════════════════ */
+.wildfire-cluster-icon{ background:transparent; border:none; }
+.wildfire-cluster-badge{
+  width:100%; height:100%; border-radius:50%;
+  background:#e8531e;
+  color:#fff;
+  text-align:center;
+  font-weight:var(--fw-bold);
+  font-size:13px;
+  border:3px solid #fff;
+  box-shadow:0 2px 6px rgba(0,0,0,.35);
 }
   
 .generic-modal-overlay{
@@ -2099,6 +2112,12 @@ const WILDFIRE_SOURCE = 'VIIRS_SNPP_NRT';
 // precedence as activeWizLocation()), not a fixed region or the whole
 // world. See computeWildfireBbox()/loadWildfireData() below.
 const WILDFIRE_RADIUS_KM = 500;
+// Zooming out can put a lot more ground on screen than the base 500km
+// radius covers -- loadWildfireData() grows the fetch to match the
+// visible map (see computeVisibleRadiusKm()), but not without limit:
+// FIRMS' Area API caps a single request's bounding box at roughly 20°
+// of latitude/longitude, so this stays comfortably under that.
+const WILDFIRE_MAX_RADIUS_KM = 1000;
 // Below this wind speed, direction readings get noisy/unreliable and a
 // directional pulse would be misleading -- fall back to a plain radial
 // pulse instead (see makeWildfireIcon()).
@@ -2123,6 +2142,10 @@ let wildfireLastFetchedAt = 0;
 // old 100km box no longer covers their surroundings, even if the
 // time-based refresh window (WILDFIRE_REFRESH_MS) hasn't elapsed yet.
 let wildfireLastFetchedAround = null;
+// The radius (km) actually covered by the currently-loaded wildfireLayer --
+// used by the zoomend/moveend handler below to tell whether the visible
+// map area has grown past what's already been fetched.
+let wildfireLastFetchedRadiusKm = 0;
 
 /* ═══════════════════════════════════════════════════
    i18n
@@ -5231,52 +5254,100 @@ function computeWildfireBbox(lat, lon, radiusKm) {
   return `${west.toFixed(4)},${south.toFixed(4)},${east.toFixed(4)},${north.toFixed(4)}`;
 }
 
+// How intense a fire "reads" on the map, 0..1 -- drives both icon size and
+// how saturated/dark its tint is (see makeWildfireIcon). Prefers FRP (fire
+// radiative power, in MW -- FIRMS' own intensity measure) since it's a
+// continuous reading; VIIRS hotspots mostly land under ~60MW so that's
+// used as the "maxed out" reference point. Falls back to the 3-tier
+// confidence rating on rows where FRP didn't come through.
+function wildfireSeverity(row) {
+  const frp = parseFloat(row.frp);
+  if (!isNaN(frp)) return Math.min(1, Math.max(0, frp / 60));
+  const { tier } = wildfireConfidenceInfo(row);
+  return tier === 'high' ? 0.85 : tier === 'low' ? 0.15 : 0.5;
+}
+
 // windDeg/windSpeed are the wind reading for THIS fire's own grid cell (see
-// fetchWildfireWindByCell) -- not a single shared reading for the layer.
-// Same rotation convention as makeUserLocationIcon(): a shape that defaults
-// to pointing "up" gets rotated by (windDeg + 180) so it visually points
-// where the wind is blowing TO.
-function makeWildfireIcon(color, windDeg, windSpeed) {
-  // Flame silhouette, drawn pointing straight up in its own 20x24 box and
-  // then translated so its base (the pin's "tip") sits at (cx, cy) -- the
-  // same anchor-at-the-point convention as the report pins and station
-  // diamonds, just with a teardrop/flame outline instead of a circle so
-  // wildfires never get confused with either at a glance.
-  const size = 30, cx = size / 2, cy = size / 2;
+// fetchWildfireWindByCell). Same rotation convention as
+// makeUserLocationIcon(): a shape that defaults to pointing "up" gets
+// rotated by (windDeg + 180) so it visually points where the wind is
+// blowing TO. `severity` (0..1, see wildfireSeverity()) scales the icon
+// size and darkens its tint so the most intense fires stand out at a
+// glance without needing their popup open.
+function makeWildfireIcon(color, windDeg, windSpeed, severity) {
+  const size = Math.round(22 + severity * 20); // 22px (mild) .. 42px (severe)
+  const cx = size / 2, cy = size / 2;
   const hasDirection = windDeg != null && !isNaN(windDeg) &&
     windSpeed != null && !isNaN(windSpeed) && windSpeed >= WILDFIRE_CALM_THRESHOLD_KMH;
-  // Static lean toward where the wind is blowing TO -- no animation cost,
-  // just a fixed rotation set once when the icon is built. Calm/unknown
-  // wind leaves the flame upright.
+  // Static lean toward where the wind is blowing TO -- no animation, just
+  // a fixed rotation set once when the icon is built.
   const leanDeg = hasDirection ? (parseFloat(windDeg) + 180) % 360 : 0;
   const lean = Math.max(-22, Math.min(22, (((leanDeg + 180) % 360) - 180) * 0.12));
-
-  const flamePath = 'M0,-15 C4,-10 6,-5 4,-1 C7,-3 8.5,-7 7,-11 C11,-6 12,0 8,4.5 ' +
-    'C10,4 11,2.5 11.5,1 C13,7 9,13 0,13 C-9,13 -13,7 -11.5,1 C-11,2.5 -10,4 -8,4.5 ' +
-    'C-12,0 -11,-6 -7,-11 C-8.5,-7 -7,-3 -4,-1 C-6,-5 -4,-10 0,-15 Z';
+  // More severe fires read as a darker/deeper shade of their confidence
+  // color rather than a flat tint, so two "high confidence" fires of very
+  // different intensity still look distinguishable next to each other.
+  const shade = Math.round(severity * 35); // 0 = color as-is, up to ~35% darker
+  const tint = shadeHexColor(color, -shade);
 
   const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="overflow:visible;">
-      <g transform="translate(${cx} ${cy}) rotate(${lean})">
-        <path class="wildfire-flame" d="${flamePath}" fill="${color}" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/>
-      </g>
-    </svg>`;
+    <div class="wildfire-icon-wrap" style="width:${size}px;height:${size}px;transform:rotate(${lean}deg);">
+      <div class="wildfire-flame" style="background-color:${tint};-webkit-mask-image:url('icons/fire.png');mask-image:url('icons/fire.png');"></div>
+    </div>`;
 
   return L.divIcon({ className: 'wildfire-icon', html: svg, iconSize: [size, size], iconAnchor: [cx, cy] });
+}
+
+// Darkens (negative percent) or lightens (positive) a #rrggbb color by a
+// flat percentage per channel -- used to shade the fire tint by severity
+// without needing a full HSL round-trip for one small adjustment.
+function shadeHexColor(hex, percent) {
+  const num = parseInt(hex.replace('#', ''), 16);
+  const clamp = v => Math.min(255, Math.max(0, v));
+  const amt = Math.round(2.55 * percent);
+  const r = clamp((num >> 16) + amt);
+  const g = clamp(((num >> 8) & 0xff) + amt);
+  const b = clamp((num & 0xff) + amt);
+  return `#${(0x1000000 + r * 0x10000 + g * 0x100 + b).toString(16).slice(1)}`;
 }
 
 // windByCell: Map from wildfireWindGridKey() -> {wind_direction, wind_speed}
 // (or null), one lookup per fire's own location rather than a single
 // layer-wide reading -- see fetchWildfireWindByCell().
+// Fires cluster more aggressively than reports do (maxClusterRadius 80
+// vs reports' 60, and clustering never turns off at any zoom) -- there
+// can be hundreds of hotspots in one burn scar, and unlike individual
+// reports, seeing every last overlapping dot at low zoom isn't
+// information worth keeping visible; a count badge is more useful.
+function makeWildfireClusterGroup() {
+  return L.markerClusterGroup({
+    maxClusterRadius: 80,
+    spiderfyOnMaxZoom: true,
+    showCoverageOnHover: false,
+    zoomToBoundsOnClick: true,
+    animate: true,
+    chunkedLoading: true,
+    iconCreateFunction: function (cluster) {
+      const count = cluster.getChildCount();
+      const size = count < 10 ? 34 : count < 50 ? 42 : 50;
+      return L.divIcon({
+        html: `<div class="wildfire-cluster-badge" style="width:${size}px;height:${size}px;line-height:${size}px;">${count}</div>`,
+        className: 'wildfire-cluster-icon',
+        iconSize: [size, size]
+      });
+    }
+  });
+}
+
 function renderWildfireMarkers(rows, windByCell) {
   if (wildfireLayer) map.removeLayer(wildfireLayer);
-  wildfireLayer = L.layerGroup();
+  wildfireLayer = makeWildfireClusterGroup();
   rows.forEach(row => {
     const lat = parseFloat(row.latitude), lon = parseFloat(row.longitude);
     if (isNaN(lat) || isNaN(lon)) return;
     const { color } = wildfireConfidenceInfo(row);
+    const severity = wildfireSeverity(row);
     const wind = windByCell?.get(wildfireWindGridKey(lat, lon));
-    L.marker([lat, lon], { icon: makeWildfireIcon(color, wind?.wind_direction, wind?.wind_speed) })
+    L.marker([lat, lon], { icon: makeWildfireIcon(color, wind?.wind_direction, wind?.wind_speed, severity) })
       .bindPopup(buildWildfirePopupHtml(row), { maxWidth: 460, minWidth: 220 })
       .addTo(wildfireLayer);
   });
@@ -5340,19 +5411,34 @@ async function fetchWildfireWindByCell(rows, centerLat, centerLon, centerWind) {
   return windByCell;
 }
 
+// How far out (km) the currently visible map extends from its center --
+// used to grow the FIRMS fetch radius when the user zooms out past what's
+// already been loaded (see the zoomend/moveend handler below). Distance to
+// the farthest bounds corner, not just north/south/east/west edges, so a
+// non-square viewport (most phone screens) is still fully covered.
+function computeVisibleRadiusKm() {
+  const bounds = map.getBounds();
+  const center = map.getCenter();
+  const corners = [bounds.getNorthWest(), bounds.getNorthEast(), bounds.getSouthWest(), bounds.getSouthEast()];
+  return Math.max(...corners.map(c => getHaversineDistance(center.lat, center.lng, c.lat, c.lng)));
+}
+
 // Returns true on success, false on failure (missing key or fetch/parse
 // error) so toggleWildfireLayer() knows whether to revert the toggle.
 // `silent` skips the user-facing alert (used when restoring a previously
 // on-state at page load, so a stale key doesn't nag on every visit --
-// the button just quietly won't light up).
-async function loadWildfireData(silent) {
+// the button just quietly won't light up). `radiusKm` defaults to the base
+// WILDFIRE_RADIUS_KM but callers pass a larger value (capped at
+// WILDFIRE_MAX_RADIUS_KM) once the visible map extends further than that.
+async function loadWildfireData(silent, radiusKm) {
   if (!FIRMS_MAP_KEY || FIRMS_MAP_KEY === 'YOUR_FIRMS_MAP_KEY_HERE') {
     if (!silent) alert(t('wildfireNoKeyMsg'));
     return false;
   }
+  const radius = Math.min(WILDFIRE_MAX_RADIUS_KM, Math.max(WILDFIRE_RADIUS_KM, radiusKm || 0));
   try {
     const { lat, lon } = activeWizLocation();
-    const bbox = computeWildfireBbox(lat, lon, WILDFIRE_RADIUS_KM);
+    const bbox = computeWildfireBbox(lat, lon, radius);
     const url = `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${FIRMS_MAP_KEY}/${WILDFIRE_SOURCE}/${bbox}/${WILDFIRE_DAY_RANGE}`;
     // Fetched together: FIRMS for the fire points themselves, Open-Meteo for
     // a center-point wind reading used as the fallback for any fire whose
@@ -5364,17 +5450,18 @@ async function loadWildfireData(silent) {
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const text = await res.text();
     // The bbox is a rectangle, so its corners reach slightly past
-    // WILDFIRE_RADIUS_KM -- drop those so what's shown really is "fires
-    // within 100km", not "fires within a box that's roughly 100km".
+    // `radius` -- drop those so what's shown really is "fires within
+    // `radius`km", not "fires within a box that's roughly `radius`km".
     const rows = parseFirmsCsv(text).filter(row => {
       const flat = parseFloat(row.latitude), flon = parseFloat(row.longitude);
       return !isNaN(flat) && !isNaN(flon) &&
-        getHaversineDistance(lat, lon, flat, flon) <= WILDFIRE_RADIUS_KM;
+        getHaversineDistance(lat, lon, flat, flon) <= radius;
     });
     const windByCell = await fetchWildfireWindByCell(rows, lat, lon, centerWind);
     renderWildfireMarkers(rows, windByCell);
     wildfireLastFetchedAt = Date.now();
     wildfireLastFetchedAround = { lat, lon };
+    wildfireLastFetchedRadiusKm = radius;
     return true;
   } catch (e) {
     console.warn('[wildfire] failed to load FIRMS data', e);
@@ -5382,6 +5469,31 @@ async function loadWildfireData(silent) {
     return false;
   }
 }
+
+// Re-fetches with a wider radius once the user zooms/pans out far enough
+// that the visible map reaches past what's already loaded -- otherwise
+// zooming out would just reveal a blank ring around the original 500km
+// box instead of more fires. Only fires while the layer is actually
+// toggled on, and only grows the radius (never shrinks it back down on
+// zoom-in, since the already-loaded fires are still valid to show, just
+// not the only ones that could be on screen -- the next timed/moved
+// refresh in toggleWildfireLayer will naturally right-size it again).
+let wildfireRadiusCheckPending = false;
+async function growWildfireRadiusIfNeeded() {
+  if (!wildfireVisible || wildfireRadiusCheckPending) return;
+  const visibleRadius = computeVisibleRadiusKm();
+  // 15% margin so a fetch doesn't get triggered by every last pixel of
+  // panning right up against the current edge.
+  if (visibleRadius <= wildfireLastFetchedRadiusKm * 1.15) return;
+  if (wildfireLastFetchedRadiusKm >= WILDFIRE_MAX_RADIUS_KM) return; // already maxed out
+  wildfireRadiusCheckPending = true;
+  try {
+    await loadWildfireData(true, visibleRadius);
+  } finally {
+    wildfireRadiusCheckPending = false;
+  }
+}
+map.on('zoomend moveend', growWildfireRadiusIfNeeded);
 
 
 async function toggleWildfireLayer() {
@@ -5400,7 +5512,7 @@ async function toggleWildfireLayer() {
     const stale = !wildfireLayer || movedFar || (Date.now() - wildfireLastFetchedAt) > WILDFIRE_REFRESH_MS;
     let ok = true;
     if (stale) {
-      ok = await loadWildfireData();
+      ok = await loadWildfireData(false, computeVisibleRadiusKm());
     } else {
       wildfireLayer.addTo(map);
     }
