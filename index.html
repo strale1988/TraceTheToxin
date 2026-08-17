@@ -401,14 +401,26 @@ button{
    that fire's location -- same "add 180° to the meteorological wind
    direction" convention used by the GPS arrow and wind compass elsewhere.
    That lean, and the size (bigger = higher radiative power = a more
-   serious fire), are both static, set once in makeWildfireIcon() -- no
-   animation at all, unlike the old pulsing-circle version. */
+   serious fire), are both static, set once in makeWildfireIcon(). The
+   pulse below is the only animation -- one property pair on one element,
+   not the old 3-layer animated-circle version. */
+/* One cheap opacity/scale pulse -- reused on both the individual fire icon
+   and the cluster badge below, so a group of fires still visibly "breathes"
+   even once they're merged into a single count badge. Only two GPU-friendly
+   properties (transform, opacity) on one element each, unlike the old
+   3-layer animated-circle version this replaced. */
+@keyframes wildfirePulse {
+  0%, 100% { transform: scale(1);    opacity: 1;    }
+  50%      { transform: scale(1.12); opacity: 0.78; }
+}
 .wildfire-icon .wildfire-flame{
   width:100%; height:100%;
   -webkit-mask-size:contain; mask-size:contain;
   -webkit-mask-repeat:no-repeat; mask-repeat:no-repeat;
   -webkit-mask-position:center; mask-position:center;
   filter:drop-shadow(0 0 1px #fff) drop-shadow(0 0 1px #fff);
+  transform-origin:center;
+  animation:wildfirePulse 1.6s ease-in-out infinite;
 }
 
 /* ═══════════════════════════════════════════════════
@@ -426,6 +438,8 @@ button{
   font-size:13px;
   border:3px solid #fff;
   box-shadow:0 2px 6px rgba(0,0,0,.35);
+  transform-origin:center;
+  animation:wildfirePulse 1.6s ease-in-out infinite;
 }
   
 .generic-modal-overlay{
