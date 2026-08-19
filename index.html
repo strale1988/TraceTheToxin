@@ -2632,7 +2632,44 @@ syncLegendBarHeight();
 /* ═══════════════════════════════════════════════════
    MAP
 ═══════════════════════════════════════════════════ */
-const map = L.map('map').setView([45.25,19.85],11);
+// Remembers the last map position/zoom across visits so the app reopens
+// wherever the user left it, rather than always resetting to one fixed
+// spot. Falls back to a wide Europe overview when there's no saved view
+// yet (first-ever visit) or storage is unavailable -- GPS then zooms in
+// from there once a fix comes in (see startWatching()'s first-fix branch).
+const MAP_VIEW_STORAGE_KEY = 'ttt_last_map_view';
+const EUROPE_DEFAULT_CENTER = [50.5, 15.3];
+const EUROPE_DEFAULT_ZOOM = 4;
+
+function loadSavedMapView() {
+  try {
+    const raw = localStorage.getItem(MAP_VIEW_STORAGE_KEY);
+    if (!raw) return null;
+    const { lat, lon, zoom } = JSON.parse(raw);
+    if ([lat, lon, zoom].some(v => typeof v !== 'number' || isNaN(v))) return null;
+    return { lat, lon, zoom };
+  } catch (e) {
+    return null;
+  }
+}
+
+function saveMapView() {
+  try {
+    const center = map.getCenter();
+    localStorage.setItem(MAP_VIEW_STORAGE_KEY, JSON.stringify({
+      lat: center.lat, lon: center.lng, zoom: map.getZoom()
+    }));
+  } catch (e) {}
+}
+
+const savedMapView = loadSavedMapView();
+const map = savedMapView
+  ? L.map('map').setView([savedMapView.lat, savedMapView.lon], savedMapView.zoom)
+  : L.map('map').setView(EUROPE_DEFAULT_CENTER, EUROPE_DEFAULT_ZOOM);
+// Persist on every pan/zoom (moveend covers both), not just on unload --
+// cheap localStorage write, and survives the tab being killed outright
+// instead of closed cleanly.
+map.on('moveend', saveMapView);
 map.attributionControl.setPosition('bottomleft');
 map.createPane('conePane');
 map.getPane('conePane').style.zIndex = 390; // below splinePane
