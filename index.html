@@ -5455,7 +5455,7 @@ function renderWildfireMarkers(rows, windByCell) {
     const { color } = wildfireConfidenceInfo(row);
     const severity = wildfireSeverity(row);
     const wind = windByCell?.get(wildfireWindGridKey(lat, lon));
-    L.marker([lat, lon], {
+    const marker = L.marker([lat, lon], {
       icon: makeWildfireIcon(color, wind?.wind_direction, wind?.wind_speed, severity),
       // Stashed on the marker (not just baked into its icon) so a parent
       // cluster can read every member's wind reading back out and average
@@ -5465,6 +5465,13 @@ function renderWildfireMarkers(rows, windByCell) {
     })
       .bindPopup(buildWildfirePopupHtml(row), { maxWidth: 460, minWidth: 220 })
       .addTo(wildfireLayer);
+    // The "distance" line is measured from activeWizLocation() (manual pin
+    // if placing a report, else live GPS), which can change after this
+    // marker was created -- rebuild the popup content on every open so it
+    // reflects wherever that location is right now, instead of the value
+    // baked in at layer-load time (same pattern as the report/station
+    // popups' own popupopen handlers).
+    marker.on('popupopen', () => marker.setPopupContent(buildWildfirePopupHtml(row)));
   });
   if (wildfireVisible) wildfireLayer.addTo(map);
 }
