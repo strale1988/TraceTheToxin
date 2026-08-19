@@ -421,20 +421,29 @@ button{
   z-index:0;
 }
 .wildfire-icon-wrap{ position:relative; width:100%; height:100%; }
-.wildfire-icon .wildfire-flame{
+.wildfire-icon-circle{
   position:relative; z-index:1;
   width:100%; height:100%;
+  border-radius:50%;
+  border:2.5px solid #fff;
+  box-shadow:0 2px 6px rgba(0,0,0,.35);
+  display:flex; align-items:center; justify-content:center;
+  overflow:hidden;
+}
+.wildfire-icon .wildfire-flame{
+  width:62%; height:62%;
   -webkit-mask-size:contain; mask-size:contain;
   -webkit-mask-repeat:no-repeat; mask-repeat:no-repeat;
   -webkit-mask-position:center; mask-position:center;
-  filter:drop-shadow(0 0 1px #fff) drop-shadow(0 0 1px #fff);
+  background-color:#fff;
 }
-/* Wind arrow: rendered in its own oversized, absolutely-centered SVG layer
-   so it can extend past the flame's own box without changing the flame's
-   size or position. Rotation is baked into the SVG's <g transform> (see
-   makeWildfireIcon()/makeWildfireClusterGroup()), same "add 180° to the
-   meteorological wind direction" convention used by the GPS arrow and wind
-   compass elsewhere, so it points where the wind is blowing TO. */
+/* Wind arrow: just the triangular head, drawn outside the icon's circle
+   (not overlapping the flame) at a radius of icon-radius + gap, in its own
+   oversized, absolutely-centered SVG layer. Rotation is baked into the
+   SVG's <g transform> (see makeWildfireIcon()/makeWildfireClusterGroup()),
+   same "add 180° to the meteorological wind direction" convention used by
+   the GPS arrow and wind compass elsewhere, so it points where the wind is
+   blowing TO. */
 .wildfire-wind-arrow{
   position:absolute; left:50%; top:50%;
   transform:translate(-50%,-50%);
@@ -5301,24 +5310,27 @@ function wildfireSeverity(row) {
   return tier === 'high' ? 0.85 : tier === 'low' ? 0.15 : 0.5;
 }
 
-// Builds the little "wind vane" arrow (line + triangle head) used both on
-// individual fire icons and on cluster badges: an oversized SVG layer,
-// absolutely centered over the icon so the arrow can extend past the
-// icon's own box, with the rotation baked into an inner <g transform> --
-// same "add 180° to the meteorological wind direction" convention as
-// makeUserLocationIcon(), so it points where the wind is blowing TO.
+// Builds the wind-direction indicator used both on individual fire icons
+// and on cluster badges: just the triangular arrowhead (no shaft), sized a
+// bit larger than before and drawn outside the icon's circle -- base at
+// icon-radius + a small gap, apex further out -- so it never overlaps the
+// flame/badge itself. Rendered in its own oversized, absolutely-centered
+// SVG layer; rotation is baked into an inner <g transform>, same "add 180°
+// to the meteorological wind direction" convention as makeUserLocationIcon(),
+// so it points where the wind is blowing TO.
 function wildfireWindArrowSvg(iconSize, arrowDeg) {
-  const arrowBox = Math.round(iconSize * 1.8);
+  const radius = iconSize / 2;
+  const gap = 3;
+  const triHeight = Math.round(iconSize * 0.42);
+  const triWidth = Math.round(iconSize * 0.36);
+  const arrowBox = Math.round((radius + gap + triHeight) * 2 + 6);
   const c = arrowBox / 2;
-  const tailY = c + iconSize * 0.42;
-  const shaftTopY = c - iconSize * 0.05;
-  const tipY = c - iconSize * 0.42;
-  const headY = c - iconSize * 0.14;
+  const baseY = c - (radius + gap);
+  const apexY = baseY - triHeight;
   return `
     <svg class="wildfire-wind-arrow" xmlns="http://www.w3.org/2000/svg" width="${arrowBox}" height="${arrowBox}" viewBox="0 0 ${arrowBox} ${arrowBox}">
       <g transform="rotate(${arrowDeg} ${c} ${c})">
-        <line x1="${c}" y1="${tailY}" x2="${c}" y2="${shaftTopY}" stroke="#ffca28" stroke-width="2.5" stroke-linecap="round"/>
-        <polygon points="${c},${tipY} ${c - 5},${headY} ${c + 5},${headY}" fill="#ffca28" stroke="#7a1f00" stroke-width="0.75"/>
+        <polygon points="${c},${apexY} ${c - triWidth / 2},${baseY} ${c + triWidth / 2},${baseY}" fill="#ffca28" stroke="#7a1f00" stroke-width="0.75" stroke-linejoin="round"/>
       </g>
     </svg>`;
 }
@@ -5341,12 +5353,15 @@ function circularMeanDeg(degrees) {
 }
 
 // windDeg/windSpeed are the wind reading for THIS fire's own grid cell (see
-// fetchWildfireWindByCell). The flame is always drawn straight/upright --
-// direction is shown by a separate wind arrow, not by tilting the flame
-// (see wildfireWindArrowSvg()). `severity` (0..1, see wildfireSeverity())
-// scales the icon size and darkens its tint so the most intense fires
-// stand out at a glance without needing their popup open. The expanding
-// red pulse ring behind the flame is pure CSS (see .wildfire-pulse-ring).
+// fetchWildfireWindByCell). The icon is a circle (white border, like the
+// cluster badge) filled with the confidence/severity color, with a plain
+// white flame silhouette on top -- direction is shown by the separate
+// wind-arrow triangle outside the circle, not by tilting anything inside
+// it (see wildfireWindArrowSvg()). `severity` (0..1, see wildfireSeverity())
+// scales the icon size and darkens the circle's fill so the most intense
+// fires stand out at a glance without needing their popup open. The
+// expanding red pulse ring behind the circle is pure CSS (see
+// .wildfire-pulse-ring).
 function makeWildfireIcon(color, windDeg, windSpeed, severity) {
   const size = Math.round(22 + severity * 20); // 22px (mild) .. 42px (severe)
   const cx = size / 2, cy = size / 2;
@@ -5362,7 +5377,9 @@ function makeWildfireIcon(color, windDeg, windSpeed, severity) {
   const svg = `
     <div class="wildfire-icon-wrap" style="width:${size}px;height:${size}px;">
       <div class="wildfire-pulse-ring"></div>
-      <div class="wildfire-flame" style="background-color:${tint};-webkit-mask-image:url('icons/fire.png');mask-image:url('icons/fire.png');"></div>
+      <div class="wildfire-icon-circle" style="background-color:${tint};">
+        <div class="wildfire-flame" style="-webkit-mask-image:url('icons/fire.png');mask-image:url('icons/fire.png');"></div>
+      </div>
       ${hasDirection ? wildfireWindArrowSvg(size, arrowDeg) : ''}
     </div>`;
 
