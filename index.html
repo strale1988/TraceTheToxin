@@ -5057,18 +5057,15 @@ function clearMarkers(){
   markerByReportId = {};
 }
 
-// Cones now always render, even when a report's pin has collapsed into a
-// cluster badge or shrunk to a small dot while zoomed out (previously this
-// hid a clustered report's cone entirely; now the dot-icon zoom behavior
-// in updateMarkerIconsForZoom() keeps the map from getting cluttered with
-// full-size pins instead, so the cones can stay visible). Kept as a no-op
-// pass-through (rather than deleting every call site) in case anything
-// still wants a single hook to re-assert cone visibility.
+// Cones hide entirely once zoomed out past REPORT_DOT_ZOOM_THRESHOLD -- the
+// same level where report pins themselves collapse to small dots (see
+// pickReportIcon()). At that scale a 1.5km dispersion cone is a few
+// illegible pixels per report and, with many reports on screen, the cone
+// pane turns into visual noise; zooming back in brings them straight back.
 function updateConeVisibilityForClustering() {
-  Object.keys(markerByReportId).forEach(id => {
-    document.querySelectorAll(`.cone-report-${id}`).forEach(el => {
-      el.style.display = '';
-    });
+  const hideCones = map.getZoom() < REPORT_DOT_ZOOM_THRESHOLD;
+  document.querySelectorAll('[class*="cone-report-"]').forEach(el => {
+    el.style.display = hideCones ? 'none' : '';
   });
 }
 /* ═══════════════════════════════════════════════════
@@ -5318,6 +5315,19 @@ function wildfireSeverity(row) {
 // SVG layer; rotation is baked into an inner <g transform>, same "add 180°
 // to the meteorological wind direction" convention as makeUserLocationIcon(),
 // so it points where the wind is blowing TO.
+// Duration of the pulse-ring CSS animation (@keyframes wildfirePulseRing) --
+// kept as a JS constant too so wildfirePulseRingHtml() can pick a random
+// negative animation-delay within exactly one cycle.
+const WILDFIRE_PULSE_DURATION_S = 1.8;
+
+// Random negative animation-delay puts each ring at a different point in
+// its cycle from the moment it's created, so a screen full of fires pulses
+// as a staggered shimmer instead of every ring visibly beating in unison.
+function wildfirePulseRingHtml() {
+  const delay = (-Math.random() * WILDFIRE_PULSE_DURATION_S).toFixed(2);
+  return `<div class="wildfire-pulse-ring" style="animation-delay:${delay}s;"></div>`;
+}
+
 function wildfireWindArrowSvg(iconSize, arrowDeg) {
   const radius = iconSize / 2;
   const gap = 3;
@@ -5376,7 +5386,7 @@ function makeWildfireIcon(color, windDeg, windSpeed, severity) {
 
   const svg = `
     <div class="wildfire-icon-wrap" style="width:${size}px;height:${size}px;">
-      <div class="wildfire-pulse-ring"></div>
+      ${wildfirePulseRingHtml()}
       <div class="wildfire-icon-circle" style="background-color:${tint};">
         <div class="wildfire-flame" style="-webkit-mask-image:url('icons/fire.png');mask-image:url('icons/fire.png');"></div>
       </div>
@@ -5435,7 +5445,7 @@ function makeWildfireClusterGroup() {
       const arrowDeg = hasDirection ? (avgDeg + 180) % 360 : 0;
       return L.divIcon({
         html: `<div class="wildfire-cluster-icon-wrap" style="width:${size}px;height:${size}px;">
-          <div class="wildfire-pulse-ring"></div>
+          ${wildfirePulseRingHtml()}
           <div class="wildfire-cluster-badge">${count}</div>
           ${hasDirection ? wildfireWindArrowSvg(size, arrowDeg) : ''}
         </div>`,
