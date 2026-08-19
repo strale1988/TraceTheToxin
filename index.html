@@ -397,30 +397,50 @@ button{
 
 /* Wildfire markers: icons/fire.png tinted per-fire via a CSS mask (same
    background-color + mask-image technique used for the category wizard
-   tiles), leaning toward wherever the wind is currently blowing TO at
-   that fire's location -- same "add 180° to the meteorological wind
-   direction" convention used by the GPS arrow and wind compass elsewhere.
-   That lean, and the size (bigger = higher radiative power = a more
-   serious fire), are both static, set once in makeWildfireIcon(). The
-   pulse below is the only animation -- one property pair on one element,
-   not the old 3-layer animated-circle version. */
-/* One cheap opacity/scale pulse -- reused on both the individual fire icon
-   and the cluster badge below, so a group of fires still visibly "breathes"
-   even once they're merged into a single count badge. Only two GPU-friendly
-   properties (transform, opacity) on one element each, unlike the old
-   3-layer animated-circle version this replaced. */
-@keyframes wildfirePulse {
-  0%, 100% { transform: scale(1);    opacity: 1;    }
-  50%      { transform: scale(1.12); opacity: 0.78; }
+   tiles). The flame itself is always drawn upright/straight -- direction
+   is communicated separately by the wind arrow below it, not by tilting
+   the flame. Icon size (bigger = higher radiative power = a more serious
+   fire) is static, set once in makeWildfireIcon(). */
+/* Expanding "radar ping" pulse: a red ring that grows outward from behind
+   the icon and fades out as it grows, then repeats -- rather than the
+   marker itself scaling in place. Reused (at different sizes) behind both
+   the individual fire icon and the cluster badge, so a group of fires
+   still visibly "pulses" even once merged into a single count badge. */
+@keyframes wildfirePulseRing {
+  0%   { transform:translate(-50%,-50%) scale(0.55); opacity:0.65; }
+  100% { transform:translate(-50%,-50%) scale(2.4);  opacity:0;    }
 }
+.wildfire-pulse-ring{
+  position:absolute; left:50%; top:50%;
+  width:100%; height:100%;
+  border-radius:50%;
+  background:#ff3b30;
+  transform:translate(-50%,-50%) scale(0.55);
+  animation:wildfirePulseRing 1.8s ease-out infinite;
+  pointer-events:none;
+  z-index:0;
+}
+.wildfire-icon-wrap{ position:relative; width:100%; height:100%; }
 .wildfire-icon .wildfire-flame{
+  position:relative; z-index:1;
   width:100%; height:100%;
   -webkit-mask-size:contain; mask-size:contain;
   -webkit-mask-repeat:no-repeat; mask-repeat:no-repeat;
   -webkit-mask-position:center; mask-position:center;
   filter:drop-shadow(0 0 1px #fff) drop-shadow(0 0 1px #fff);
-  transform-origin:center;
-  animation:wildfirePulse 1.6s ease-in-out infinite;
+}
+/* Wind arrow: rendered in its own oversized, absolutely-centered SVG layer
+   so it can extend past the flame's own box without changing the flame's
+   size or position. Rotation is baked into the SVG's <g transform> (see
+   makeWildfireIcon()/makeWildfireClusterGroup()), same "add 180° to the
+   meteorological wind direction" convention used by the GPS arrow and wind
+   compass elsewhere, so it points where the wind is blowing TO. */
+.wildfire-wind-arrow{
+  position:absolute; left:50%; top:50%;
+  transform:translate(-50%,-50%);
+  overflow:visible;
+  pointer-events:none;
+  z-index:2;
 }
 
 /* ═══════════════════════════════════════════════════
@@ -429,17 +449,17 @@ button{
    the two cluster types stay visually distinct too.
 ═══════════════════════════════════════════════════ */
 .wildfire-cluster-icon{ background:transparent; border:none; }
+.wildfire-cluster-icon-wrap{ position:relative; width:100%; height:100%; }
 .wildfire-cluster-badge{
+  position:relative; z-index:1;
   width:100%; height:100%; border-radius:50%;
   background:#e8531e;
   color:#fff;
-  text-align:center;
+  display:flex; align-items:center; justify-content:center;
   font-weight:var(--fw-bold);
   font-size:13px;
   border:3px solid #fff;
   box-shadow:0 2px 6px rgba(0,0,0,.35);
-  transform-origin:center;
-  animation:wildfirePulse 1.6s ease-in-out infinite;
 }
   
 .generic-modal-overlay{
@@ -5281,22 +5301,58 @@ function wildfireSeverity(row) {
   return tier === 'high' ? 0.85 : tier === 'low' ? 0.15 : 0.5;
 }
 
+// Builds the little "wind vane" arrow (line + triangle head) used both on
+// individual fire icons and on cluster badges: an oversized SVG layer,
+// absolutely centered over the icon so the arrow can extend past the
+// icon's own box, with the rotation baked into an inner <g transform> --
+// same "add 180° to the meteorological wind direction" convention as
+// makeUserLocationIcon(), so it points where the wind is blowing TO.
+function wildfireWindArrowSvg(iconSize, arrowDeg) {
+  const arrowBox = Math.round(iconSize * 1.8);
+  const c = arrowBox / 2;
+  const tailY = c + iconSize * 0.42;
+  const shaftTopY = c - iconSize * 0.05;
+  const tipY = c - iconSize * 0.42;
+  const headY = c - iconSize * 0.14;
+  return `
+    <svg class="wildfire-wind-arrow" xmlns="http://www.w3.org/2000/svg" width="${arrowBox}" height="${arrowBox}" viewBox="0 0 ${arrowBox} ${arrowBox}">
+      <g transform="rotate(${arrowDeg} ${c} ${c})">
+        <line x1="${c}" y1="${tailY}" x2="${c}" y2="${shaftTopY}" stroke="#ffca28" stroke-width="2.5" stroke-linecap="round"/>
+        <polygon points="${c},${tipY} ${c - 5},${headY} ${c + 5},${headY}" fill="#ffca28" stroke="#7a1f00" stroke-width="0.75"/>
+      </g>
+    </svg>`;
+}
+
+// Circular mean of a list of compass-degree readings (0-360, wrapping) --
+// a plain arithmetic average is wrong for angles (e.g. 350° and 10° should
+// average to 0°, not 180°). Used to collapse a cluster's individual fire
+// wind directions into a single representative arrow. Returns null if
+// given no readings.
+function circularMeanDeg(degrees) {
+  if (!degrees.length) return null;
+  let sumSin = 0, sumCos = 0;
+  degrees.forEach(d => {
+    const rad = d * Math.PI / 180;
+    sumSin += Math.sin(rad);
+    sumCos += Math.cos(rad);
+  });
+  if (sumSin === 0 && sumCos === 0) return null;
+  return (Math.atan2(sumSin, sumCos) * 180 / Math.PI + 360) % 360;
+}
+
 // windDeg/windSpeed are the wind reading for THIS fire's own grid cell (see
-// fetchWildfireWindByCell). Same rotation convention as
-// makeUserLocationIcon(): a shape that defaults to pointing "up" gets
-// rotated by (windDeg + 180) so it visually points where the wind is
-// blowing TO. `severity` (0..1, see wildfireSeverity()) scales the icon
-// size and darkens its tint so the most intense fires stand out at a
-// glance without needing their popup open.
+// fetchWildfireWindByCell). The flame is always drawn straight/upright --
+// direction is shown by a separate wind arrow, not by tilting the flame
+// (see wildfireWindArrowSvg()). `severity` (0..1, see wildfireSeverity())
+// scales the icon size and darkens its tint so the most intense fires
+// stand out at a glance without needing their popup open. The expanding
+// red pulse ring behind the flame is pure CSS (see .wildfire-pulse-ring).
 function makeWildfireIcon(color, windDeg, windSpeed, severity) {
   const size = Math.round(22 + severity * 20); // 22px (mild) .. 42px (severe)
   const cx = size / 2, cy = size / 2;
   const hasDirection = windDeg != null && !isNaN(windDeg) &&
     windSpeed != null && !isNaN(windSpeed) && windSpeed >= WILDFIRE_CALM_THRESHOLD_KMH;
-  // Static lean toward where the wind is blowing TO -- no animation, just
-  // a fixed rotation set once when the icon is built.
-  const leanDeg = hasDirection ? (parseFloat(windDeg) + 180) % 360 : 0;
-  const lean = Math.max(-22, Math.min(22, (((leanDeg + 180) % 360) - 180) * 0.12));
+  const arrowDeg = hasDirection ? (parseFloat(windDeg) + 180) % 360 : 0;
   // More severe fires read as a darker/deeper shade of their confidence
   // color rather than a flat tint, so two "high confidence" fires of very
   // different intensity still look distinguishable next to each other.
@@ -5304,8 +5360,10 @@ function makeWildfireIcon(color, windDeg, windSpeed, severity) {
   const tint = shadeHexColor(color, -shade);
 
   const svg = `
-    <div class="wildfire-icon-wrap" style="width:${size}px;height:${size}px;transform:rotate(${lean}deg);">
+    <div class="wildfire-icon-wrap" style="width:${size}px;height:${size}px;">
+      <div class="wildfire-pulse-ring"></div>
       <div class="wildfire-flame" style="background-color:${tint};-webkit-mask-image:url('icons/fire.png');mask-image:url('icons/fire.png');"></div>
+      ${hasDirection ? wildfireWindArrowSvg(size, arrowDeg) : ''}
     </div>`;
 
   return L.divIcon({ className: 'wildfire-icon', html: svg, iconSize: [size, size], iconAnchor: [cx, cy] });
@@ -5343,8 +5401,27 @@ function makeWildfireClusterGroup() {
     iconCreateFunction: function (cluster) {
       const count = cluster.getChildCount();
       const size = count < 10 ? 34 : count < 50 ? 42 : 50;
+      // Average the wind direction across every fire in the group (circular
+      // mean, since compass degrees wrap) so the cluster badge shows one
+      // representative arrow instead of picking a single member's reading.
+      // Calm/missing readings are excluded the same way a single icon would
+      // fall back to no arrow at all.
+      const dirs = [];
+      cluster.getAllChildMarkers().forEach(m => {
+        const d = m.options.fireWindDeg, s = m.options.fireWindSpeed;
+        if (d != null && !isNaN(d) && s != null && !isNaN(s) && s >= WILDFIRE_CALM_THRESHOLD_KMH) {
+          dirs.push(parseFloat(d));
+        }
+      });
+      const avgDeg = circularMeanDeg(dirs);
+      const hasDirection = avgDeg != null;
+      const arrowDeg = hasDirection ? (avgDeg + 180) % 360 : 0;
       return L.divIcon({
-        html: `<div class="wildfire-cluster-badge" style="width:${size}px;height:${size}px;line-height:${size}px;">${count}</div>`,
+        html: `<div class="wildfire-cluster-icon-wrap" style="width:${size}px;height:${size}px;">
+          <div class="wildfire-pulse-ring"></div>
+          <div class="wildfire-cluster-badge">${count}</div>
+          ${hasDirection ? wildfireWindArrowSvg(size, arrowDeg) : ''}
+        </div>`,
         className: 'wildfire-cluster-icon',
         iconSize: [size, size]
       });
@@ -5361,7 +5438,14 @@ function renderWildfireMarkers(rows, windByCell) {
     const { color } = wildfireConfidenceInfo(row);
     const severity = wildfireSeverity(row);
     const wind = windByCell?.get(wildfireWindGridKey(lat, lon));
-    L.marker([lat, lon], { icon: makeWildfireIcon(color, wind?.wind_direction, wind?.wind_speed, severity) })
+    L.marker([lat, lon], {
+      icon: makeWildfireIcon(color, wind?.wind_direction, wind?.wind_speed, severity),
+      // Stashed on the marker (not just baked into its icon) so a parent
+      // cluster can read every member's wind reading back out and average
+      // them -- see makeWildfireClusterGroup().
+      fireWindDeg: wind?.wind_direction,
+      fireWindSpeed: wind?.wind_speed
+    })
       .bindPopup(buildWildfirePopupHtml(row), { maxWidth: 460, minWidth: 220 })
       .addTo(wildfireLayer);
   });
