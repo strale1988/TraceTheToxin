@@ -2147,9 +2147,14 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
    will show a message instead of data when tapped.
 ═══════════════════════════════════════════════════ */
 const FIRMS_MAP_KEY = 'dbd760ed261d410dc37484ddf2bede12';
-// VIIRS_SNPP_NRT = 375m resolution, ~3hr latency, good default. Other valid
-// values: VIIRS_NOAA20_NRT, VIIRS_NOAA21_NRT, MODIS_NRT (1km, older sensor).
-const WILDFIRE_SOURCE = 'VIIRS_SNPP_NRT';
+// Query every satellite/sensor FIRMS offers near-real-time data for, not
+// just one -- a fire can be picked up by one pass and missed by another
+// (different satellites cross the same spot at different times), so
+// relying on a single source silently drops real detections. VIIRS_SNPP,
+// NOAA-20 and NOAA-21 are all 375m; MODIS (Aqua & Terra) is coarser (1km)
+// but catches some things the VIIRS birds miss. Results from all of these
+// are merged and de-duplicated in loadWildfireData()/dedupeWildfireRows().
+const WILDFIRE_SOURCES = ['VIIRS_SNPP_NRT', 'VIIRS_NOAA20_NRT', 'VIIRS_NOAA21_NRT', 'MODIS_NRT'];
 // Fires are fetched in a box around the user's current position (GPS if
 // available, else the manual pin, else the fixed fallback -- same
 // precedence as activeWizLocation()), not a fixed region or the whole
@@ -5252,6 +5257,41 @@ function parseFirmsCsv(text) {
   });
 }
 
+// The same real-world hotspot is often caught by more than one satellite
+// pass a few minutes apart (e.g. NOAA-20 and NOAA-21 cross close together),
+// each reported at slightly different coordinates/timestamps -- without
+// this, merging multiple FIRMS sources would show duplicate dots for one
+// fire. Two detections are treated as the same fire if they're within
+// ~375m (VIIRS pixel size) of each other and on the same UTC date+hour;
+// when that happens we keep the one with higher confidence/brightness.
+function dedupeWildfireRows(rows) {
+  const kept = [];
+  const rowScore = (row) => {
+    const { tier } = wildfireConfidenceInfo(row);
+    const tierScore = tier === 'high' ? 2 : tier === 'nominal' ? 1 : 0;
+    const brightness = parseFloat(row.bright_ti4 ?? row.brightness) || 0;
+    return tierScore * 1000 + brightness;
+  };
+  for (const row of rows) {
+    const flat = parseFloat(row.latitude), flon = parseFloat(row.longitude);
+    const hour = String(row.acq_time || '').padStart(4, '0').slice(0, 2);
+    if (isNaN(flat) || isNaN(flon)) continue;
+    const dupIdx = kept.findIndex(k =>
+      k.acq_date === row.acq_date &&
+      k._hour === hour &&
+      getHaversineDistance(k._lat, k._lon, flat, flon) <= 0.4 // km
+    );
+    if (dupIdx === -1) {
+      kept.push({ ...row, _lat: flat, _lon: flon, _hour: hour });
+    } else if (rowScore(row) > rowScore(kept[dupIdx])) {
+      kept[dupIdx] = { ...row, _lat: flat, _lon: flon, _hour: hour };
+    }
+  }
+  // Strip the internal-only helper fields before handing rows back to
+  // callers that don't expect them.
+  return kept.map(({ _lat, _lon, _hour, ...row }) => row);
+}
+
 // VIIRS reports confidence as a letter (l/n/h); MODIS reports it as 0-100.
 // Normalize either into the same 3-tier color scale.
 function wildfireConfidenceInfo(row) {
@@ -5608,24 +5648,44 @@ async function loadWildfireData(silent, radiusKm) {
   try {
     const { lat, lon } = activeWizLocation();
     const bbox = computeWildfireBbox(lat, lon, radius);
-    const url = `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${FIRMS_MAP_KEY}/${WILDFIRE_SOURCE}/${bbox}/${WILDFIRE_DAY_RANGE}`;
-    // Fetched together: FIRMS for the fire points themselves, Open-Meteo for
-    // a center-point wind reading used as the fallback for any fire whose
-    // own grid cell doesn't get its own lookup (see fetchWildfireWindByCell).
-    const [res, centerWind] = await Promise.all([
-      fetch(url),
+    const urls = WILDFIRE_SOURCES.map(src =>
+      `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${FIRMS_MAP_KEY}/${src}/${bbox}/${WILDFIRE_DAY_RANGE}`
+    );
+    // Fetched together: FIRMS for the fire points themselves (one request
+    // per satellite source, merged below), Open-Meteo for a center-point
+    // wind reading used as the fallback for any fire whose own grid cell
+    // doesn't get its own lookup (see fetchWildfireWindByCell).
+    const [sourceResults, centerWind] = await Promise.all([
+      Promise.allSettled(urls.map(u => fetch(u).then(async res => {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.text();
+      }))),
       getWeatherData(lat, lon).catch(() => null)
     ]);
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const text = await res.text();
+    // One bad/rate-limited source shouldn't blank out the others -- log it
+    // and keep going with whatever did come back. Only fail outright if
+    // every single source failed.
+    const texts = [];
+    sourceResults.forEach((result, i) => {
+      if (result.status === 'fulfilled') {
+        texts.push(result.value);
+      } else {
+        console.warn('[wildfire] source failed:', WILDFIRE_SOURCES[i], result.reason);
+      }
+    });
+    if (texts.length === 0) throw new Error('all wildfire sources failed');
+    const allRows = texts.flatMap(text => parseFirmsCsv(text));
     // The bbox is a rectangle, so its corners reach slightly past
     // `radius` -- drop those so what's shown really is "fires within
     // `radius`km", not "fires within a box that's roughly `radius`km".
-    const rows = parseFirmsCsv(text).filter(row => {
+    const inRadius = allRows.filter(row => {
       const flat = parseFloat(row.latitude), flon = parseFloat(row.longitude);
       return !isNaN(flat) && !isNaN(flon) &&
         getHaversineDistance(lat, lon, flat, flon) <= radius;
     });
+    // Multiple sources can report the same real-world fire -- collapse
+    // those down to one dot each before rendering.
+    const rows = dedupeWildfireRows(inRadius);
     const windByCell = await fetchWildfireWindByCell(rows, lat, lon, centerWind);
     renderWildfireMarkers(rows, windByCell);
     wildfireLastFetchedAt = Date.now();
