@@ -2488,6 +2488,7 @@ function applyLang(){
   if (el('sourceHeatMethBtn'))      el('sourceHeatMethBtn').textContent = t('heatMethTitle');
   if (el('pullRefreshLabel'))      el('pullRefreshLabel').textContent = t('pullToRefresh');
   if (lastKnownReportCount !== null) updateReportCountUI(lastKnownReportCount, lastKnownReportTotal);
+  if (lastKnownExportCount !== null) updateExportCountUI();
 
   // Only re-render the active wizard step if the wizard is currently open,
   // since its inputs (category tiles, comment field, etc.) are rebuilt
@@ -2563,8 +2564,10 @@ function initCalendarFilter(optionalDefaultDates) {
     defaultDate: initialDates,
     onClose: function(selectedDates) {
       saveDateRange('ttt_csv_filter_dates', selectedDates);
+      updateExportCountUI();
     }
   });
+  updateExportCountUI();
 }
 
 // On-map filter, opened via the round filter button (category-filter.png
@@ -2675,6 +2678,7 @@ const map = savedMapView
 // cheap localStorage write, and survives the tab being killed outright
 // instead of closed cleanly.
 map.on('moveend', saveMapView);
+map.on('moveend', updateExportCountUI);
 map.attributionControl.setPosition('bottomleft');
 map.createPane('conePane');
 map.getPane('conePane').style.zIndex = 390; // below splinePane
@@ -3458,11 +3462,11 @@ function degToCardinal(deg){
   return ['N','NE','E','SE','S','SW','W','NW'][Math.round(deg/45)%8];
 }
 
-// Updates every place that shows "how many reports are currently visible":
-// the settings modal's filter section and the header badge. Both track the
-// same number (whatever loadPinsByWindow()/filterPinsBySourceTrajectory()
-// actually rendered after applying the map bounds + date filter), so this
-// keeps them from drifting out of sync with each other.
+// Updates the header badge: how many reports the ON-MAP filter (mapFp) is
+// currently rendering. This is intentionally separate from the Settings
+// export count below -- they're two different filters and used to get
+// conflated into the same number, which was misleading (see
+// updateExportCountUI).
 // `total`, when given and different from `n`, switches the text to
 // "N of TOTAL Reports" — used by Trace Possible Source to show how many of
 // the currently-filtered reports were matched to the traced source.
@@ -3475,10 +3479,37 @@ function updateReportCountUI(n, total = null) {
   const text = lastKnownReportTotal != null
     ? `${n} ${t('ofCount')} ${lastKnownReportTotal} ${noun}`
     : `${n} ${noun}`;
-  const rcEl = document.getElementById('reportCount');
-  if (rcEl) rcEl.textContent = text;
   const headerEl = document.getElementById('headerReportCount');
   if (headerEl) headerEl.textContent = text;
+}
+
+// Updates the Settings modal's badge (next to "Filter vremenskog prozora")
+// to reflect exactly what downloadCSV() would export right now: the
+// Settings date filter (fp) applied to whatever's within the CURRENT map
+// viewport. Previously this badge showed the on-map filter's (mapFp) count
+// instead, with no bounds check at all -- so it could say "83 Reports" while
+// the actual CSV export, scoped to fp + bounds, produced only 1 row.
+// Recomputed whenever any of its inputs change: the Settings date filter
+// closes, the map is panned/zoomed, or globalActiveData is refreshed.
+let lastKnownExportCount = null;
+function updateExportCountUI() {
+  if (!fp || !fp.selectedDates || fp.selectedDates.length < 2 || !map) return;
+  const bounds = map.getBounds();
+  const filterStart = fp.selectedDates[0].getTime();
+  const filterEndDate = new Date(fp.selectedDates[1]);
+  filterEndDate.setHours(23, 59, 59, 999);
+  const filterEnd = filterEndDate.getTime();
+
+  const n = globalActiveData.filter(r => {
+    if (!bounds.contains(L.latLng(r.latitude, r.longitude))) return false;
+    const ts = new Date(r.created_at).getTime();
+    return ts >= filterStart && ts <= filterEnd;
+  }).length;
+
+  lastKnownExportCount = n;
+  const noun = n === 1 ? t('reportCount1') : t('reportCount');
+  const rcEl = document.getElementById('reportCount');
+  if (rcEl) rcEl.textContent = `${n} ${noun}`;
 }
 
 /* ═══════════════════════════════════════════════════
@@ -6053,6 +6084,8 @@ async function loadPinsByWindow() {
       lastSyncTimestamp = data[0].created_at;
   }
 
+  updateExportCountUI();
+
   if (!mapFp || !mapFp.selectedDates || mapFp.selectedDates.length < 2) return;
 
   const filterStart = new Date(mapFp.selectedDates[0]);
@@ -6527,7 +6560,12 @@ async function downloadCSV() {
 async function downloadCSVInner() {
   const bounds = map.getBounds();
   const filterStart = fp.selectedDates[0] ? fp.selectedDates[0].getTime() : 0;
-  const filterEnd = fp.selectedDates[1] ? fp.selectedDates[1].getTime() : Infinity;
+  let filterEnd = Infinity;
+  if (fp.selectedDates[1]) {
+    const filterEndDate = new Date(fp.selectedDates[1]);
+    filterEndDate.setHours(23, 59, 59, 999);
+    filterEnd = filterEndDate.getTime();
+  }
 
   const visible = globalActiveData.filter(r => {
     if(!bounds.contains(L.latLng(r.latitude, r.longitude))) return false;
@@ -6580,44 +6618,36 @@ async function downloadCSVInner() {
     }
   }
 
-  // For each report, find the station its actual wind (upwind or downwind,
-  // extending the backward search further if needed) passed closest to in
-  // time, and the real hour that happened — same matching logic as the
-  // report popup (findStationMatchesForReport), so the CSV and the UI never
-  // disagree. Falls back to plain nearest-station-at-report-time only when
-  // nothing matched at all.
+  // For each report, find every station its actual wind (upwind and
+  // downwind, extending the backward search further if needed) passed near
+  // — same matching logic as the report popup (findStationMatchesForReport)
+  // — then average their readings the same way the popup's "Average at time
+  // & place reported" row does (buildReportStationSectionHtml /
+  // averagePollutantReadings), weighted so a station the wind passed very
+  // close to counts for more than one only barely inside the match radius.
+  // Falls back to plain nearest-station-at-report-time (an "average" of
+  // just that one station) only when nothing matched via the wind trail.
   const perReport = await Promise.all(visible.map(async (r) => {
-    const matches = await findStationMatchesForReport(r, stationsForExport);
-    // One row per report in a CSV, so pick the single match closest in time
-    // to the report itself as "the" representative station for this row.
-    let match = matches.length
-      ? matches.reduce((best, m) =>
-          Math.abs(new Date(m.atTime) - new Date(r.created_at)) < Math.abs(new Date(best.atTime) - new Date(r.created_at)) ? m : best)
-      : null;
+    let matches = await findStationMatchesForReport(r, stationsForExport);
 
-    if (!match) {
+    if (!matches.length) {
       let nearest = null, minDist = Infinity;
       for (const s of stationsForExport) {
         const d = getHaversineDistance(r.latitude, r.longitude, s.lat, s.lon);
         if (d < minDist) { minDist = d; nearest = s; }
       }
-      match = nearest ? { station: nearest, distanceKm: minDist, atTime: r.created_at } : null;
+      matches = nearest ? [{ station: nearest, distanceKm: minDist, atTime: r.created_at }] : [];
     }
 
-    return {
-      report: r,
-      station: match?.station ?? null,
-      distanceKm: match?.distanceKm ?? null,
-      targetTime: match ? new Date(match.atTime) : new Date(r.created_at)
-    };
+    return { report: r, matches };
   }));
 
   // Batch-fetch every referenced station's readings across the full span of
-  // target times in one query, rather than one round trip per report.
-  const stationIds = [...new Set(perReport.filter(p => p.station).map(p => p.station.id))];
+  // target times in one query, rather than one round trip per match.
+  const stationIds = [...new Set(perReport.flatMap(p => p.matches.map(m => m.station.id)))];
   const readingsByStation = {};
   if (stationIds.length) {
-    const targetMs = perReport.map(p => p.targetTime.getTime());
+    const targetMs = perReport.flatMap(p => p.matches.map(m => new Date(m.atTime).getTime()));
     const rangeStart = new Date(Math.min(...targetMs) - 3600000).toISOString();
     const rangeEnd = new Date(Math.max(...targetMs) + 3600000).toISOString();
     try {
@@ -6655,11 +6685,17 @@ async function downloadCSVInner() {
 
   let csv = `Report Generated/Downloaded On: ${new Date().toLocaleString()}\n\n`;
   csv += 'ID,Date,Location,Latitude,Longitude,Category,Intensity,WindSpeed,WindDirection,HistoryWindDirection,SeaLevelPressure,Comment,' +
-         'NearestStation,StationDistanceKm,StationDataTime,HoursBeforeReport,StationPM10,StationPM2.5,StationSO2,StationNO2,StationO3\n';
+         'StationsAveraged,StationNames,AvgPM10,AvgPM2.5,AvgSO2,AvgNO2,AvgO3\n';
 
-  perReport.forEach(({ report: r, station, distanceKm, targetTime }, i) => {
-    const reading = station ? pickReadingAtOrBefore(readingsByStation[station.id], targetTime) : null;
-    const hoursBefore = station ? (new Date(r.created_at).getTime() - targetTime.getTime()) / 3600000 : null;
+  perReport.forEach(({ report: r, matches }, i) => {
+    const withReadings = matches
+      .map(m => ({ ...m, reading: pickReadingAtOrBefore(readingsByStation[m.station.id], new Date(m.atTime)) }))
+      .filter(m => m.reading);
+
+    const weights = withReadings.map(m => 1 / (1 + (m.distanceKm ?? 0)));
+    const avg = withReadings.length ? averagePollutantReadings(withReadings.map(m => m.reading), weights) : null;
+    const stationNames = withReadings.map(m => m.station.name).join('; ');
+
     csv += [
       csvField(r.id),
       csvField(formatLocalDateTimeForCsv(r.created_at)),
@@ -6676,15 +6712,13 @@ async function downloadCSVInner() {
       csvField(r.wind_direction != null ? r.wind_direction : ''),
       csvField(r.sea_level_pressure != null ? Number(r.sea_level_pressure).toFixed(1) : ''),
       csvField(r.comment || ''),
-      csvField(station ? station.name : ''),
-      csvField(distanceKm != null ? distanceKm.toFixed(2) : ''),
-      csvField(targetTime ? formatLocalDateTimeForCsv(targetTime) : ''),
-      csvField(hoursBefore != null ? hoursBefore.toFixed(2) : ''),
-      csvField(reading ? reading.pm10 : ''),
-      csvField(reading ? reading.pm25 : ''),
-      csvField(reading ? reading.so2 : ''),
-      csvField(reading ? reading.no2 : ''),
-      csvField(reading ? reading.o3 : '')
+      csvField(withReadings.length),
+      csvField(stationNames),
+      csvField(avg && avg.pm10 != null ? avg.pm10.toFixed(1) : ''),
+      csvField(avg && avg.pm25 != null ? avg.pm25.toFixed(1) : ''),
+      csvField(avg && avg.so2  != null ? avg.so2.toFixed(1)  : ''),
+      csvField(avg && avg.no2  != null ? avg.no2.toFixed(1)  : ''),
+      csvField(avg && avg.o3   != null ? avg.o3.toFixed(1)   : '')
     ].join(',') + '\n';
   });
 
