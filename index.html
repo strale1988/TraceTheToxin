@@ -6091,7 +6091,7 @@ function buildFactoryPopupHtml(idx) {
     ${f.d ? `<div style="font-size:11px;color:var(--text-primary);">${ttEsc(f.d)}</div>` : ''}
     <button type="button" class="hh-open-btn" onclick="openHeatHistoryForFactory(${idx})">${t('hhOpenBtn')}</button>
     ${nearbyReportsStatHtml(f.a, f.o)}
-    <div id="wtm-factory-${idx}"><button type="button" class="hh-open-btn" onclick="checkWindMatchedReports('factory', ${idx})">${t('wtmCheckBtn')}</button></div>
+    <div id="wtm-factory-${idx}"><button type="button" class="hh-open-btn" onclick="checkWindMatchedReports('factory', ${idx}, this)">${t('wtmCheckBtn')}</button></div>
     <a href="https://www.openstreetmap.org/${osmType}/${ttEsc(f.i.slice(1))}" target="_blank" rel="noopener" style="font-size:10px;color:var(--accent);">${t('factoryOsm')}</a>
     <div style="font-size:10px;color:var(--text-secondary);font-style:italic;">${t('factorySource')}</div>
   </div>
@@ -6189,7 +6189,7 @@ function buildBurnerPopupHtml(idx) {
     ${b.approx ? `<div style="font-size:10px;color:#ffb300;">${t('burnerApprox')}</div>` : ''}
     <button type="button" class="hh-open-btn" onclick="openHeatHistoryForBurner(${idx})">${t('hhOpenBtn')}</button>
     ${nearbyReportsStatHtml(b.a, b.o)}
-    <div id="wtm-burner-${idx}"><button type="button" class="hh-open-btn" onclick="checkWindMatchedReports('burner', ${idx})">${t('wtmCheckBtn')}</button></div>
+    <div id="wtm-burner-${idx}"><button type="button" class="hh-open-btn" onclick="checkWindMatchedReports('burner', ${idx}, this)">${t('wtmCheckBtn')}</button></div>
     <div style="font-size:10px;color:var(--text-secondary);">${t('burnerSources')}: ${srcs}</div>
   </div>
 </div>`;
@@ -7301,41 +7301,48 @@ async function computeTrajectoryMatchedReports(lat, lon, { days = NEARBY_REPORTS
 // popups to the function above, updating the same popup DOM node in place
 // as it progresses (the popup element persists across re-renders as long as
 // it stays open, so a stale reference just silently no-ops after close).
-async function checkWindMatchedReports(kind, idx) {
-  const src = kind === 'factory' ? (factoryData && factoryData[idx]) : KNOWN_BURNERS[idx];
-  if (!src) return;
-  const containerId = `wtm-${kind}-${idx}`;
-  const el = () => document.getElementById(containerId);
-  if (!el()) return;
-
-  const remaining = getWtmCooldownRemainingMs();
-  if (remaining > 0) {
-    const mins = Math.ceil(remaining / 60000);
-    el().innerHTML = `<div style="font-size:10px;color:var(--text-secondary);">${t('wtmCooldown').replace('{n}', mins)}</div>`;
-    return;
-  }
-  markWtmRunNow();
-
-  el().innerHTML = `<div style="font-size:10px;color:var(--text-secondary);">${t('wtmChecking')}</div>`;
+// Takes the clicked <button> itself (btnEl) rather than looking the
+// container up by id -- if more than one factory/burner popup has been
+// opened during this session, a stale popup can leave a duplicate
+// wtm-{kind}-{idx} node sitting in the DOM, and getElementById would
+// silently grab that instead of the one actually on screen, making the
+// button appear to do nothing. Using the element the click came from
+// sidesteps that entirely. Everything (including the synchronous setup,
+// not just the awaited part) is now inside the try/catch, so a bug here
+// surfaces as an error message in the popup instead of a dead button.
+async function checkWindMatchedReports(kind, idx, btnEl) {
+  const container = btnEl ? btnEl.parentElement : document.getElementById(`wtm-${kind}-${idx}`);
+  if (!container) return;
   try {
+    const src = kind === 'factory' ? (factoryData && factoryData[idx]) : KNOWN_BURNERS[idx];
+    if (!src) throw new Error(`no ${kind} at idx ${idx}`);
+
+    const remaining = getWtmCooldownRemainingMs();
+    if (remaining > 0) {
+      const mins = Math.ceil(remaining / 60000);
+      container.innerHTML = `<div style="font-size:10px;color:var(--text-secondary);">${t('wtmCooldown').replace('{n}', mins)}</div>`;
+      return;
+    }
+    markWtmRunNow();
+
+    container.innerHTML = `<div style="font-size:10px;color:var(--text-secondary);">${t('wtmChecking')}</div>`;
     const { matched, checked, capped, uncappedCount } = await computeTrajectoryMatchedReports(src.a, src.o, {
       onProgress: (doneN, total) => {
-        if (el()) el().innerHTML = `<div style="font-size:10px;color:var(--text-secondary);">${t('wtmCheckingProgress').replace('{done}', doneN).replace('{total}', total)}</div>`;
+        container.innerHTML = `<div style="font-size:10px;color:var(--text-secondary);">${t('wtmCheckingProgress').replace('{done}', doneN).replace('{total}', total)}</div>`;
       }
     });
-    if (!el()) return;
     if (checked === 0) {
-      el().innerHTML = `<div style="font-size:10px;color:var(--text-secondary);">${t('wtmNoneToCheck')}</div>`;
+      container.innerHTML = `<div style="font-size:10px;color:var(--text-secondary);">${t('wtmNoneToCheck')}</div>`;
       return;
     }
     const n = matched.length;
     const key = n === 0 ? 'wtmResult0' : n === 1 ? 'wtmResult1' : 'wtmResult';
     const label = t(key).replace('{n}', n).replace('{total}', checked);
     const cappedNote = capped ? `<div style="font-size:9px;color:var(--text-secondary);font-style:italic;">${t('wtmCapped').replace('{cap}', checked).replace('{total}', uncappedCount)}</div>` : '';
-    el().innerHTML = `<div style="font-size:10px;color:var(--text-secondary);">🌬️ ${label}</div>${cappedNote}`;
+    container.innerHTML = `<div style="font-size:10px;color:var(--text-secondary);">🌬️ ${label}</div>${cappedNote}`;
   } catch (e) {
     console.warn('[wind-trace-match] failed', e);
-    if (el()) el().innerHTML = `<div style="font-size:10px;color:var(--danger);">${t('wtmError')}</div>`;
+    container.innerHTML = `<div style="font-size:10px;color:var(--danger);">${t('wtmError')}</div>`;
   }
 }
 
