@@ -1085,6 +1085,7 @@ span.flatpickr-weekday {
 .hh-bars{ display:flex; align-items:flex-end; gap:2px; height:46px; }
 .hh-bar-col{ flex:1; height:100%; display:flex; align-items:flex-end; }
 .hh-bar{ width:100%; background:#d84315; border-radius:2px 2px 0 0; }
+.hh-bar-reports{ width:100%; background:#00acc1; border-radius:2px 2px 0 0; }
 .hh-bar-labels{ display:flex; justify-content:space-between; font-size:9px; color:var(--text-muted); margin-top:2px; }
 .hh-legend{ display:flex; flex-wrap:wrap; gap:10px; font-size:10px; color:var(--text-secondary); margin:10px 0 6px; }
 .hh-legend i{ display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:4px; }
@@ -1420,6 +1421,31 @@ function getReportCooldownRemainingMs() {
 
 function markReportSubmittedNow() {
   try { localStorage.setItem(REPORT_COOLDOWN_KEY, Date.now().toString()); } catch (e) {}
+}
+
+// Same idea, separate timer -- "Check wind-matched reports" is far more
+// expensive per use (one historic-wind fetch per report tested, so up to
+// WTM_MAX_REPORTS_PER_RUN external calls per click) so it gets its own,
+// longer cooldown. This is a soft, client-side deterrent against casual
+// repeat-clicking, not real abuse protection -- anyone in devtools can
+// clear localStorage or call computeTrajectoryMatchedReports directly.
+// Genuine rate-limiting would need a small server-side proxy in front of
+// the wind/heat APIs to enforce per-IP limits; this just keeps normal use
+// from accidentally hammering them.
+const WTM_COOLDOWN_MS = 10 * 60 * 1000; // 10 minutes
+const WTM_COOLDOWN_KEY = 'ttt_last_wtm_ts';
+const WTM_MAX_REPORTS_PER_RUN = 40; // hard cap regardless of cooldown
+
+function getWtmCooldownRemainingMs() {
+  try {
+    const last = parseInt(localStorage.getItem(WTM_COOLDOWN_KEY), 10) || 0;
+    const remaining = WTM_COOLDOWN_MS - (Date.now() - last);
+    return remaining > 0 ? remaining : 0;
+  } catch (e) { return 0; }
+}
+
+function markWtmRunNow() {
+  try { localStorage.setItem(WTM_COOLDOWN_KEY, Date.now().toString()); } catch (e) {}
 }
 
 /* ═══════════════════════════════════════════════════
@@ -2467,13 +2493,25 @@ const T = {
   burnerWhatBurns:    { en:'What burns (public sources)', sr:'Šta se sagoreva (javni izvori)' },
   burnerApprox:       { en:'Approximate location: pin may be 1–2 km off.', sr:'Približna lokacija: oznaka može biti pomerena 1–2 km.' },
   burnerSources:      { en:'Sources', sr:'Izvori' },
-  burnerNote:         { en:'Burning fuel here is normal and usually permitted. This marks where to look, not a violation.', sr:'Sagorevanje goriva ovde je uobičajeno i obično dozvoljeno. Oznaka pokazuje gde treba gledati, a ne prekršaj.' },
   factoryKindWorks:   { en:'Factory / industrial site', sr:'Fabrika / industrijski objekat' },
   factoryKindEnergy:  { en:'Power plant', sr:'Elektrana' },
   factoryKindLandfill:{ en:'Landfill', sr:'Deponija' },
   factoryUnnamed:     { en:'Unnamed site', sr:'Objekat bez naziva' },
   factoryOsm:         { en:'View on OpenStreetMap', sr:'Prikaži na OpenStreetMap-u' },
   factorySource:      { en:'Source: OpenStreetMap contributors (may be incomplete)', sr:'Izvor: OpenStreetMap saradnici (može biti nepotpuno)' },
+  nearbyReportsStat:  { en:'{n} nearby reports in the last 30 days (within 2km)', sr:'{n} obližnjih prijava u poslednjih 30 dana (u krugu od 2km)' },
+  nearbyReportsStat1: { en:'{n} nearby report in the last 30 days (within 2km)', sr:'{n} obližnja prijava u poslednjih 30 dana (u krugu od 2km)' },
+  nearbyReportsStat0: { en:'No nearby reports in the last 30 days', sr:'Nema obližnjih prijava u poslednjih 30 dana' },
+  wtmCheckBtn:        { en:'Check wind-matched reports (30 days)', sr:'Proveri prijave povezane vetrom (30 dana)' },
+  wtmChecking:        { en:'Checking wind trajectories…', sr:'Provera putanje vetra…' },
+  wtmCheckingProgress:{ en:'Checking wind trajectories… ({done}/{total})', sr:'Provera putanje vetra… ({done}/{total})' },
+  wtmResult:          { en:'{n} of {total} reports\' wind trails trace back to this source', sr:'{n} od {total} prijava ima putanju vetra koja vodi do ovog izvora' },
+  wtmResult1:         { en:'1 of {total} reports\' wind trail traces back to this source', sr:'1 od {total} prijava ima putanju vetra koja vodi do ovog izvora' },
+  wtmResult0:         { en:'None of the {total} reports checked trace back to this source', sr:'Nijedna od {total} proverenih prijava ne vodi do ovog izvora' },
+  wtmNoneToCheck:     { en:'No reports old enough to check yet (last 30 days)', sr:'Nema dovoljno starih prijava za proveru (poslednjih 30 dana)' },
+  wtmError:           { en:'Could not check wind trajectories. Try again.', sr:'Nije moguće proveriti putanju vetra. Pokušajte ponovo.' },
+  wtmCooldown:        { en:'One wind-trajectory check per device every 10 minutes. Try again in {n} min.', sr:'Jedna provera putanje vetra po uređaju na svakih 10 minuta. Pokušajte ponovo za {n} min.' },
+  wtmCapped:          { en:'Checked the {cap} most recent of {total} qualifying reports.', sr:'Provereno {cap} najnovijih od {total} prijava koje ispunjavaju uslove.' },
   nearestSite:        { en:'Nearest known site', sr:'Najbliži poznati objekat' },
   hhOpenBtn:          { en:'Heat history (2 years)', sr:'Istorija toplote (2 godine)' },
   hhTitle:            { en:'Satellite heat history', sr:'Satelitska istorija toplote' },
@@ -2490,6 +2528,7 @@ const T = {
   hhFirstLast:        { en:'First / last', sr:'Prvo / poslednje' },
   hhAvgFrp:           { en:'Avg power', sr:'Prosečna snaga' },
   hhMonthly:          { en:'Days with a detection, per month', sr:'Dani sa detekcijom, po mesecima' },
+  hhReportsMonthly:   { en:'Nearby community reports, per month', sr:'Obližnje prijave zajednice, po mesecima' },
   hhIncludeLow:       { en:'Include low-confidence detections', sr:'Uključi detekcije niske pouzdanosti' },
   hhCsv:              { en:'Download CSV', sr:'Preuzmi CSV' },
   hhCollapse:         { en:'Minimize / expand', sr:'Umanji / proširi' },
@@ -3643,6 +3682,36 @@ function getHaversineDistance(lat1, lon1, lat2, lon2) {
             Math.sin(dLon / 2) * Math.sin(dLon / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
+}
+
+// Simple proximity+recency count -- NOT wind-trace matched (see
+// filterPinsBySourceTrajectory for that). Used as a quick "activity" stat on
+// factory/burner popups: how many reports have landed within radiusKm of
+// this source in the last `days` days, straight-line distance only. Reads
+// from globalActiveData (everything currently synced), independent of
+// whatever date range the on-map filter (mapFp) happens to be scoped to.
+const NEARBY_REPORTS_RADIUS_KM = 2;
+const NEARBY_REPORTS_DAYS = 30;
+function countNearbyReports(lat, lon, radiusKm = NEARBY_REPORTS_RADIUS_KM, days = NEARBY_REPORTS_DAYS) {
+  if (!globalActiveData?.length) return 0;
+  const cutoff = Date.now() - days * 86400000;
+  let n = 0;
+  for (const r of globalActiveData) {
+    if (new Date(r.created_at).getTime() < cutoff) continue;
+    if (r.latitude == null || r.longitude == null) continue;
+    if (getHaversineDistance(lat, lon, parseFloat(r.latitude), parseFloat(r.longitude)) <= radiusKm) n++;
+  }
+  return n;
+}
+
+// Shared popup line for the stat above -- same wording/singular-plural
+// handling as the main report-count badge, reused by both the factory and
+// burner popups.
+function nearbyReportsStatHtml(lat, lon) {
+  const n = countNearbyReports(lat, lon);
+  const key = n === 0 ? 'nearbyReportsStat0' : n === 1 ? 'nearbyReportsStat1' : 'nearbyReportsStat';
+  const label = t(key).replace('{n}', n);
+  return `<div style="font-size:10px;color:var(--text-secondary);">📋 ${label}</div>`;
 }
 
 // Perpendicular distance (km) from a point to the segment a→b, using a
@@ -6021,6 +6090,8 @@ function buildFactoryPopupHtml(idx) {
   <div style="padding:6px 8px;display:flex;flex-direction:column;gap:5px;">
     ${f.d ? `<div style="font-size:11px;color:var(--text-primary);">${ttEsc(f.d)}</div>` : ''}
     <button type="button" class="hh-open-btn" onclick="openHeatHistoryForFactory(${idx})">${t('hhOpenBtn')}</button>
+    ${nearbyReportsStatHtml(f.a, f.o)}
+    <div id="wtm-factory-${idx}"><button type="button" class="hh-open-btn" onclick="checkWindMatchedReports('factory', ${idx})">${t('wtmCheckBtn')}</button></div>
     <a href="https://www.openstreetmap.org/${osmType}/${ttEsc(f.i.slice(1))}" target="_blank" rel="noopener" style="font-size:10px;color:var(--accent);">${t('factoryOsm')}</a>
     <div style="font-size:10px;color:var(--text-secondary);font-style:italic;">${t('factorySource')}</div>
   </div>
@@ -6117,8 +6188,9 @@ function buildBurnerPopupHtml(idx) {
     <div style="font-size:11px;color:var(--text-primary);line-height:1.35;">${ttEsc(b.fuel[lang] || b.fuel.en)}</div>
     ${b.approx ? `<div style="font-size:10px;color:#ffb300;">${t('burnerApprox')}</div>` : ''}
     <button type="button" class="hh-open-btn" onclick="openHeatHistoryForBurner(${idx})">${t('hhOpenBtn')}</button>
+    ${nearbyReportsStatHtml(b.a, b.o)}
+    <div id="wtm-burner-${idx}"><button type="button" class="hh-open-btn" onclick="checkWindMatchedReports('burner', ${idx})">${t('wtmCheckBtn')}</button></div>
     <div style="font-size:10px;color:var(--text-secondary);">${t('burnerSources')}: ${srcs}</div>
-    <div style="font-size:10px;color:var(--text-secondary);font-style:italic;">${t('burnerNote')}</div>
   </div>
 </div>`;
 }
@@ -6372,6 +6444,23 @@ function hhAnalyze(rows, o) {
     m = mo === 12 ? `${y + 1}-01` : `${y}-${String(mo + 1).padStart(2, '0')}`;
   }
 
+  // Community reports within the same radius, bucketed onto the same month
+  // keys as the heat bars above, so the two can be charted side by side.
+  // Straight-line proximity only (like nearbyReportsStatHtml), not
+  // wind-trace matched -- running the wind-trace check across a whole
+  // multi-year window would mean one historic-wind fetch per report ever
+  // filed near here, which isn't practical to do just for opening a panel.
+  const reportsByMonth = {};
+  months.forEach(mo => { reportsByMonth[mo.key] = 0; });
+  (globalActiveData || []).forEach(r => {
+    if (r.latitude == null || r.longitude == null) return;
+    const d = new Date(r.created_at);
+    if (isNaN(d.getTime())) return;
+    const key = d.toISOString().slice(0, 7);
+    if (!(key in reportsByMonth)) return;
+    if (getHaversineDistance(lat, lon, parseFloat(r.latitude), parseFloat(r.longitude)) <= radiusKm) reportsByMonth[key]++;
+  });
+
   const spanDays = hhDaysBetween(startStr, todayStr) + 1;
   const baseSpan = Math.max(1, spanDays - 90);
   const cellList = [...cells.values()].map(c => ({
@@ -6386,7 +6475,7 @@ function hhAnalyze(rows, o) {
     recentDays: recentDays.size,
     baselinePer90: baseDays.size / baseSpan * 90,
     avgFrp: frpN ? frpSum / frpN : NaN,
-    months, cells: cellList,
+    months, reportsByMonth, cells: cellList,
     newCells: cellList.filter(c => c.isNew).length
   };
 }
@@ -6460,6 +6549,12 @@ function hhRenderSheet() {
     const max = Math.max(1, ...a.months.map(m => m.n));
     const bars = a.months.map(m =>
       `<div class="hh-bar-col" title="${m.key}: ${m.n} ${t('hhDaysUnit')}"><div class="hh-bar" style="height:${Math.round(m.n / max * 100)}%;${m.n ? 'min-height:2px;' : ''}"></div></div>`).join('');
+    const reportMax = Math.max(1, ...a.months.map(m => a.reportsByMonth[m.key] || 0));
+    const reportBars = a.months.map(m => {
+      const rn = a.reportsByMonth[m.key] || 0;
+      return `<div class="hh-bar-col" title="${m.key}: ${rn} ${rn === 1 ? t('reportCount1') : t('reportCount')}"><div class="hh-bar-reports" style="height:${Math.round(rn / reportMax * 100)}%;${rn ? 'min-height:2px;' : ''}"></div></div>`;
+    }).join('');
+    const totalNearbyReports = a.months.reduce((sum, m) => sum + (a.reportsByMonth[m.key] || 0), 0);
     body = `
       ${s.failed ? `<div class="hh-warn">${t('hhIncomplete')}</div>` : ''}
       ${a.totalDays === 0 ? `<div class="hh-muted" style="margin:8px 0;">${t('hhNoData')}</div>` : `
@@ -6471,6 +6566,9 @@ function hhRenderSheet() {
       </div>
       <div class="hh-sect">${t('hhMonthly')}</div>
       <div class="hh-bars">${bars}</div>
+      <div class="hh-bar-labels"><span>${a.months[0].key}</span><span>${a.months[a.months.length - 1].key}</span></div>
+      <div class="hh-sect" style="margin-top:8px;">${t('hhReportsMonthly')} (${s.radiusKm} km) — ${totalNearbyReports}</div>
+      <div class="hh-bars">${reportBars}</div>
       <div class="hh-bar-labels"><span>${a.months[0].key}</span><span>${a.months[a.months.length - 1].key}</span></div>`}
       <div class="hh-legend"><span><i style="background:#ffca28"></i>1–2</span><span><i style="background:#f57c00"></i>3–9</span><span><i style="background:#d84315"></i>10–29</span><span><i style="background:#7f0000"></i>30+ ${t('hhDaysUnit')}</span></div>
       <label class="hh-check"><input type="checkbox" ${s.includeLow ? 'checked' : ''} onchange="hhSetIncludeLow(this.checked)"> ${t('hhIncludeLow')}</label>
@@ -7153,6 +7251,92 @@ async function filterPinsBySourceTrajectory(tracerCoords) {
 
   const n = reportMarkers.length;
   updateReportCountUI(n, timeFilteredData.length);
+}
+
+// Non-visual sibling of filterPinsBySourceTrajectory: same matching rule
+// (backward wind trail from each report vs. a growing dispersion cone around
+// the source point), but takes a plain {lat, lon} instead of requiring a
+// dropped tracer pin, touches nothing on the map, and scopes candidates by
+// recency (`days`) instead of the on-map filter's date range -- so it works
+// from a factory/burner popup regardless of what's currently shown on the
+// map. Expensive (one historic-wind fetch per untested report), so this is
+// only ever run on demand from a button tap, never automatically.
+async function computeTrajectoryMatchedReports(lat, lon, { days = NEARBY_REPORTS_DAYS, onProgress } = {}) {
+  const BASE_RADIUS_KM = TRACER_BASE_RADIUS_KM;
+  const DISPERSION_RATE_KM_H = TRACER_DISPERSION_RATE_KM_H;
+  const cutoff = Date.now() - days * 86400000;
+  const candidates = (globalActiveData || []).filter(r => new Date(r.created_at).getTime() >= cutoff);
+  const testableAll = candidates.filter(r => (Date.now() - new Date(r.created_at).getTime()) / 3600000 >= 6);
+
+  // Hard cap regardless of how many reports would otherwise qualify -- keeps
+  // a single run bounded (see WTM_MAX_REPORTS_PER_RUN above) even for a
+  // source with a very busy 30-day window. Most recent first, since those
+  // are the ones most relevant to "is this still happening".
+  const capped = testableAll.length > WTM_MAX_REPORTS_PER_RUN;
+  const testable = capped
+    ? testableAll.slice().sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, WTM_MAX_REPORTS_PER_RUN)
+    : testableAll;
+
+  const matched = [];
+  let done = 0;
+  for (const report of testable) {
+    const trail = await renderHistoricSplineTrailForReport(report);
+    done++;
+    if (onProgress) onProgress(done, testable.length);
+
+    if (trail && trail.length >= 2) {
+      for (let i = 0; i < trail.length - 1; i++) {
+        const distanceKM = distanceToSegment({ lat, lon }, trail[i], trail[i + 1]);
+        const maxAllowedDistance = BASE_RADIUS_KM + (DISPERSION_RATE_KM_H * (i + 1) * (6 / trail.length));
+        if (distanceKM <= maxAllowedDistance) { matched.push(report); break; }
+      }
+    }
+    if (!isWindCached(report)) await new Promise(r => setTimeout(r, 100));
+  }
+
+  return { matched, checked: testable.length, skippedTooRecent: candidates.length - testableAll.length, capped, uncappedCount: testableAll.length };
+}
+
+// Wires the "Check wind-matched reports" button in the factory/burner
+// popups to the function above, updating the same popup DOM node in place
+// as it progresses (the popup element persists across re-renders as long as
+// it stays open, so a stale reference just silently no-ops after close).
+async function checkWindMatchedReports(kind, idx) {
+  const src = kind === 'factory' ? (factoryData && factoryData[idx]) : KNOWN_BURNERS[idx];
+  if (!src) return;
+  const containerId = `wtm-${kind}-${idx}`;
+  const el = () => document.getElementById(containerId);
+  if (!el()) return;
+
+  const remaining = getWtmCooldownRemainingMs();
+  if (remaining > 0) {
+    const mins = Math.ceil(remaining / 60000);
+    el().innerHTML = `<div style="font-size:10px;color:var(--text-secondary);">${t('wtmCooldown').replace('{n}', mins)}</div>`;
+    return;
+  }
+  markWtmRunNow();
+
+  el().innerHTML = `<div style="font-size:10px;color:var(--text-secondary);">${t('wtmChecking')}</div>`;
+  try {
+    const { matched, checked, capped, uncappedCount } = await computeTrajectoryMatchedReports(src.a, src.o, {
+      onProgress: (doneN, total) => {
+        if (el()) el().innerHTML = `<div style="font-size:10px;color:var(--text-secondary);">${t('wtmCheckingProgress').replace('{done}', doneN).replace('{total}', total)}</div>`;
+      }
+    });
+    if (!el()) return;
+    if (checked === 0) {
+      el().innerHTML = `<div style="font-size:10px;color:var(--text-secondary);">${t('wtmNoneToCheck')}</div>`;
+      return;
+    }
+    const n = matched.length;
+    const key = n === 0 ? 'wtmResult0' : n === 1 ? 'wtmResult1' : 'wtmResult';
+    const label = t(key).replace('{n}', n).replace('{total}', checked);
+    const cappedNote = capped ? `<div style="font-size:9px;color:var(--text-secondary);font-style:italic;">${t('wtmCapped').replace('{cap}', checked).replace('{total}', uncappedCount)}</div>` : '';
+    el().innerHTML = `<div style="font-size:10px;color:var(--text-secondary);">🌬️ ${label}</div>${cappedNote}`;
+  } catch (e) {
+    console.warn('[wind-trace-match] failed', e);
+    if (el()) el().innerHTML = `<div style="font-size:10px;color:var(--danger);">${t('wtmError')}</div>`;
+  }
 }
 
 
