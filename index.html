@@ -1038,6 +1038,8 @@ span.flatpickr-weekday {
 .factory-btn.active .icon-img{ filter:none; }
 .factory-pin-wrap{ background:none; border:none; }
 .factory-pin{ width:24px; height:24px; border-radius:6px; display:flex; align-items:center; justify-content:center; border:2px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,.5); }
+.factory-pin img{ width:14px; height:14px; filter:brightness(0) invert(1); }
+.factory-pin.noimg::after, .burner-pin.noimg::after{ content:'\1F3ED'; font-size:13px; }
 .factory-cluster-wrap{ background:none; border:none; }
 .factory-cluster{ width:30px; height:30px; border-radius:8px; background:#455a64; color:#fff; border:2px solid #fff; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; box-shadow:0 1px 5px rgba(0,0,0,.5); }
 .hh-open-btn{
@@ -1045,23 +1047,31 @@ span.flatpickr-weekday {
   background:var(--accent); color:var(--accent-contrast); font-size:11px; font-weight:700;
   margin-top:2px;
 }
-.burner-pin{ width:30px; height:30px; border-radius:50%; background:#d84315; border:2px solid #fff; display:flex; align-items:center; justify-content:center; box-shadow:0 0 0 3px rgba(216,67,21,.35), 0 2px 6px rgba(0,0,0,.55); }
+.burner-pin{ width:34px; height:34px; border-radius:9px; background:#d84315; border:2px solid #fff; display:flex; align-items:center; justify-content:center; box-shadow:0 0 0 3px rgba(216,67,21,.35), 0 2px 8px rgba(0,0,0,.6); }
+.burner-pin img{ width:20px; height:20px; filter:brightness(0) invert(1); }
 #ttToast{ display:none; position:fixed; top:calc(env(safe-area-inset-top, 0px) + 84px); left:50%; transform:translateX(-50%); z-index:1000; max-width:calc(100vw - 24px); background:var(--bg-surface); color:var(--text-primary); border:1px solid var(--border-color-strong); border-radius:999px; padding:8px 14px; font-size:12px; box-shadow:0 2px 10px var(--floating-shadow); text-align:center; }
 #hhSheet{
   display:none; position:fixed; left:8px; right:8px; z-index:900;
   bottom:calc(var(--legend-bar-h) + 8px);
-  max-height:52vh; overflow-y:auto; -webkit-overflow-scrolling:touch;
+  max-height:52vh; overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain;
   background:var(--bg-surface); color:var(--text-primary);
-  border:1px solid var(--border-color-strong); border-radius:14px;
+  border:1px solid var(--border-color-strong); border-radius:16px;
   box-shadow:0 6px 24px var(--floating-shadow);
-  padding:10px 12px 12px; max-width:520px; margin:0 auto;
+  padding:0; max-width:520px; margin:0 auto;
 }
-.hh-head{ display:flex; justify-content:space-between; align-items:flex-start; gap:8px; }
+.hh-head{ position:sticky; top:0; z-index:2; display:flex; align-items:center; gap:8px; padding:10px 10px 8px 14px; background:var(--bg-surface); border-bottom:1px solid var(--border-color); }
+.hh-head-main{ flex:1; min-width:0; }
+.hh-body{ padding:8px 14px 14px; }
+#hhSheet.collapsed .hh-body{ display:none; }
+#hhSheet.collapsed .hh-head{ border-bottom:none; }
+#hhSheet.collapsed .hh-min svg{ transform:rotate(180deg); }
 .hh-title{ font-size:14px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .hh-muted{ font-size:11px; color:var(--text-secondary); }
-.hh-x{ background:var(--bg-surface-alt); color:var(--text-primary); border:none; border-radius:50%; width:28px; height:28px; cursor:pointer; flex-shrink:0; }
-.hh-chips{ display:flex; align-items:center; flex-wrap:wrap; gap:6px; margin:8px 0; }
-.hh-chip{ border:1px solid var(--border-color-strong); background:var(--bg-surface-alt); color:var(--text-primary); border-radius:999px; padding:3px 10px; font-size:11px; cursor:pointer; }
+.hh-x, .hh-min{ background:var(--bg-surface-alt); color:var(--text-primary); border:none; border-radius:50%; width:32px; height:32px; cursor:pointer; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:13px; -webkit-tap-highlight-color:transparent; }
+.hh-min svg{ width:16px; height:16px; transition:transform .15s ease; }
+.hh-chips{ display:flex; align-items:center; flex-wrap:wrap; gap:6px; margin:0 0 8px; }
+.hh-chip{ border:1px solid var(--border-color-strong); background:var(--bg-surface-alt); color:var(--text-primary); border-radius:999px; padding:6px 12px; font-size:12px; cursor:pointer; min-height:32px; }
+.hh-chip:disabled{ opacity:.45; cursor:default; }
 .hh-chip.on{ background:var(--accent); border-color:var(--accent); color:var(--accent-contrast); font-weight:700; }
 .hh-progress{ height:6px; background:var(--bg-surface-alt); border-radius:3px; overflow:hidden; margin:10px 0 6px; }
 .hh-progress-bar{ height:100%; background:var(--accent); transition:width .2s ease; }
@@ -2482,6 +2492,8 @@ const T = {
   hhMonthly:          { en:'Days with a detection, per month', sr:'Dani sa detekcijom, po mesecima' },
   hhIncludeLow:       { en:'Include low-confidence detections', sr:'Uključi detekcije niske pouzdanosti' },
   hhCsv:              { en:'Download CSV', sr:'Preuzmi CSV' },
+  hhCollapse:         { en:'Minimize / expand', sr:'Umanji / proširi' },
+  hhRetry:            { en:'Try again', sr:'Pokušaj ponovo' },
   hhClose:            { en:'Close', sr:'Zatvori' },
   hhNoData:           { en:'No detections in this area over the period.', sr:'Nema detekcija u ovoj oblasti u posmatranom periodu.' },
   hhIncomplete:       { en:'Some archive requests failed, so counts may be too low. Try again later.', sr:'Neki zahtevi ka arhivi nisu uspeli, pa su brojevi možda premali. Pokušajte ponovo kasnije.' },
@@ -5991,7 +6003,7 @@ function makeFactoryIcon(kind) {
   const color = FACTORY_KIND_COLORS[kind] || FACTORY_KIND_COLORS.works;
   return L.divIcon({
     className: 'factory-pin-wrap',
-    html: `<div class="factory-pin" style="background:${color};"><svg viewBox="0 0 24 24" width="14" height="14"><path fill="#fff" d="M2 21V11l6 4v-4l6 4V4h4v17z"/></svg></div>`,
+    html: `<div class="factory-pin" style="background:${color};"><img src="icons/factory.png" alt="" onerror="this.parentNode.classList.add('noimg');this.remove();"></div>`,
     iconSize: [24, 24], iconAnchor: [12, 12], popupAnchor: [0, -12]
   });
 }
@@ -6053,13 +6065,11 @@ const KNOWN_BURNERS = [
   { n: 'Lafarge BFC cement plant (Beočin)', a: 45.20786, o: 19.70843, k: 'cement', approx: false,
     fuel: { en: 'Cement kilns. Fossil fuel plus alternative fuels: waste tyres, biomass and processed waste-derived fuel (co-processing in Serbia since 2008–2010, per industry sources).',
             sr: 'Peći za cement. Fosilno gorivo plus alternativna goriva: otpadne gume, biomasa i gorivo dobijeno iz otpada (koprocesiranje u Srbiji od 2008–2010, prema izvorima iz industrije).' },
-    src: [['Global Energy Monitor', 'https://www.gem.wiki/Holcim_BFC_Serbia_doo_Beocin_Cement_Plant'],
-          ['Serbian cement industry presentation', 'https://www.zerowasteitaly.org/documenti/barletta/DESPOTOV_CoincinerationWasteCementKilnsSerbia.pdf']] },
+    src: [['Global Energy Monitor', 'https://www.gem.wiki/Holcim_BFC_Serbia_doo_Beocin_Cement_Plant']] },
   { n: 'Moravacem cement plant (Popovac, Paraćin)', a: 43.90895, o: 21.50976, k: 'cement', approx: false,
     fuel: { en: 'Cement kilns. Co-incineration of waste since 2006: waste tyres and solid recovered fuel; the company also processes waste into alternative fuels.',
             sr: 'Peći za cement. Koinsineracija otpada od 2006: otpadne gume i čvrsto gorivo iz otpada; kompanija i sama prerađuje otpad u alternativna goriva.' },
-    src: [['Serbian cement industry presentation', 'https://www.zerowasteitaly.org/documenti/barletta/DESPOTOV_CoincinerationWasteCementKilnsSerbia.pdf'],
-          ['Moravacem', 'https://moravacem.rs/en/'],
+    src: [['Moravacem', 'https://moravacem.rs/en/'],
           ['Global Energy Monitor', 'https://www.gem.wiki/Moravacem_Popovac_Cement_Plant']] },
   { n: 'Titan cement plant (Kosjerić)', a: 44.017, o: 19.883, k: 'cement', approx: true,
     fuel: { en: 'Cement kilns on conventional fuel. Industry sources (2014, 2018) said it had not yet started using waste as fuel; check for newer permits.',
@@ -6072,7 +6082,7 @@ const KNOWN_BURNERS = [
   { n: 'TE Kostolac A & B', a: 44.7307, o: 21.2104, k: 'power', approx: false,
     fuel: { en: 'Lignite (coal). Kostolac A also supplies district heating to Kostolac and Požarevac.',
             sr: 'Lignit (ugalj). Kostolac A snabdeva i daljinsko grejanje Kostolca i Požarevca.' },
-    src: [['Global Energy Monitor', 'https://www.gem.wiki/Serbia_and_coal'], ['Global Energy Observatory', 'https://globalenergyobservatory.org/geoid/44117']] },
+    src: [['Global Energy Monitor', 'https://www.gem.wiki/Serbia_and_coal']] },
   { n: 'TE Kolubara A (Veliki Crljeni)', a: 44.46722, o: 20.28389, k: 'power', approx: true,
     fuel: { en: 'Lignite (coal), about 239 MW. Residents of Veliki Crljeni have had a lawsuit against EPS over environmental and health impacts since 2021.',
             sr: 'Lignit (ugalj), oko 239 MW. Meštani Velikih Crljena od 2021. vode spor protiv EPS-a zbog uticaja na životnu sredinu i zdravlje.' },
@@ -6089,8 +6099,8 @@ let burnerLayer = null;
 function makeBurnerIcon() {
   return L.divIcon({
     className: 'factory-pin-wrap',
-    html: `<div class="burner-pin"><svg viewBox="0 0 24 24" width="17" height="17"><path fill="#fff" d="M12 2c1 3.5 5 5.5 5 10a5 5 0 0 1-10 0c0-1.7.7-3 1.6-4.2C9 9 9.6 10 10.8 10.4 10.3 7 11 4.3 12 2z"/></svg></div>`,
-    iconSize: [30, 30], iconAnchor: [15, 15], popupAnchor: [0, -15]
+    html: `<div class="burner-pin"><img src="icons/factory.png" alt="" onerror="this.parentNode.classList.add('noimg');this.remove();"></div>`,
+    iconSize: [34, 34], iconAnchor: [17, 17], popupAnchor: [0, -17]
   });
 }
 
@@ -6405,11 +6415,12 @@ function hhColorForDays(n) { return n >= 30 ? '#7f0000' : n >= 10 ? '#d84315' : 
 
 function hhRenderMap() {
   if (hhLayer) { map.removeLayer(hhLayer); hhLayer = null; }
-  if (!hhState || !hhState.analysis) return;
+  if (!hhState) return;
   const { lat, lon, radiusKm, analysis } = hhState;
   hhLayer = L.layerGroup();
-  L.circle([lat, lon], { radius: radiusKm * 1000, color: '#00e5ff', weight: 1.5, dashArray: '6 6', fill: false, interactive: false }).addTo(hhLayer);
-  analysis.cells.slice(0, 250).forEach(c => {
+  L.circle([lat, lon], { radius: radiusKm * 1000, color: '#00e5ff', weight: 1.5, dashArray: '6 6', fillColor: '#00e5ff', fillOpacity: 0.04, interactive: false }).addTo(hhLayer);
+  L.circleMarker([lat, lon], { radius: 3, color: '#00e5ff', weight: 1, fillColor: '#00e5ff', fillOpacity: 1, interactive: false }).addTo(hhLayer);
+  (analysis ? analysis.cells : []).slice(0, 250).forEach(c => {
     const r = Math.min(20, 5 + 2.6 * Math.sqrt(c.days));
     L.circleMarker([c.lat, c.lon], {
       radius: r, color: c.isNew ? '#00e5ff' : '#3a1200', weight: c.isNew ? 3 : 1,
@@ -6434,13 +6445,14 @@ function hhRenderSheet() {
   if (!el || !hhState) return;
   const s = hhState;
   const chips = [0.5, 1, 1.5, 2, 3].map(km =>
-    `<button type="button" class="hh-chip${km === s.radiusKm ? ' on' : ''}" onclick="hhSetRadius(${km})">${km} km</button>`).join('');
+    `<button type="button" class="hh-chip${km === s.radiusKm ? ' on' : ''}" ${s.status === 'done' ? '' : 'disabled'} onclick="hhSetRadius(${km})">${km} km</button>`).join('');
   let body = '';
   if (s.status === 'loading') {
     body = `<div class="hh-progress"><div class="hh-progress-bar" id="hhProgressBar" style="width:${s.pct || 0}%"></div></div>
             <div class="hh-muted" id="hhProgressText">${t('hhLoading')} ${s.pctText || ''}</div>`;
   } else if (s.status === 'error') {
-    body = `<div class="hh-warn">${t('hhFatal')}</div>`;
+    body = `<div class="hh-warn">${t('hhFatal')}</div>
+            <div class="hh-actions"><button type="button" class="hh-btn" onclick="hhRetry()">${t('hhRetry')}</button></div>`;
   } else if (s.analysis) {
     const a = s.analysis;
     const trend = a.baselinePer90 > 0 ? a.recentDays / a.baselinePer90 : null;
@@ -6467,16 +6479,20 @@ function hhRenderSheet() {
         <button type="button" class="hh-btn" onclick="hhDownloadCsv()">${t('hhCsv')}</button>
       </div>`;
   }
+  el.classList.toggle('collapsed', !!s.collapsed);
   el.innerHTML = `
     <div class="hh-head">
-      <div style="min-width:0;">
+      <div class="hh-head-main">
         <div class="hh-title">${ttEsc(s.name || t('hhTitle'))}</div>
         <div class="hh-muted">${t('hhTitle')} · ${s.lat.toFixed(4)}, ${s.lon.toFixed(4)}</div>
       </div>
+      <button type="button" class="hh-min" onclick="hhToggleCollapse()" aria-label="${t('hhCollapse')}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>
       <button type="button" class="hh-x" onclick="closeHeatHistory()" aria-label="${t('hhClose')}">✕</button>
     </div>
-    <div class="hh-chips"><span class="hh-muted" style="margin-right:4px;">${t('hhRadius')}</span>${chips}</div>
-    ${body}`;
+    <div class="hh-body">
+      <div class="hh-chips"><span class="hh-muted" style="margin-right:4px;">${t('hhRadius')}</span>${chips}</div>
+      ${body}
+    </div>`;
   el.style.display = 'block';
 }
 
@@ -6500,6 +6516,15 @@ function hhRecompute() {
   hhRenderMap();
 }
 
+function hhToggleCollapse() {
+  if (!hhState) return;
+  hhState.collapsed = !hhState.collapsed;
+  const el = document.getElementById('hhSheet');
+  if (el) el.classList.toggle('collapsed', hhState.collapsed);
+  setTimeout(fitHeatHistory, 30); // after layout, so the pin re-centres above the shorter/taller sheet
+}
+function hhRetry() { if (hhState) openHeatHistory(hhState.lat, hhState.lon, hhState.name); }
+
 function hhSetRadius(km) { if (!hhState || hhState.status !== 'done') return; hhState.radiusKm = km; hhRecompute(); fitHeatHistory(); }
 function hhSetIncludeLow(v) { if (!hhState || hhState.status !== 'done') return; hhState.includeLow = !!v; hhRecompute(); }
 
@@ -6507,7 +6532,7 @@ function fitHeatHistory() {
   if (!hhState) return;
   const b = L.latLng(hhState.lat, hhState.lon).toBounds(hhState.radiusKm * 2400);
   const sheetH = (document.getElementById('hhSheet')?.offsetHeight || 0) + 20;
-  map.fitBounds(b, { paddingBottomRight: [10, sheetH], paddingTopLeft: [10, 90], animate: true });
+  map.fitBounds(b, { paddingBottomRight: [10, sheetH], paddingTopLeft: [10, 90], maxZoom: 16, animate: true });
 }
 
 async function openHeatHistory(lat, lon, name) {
