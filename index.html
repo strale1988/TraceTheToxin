@@ -1034,7 +1034,8 @@ span.flatpickr-weekday {
 .factory-btn:active{ transform:scale(.9); }
 .factory-btn.active{ background:#546e7a; border-color:#546e7a; color:#fff; }
 .factory-btn.loading{ opacity:.6; }
-.factory-btn svg{ width:22px; height:22px; }
+.factory-btn .icon-img{ filter:var(--icon-tint-filter); }
+.factory-btn.active .icon-img{ filter:none; }
 .factory-pin-wrap{ background:none; border:none; }
 .factory-pin{ width:24px; height:24px; border-radius:6px; display:flex; align-items:center; justify-content:center; border:2px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,.5); }
 .factory-cluster-wrap{ background:none; border:none; }
@@ -1044,6 +1045,8 @@ span.flatpickr-weekday {
   background:var(--accent); color:var(--accent-contrast); font-size:11px; font-weight:700;
   margin-top:2px;
 }
+.burner-pin{ width:30px; height:30px; border-radius:50%; background:#d84315; border:2px solid #fff; display:flex; align-items:center; justify-content:center; box-shadow:0 0 0 3px rgba(216,67,21,.35), 0 2px 6px rgba(0,0,0,.55); }
+#ttToast{ display:none; position:fixed; top:calc(env(safe-area-inset-top, 0px) + 84px); left:50%; transform:translateX(-50%); z-index:1000; max-width:calc(100vw - 24px); background:var(--bg-surface); color:var(--text-primary); border:1px solid var(--border-color-strong); border-radius:999px; padding:8px 14px; font-size:12px; box-shadow:0 2px 10px var(--floating-shadow); text-align:center; }
 #hhSheet{
   display:none; position:fixed; left:8px; right:8px; z-index:900;
   bottom:calc(var(--legend-bar-h) + 8px);
@@ -1173,7 +1176,7 @@ span.flatpickr-weekday {
     <img class="icon-img" src="icons/fire.png" alt="Fire">
   </div>
   <div id="factoryBtn" class="factory-btn" style="display:none" title="Show factories & industrial sites (OpenStreetMap)" onclick="toggleFactoryLayer()">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="M2 21V11l6 4v-4l6 4V4h4v17z"/></svg>
+    <img class="icon-img" src="icons/factory.png" alt="Factories">
   </div>
 </div>
 <input type="text" id="mapDateRangePicker" style="display:none">
@@ -2447,6 +2450,14 @@ const T = {
     sr:'Trenutno nije moguće učitati podatke o požarima. Pokušajte ponovo uskoro.' },
   factoryBtnTitle:    { en:'Show factories & industrial sites', sr:'Prikaži fabrike i industrijske objekte' },
   factoryLoadError:   { en:'Could not load the list of industrial sites right now. Please try again shortly.', sr:'Trenutno nije moguće učitati spisak industrijskih objekata. Pokušajte ponovo uskoro.' },
+  factoryLoading:     { en:'Loading more industrial sites from OpenStreetMap…', sr:'Učitavanje ostalih industrijskih objekata sa OpenStreetMap-a…' },
+  factoryOsmFailed:   { en:'Could not load the wider OpenStreetMap list (server busy?). The hand-checked sites are still shown. Turn the layer off and on to retry.', sr:'Nije moguće učitati širi OpenStreetMap spisak (server zauzet?). Ručno proverena mesta su i dalje prikazana. Isključite i uključite sloj da pokušate ponovo.' },
+  burnerKindCement:   { en:'Cement plant (kilns)', sr:'Fabrika cementa (peći)' },
+  burnerKindPower:    { en:'Coal power plant', sr:'Termoelektrana na ugalj' },
+  burnerWhatBurns:    { en:'What burns (public sources)', sr:'Šta se sagoreva (javni izvori)' },
+  burnerApprox:       { en:'Approximate location: pin may be 1–2 km off.', sr:'Približna lokacija: oznaka može biti pomerena 1–2 km.' },
+  burnerSources:      { en:'Sources', sr:'Izvori' },
+  burnerNote:         { en:'Burning fuel here is normal and usually permitted. This marks where to look, not a violation.', sr:'Sagorevanje goriva ovde je uobičajeno i obično dozvoljeno. Oznaka pokazuje gde treba gledati, a ne prekršaj.' },
   factoryKindWorks:   { en:'Factory / industrial site', sr:'Fabrika / industrijski objekat' },
   factoryKindEnergy:  { en:'Power plant', sr:'Elektrana' },
   factoryKindLandfill:{ en:'Landfill', sr:'Deponija' },
@@ -6027,24 +6038,117 @@ async function loadFactoryData(silent) {
     renderFactoryMarkers();
     return true;
   } catch (e) {
-    console.warn('[factories] load failed', e);
-    if (!silent) alert(t('factoryLoadError'));
+    console.warn('[factories] OSM load failed', e);
+    if (!silent) ttToast(t('factoryOsmFailed'), 7000);
     return false;
   }
+}
+
+/* ── Curated: sites publicly documented as burning fuel or waste ──
+   Hand-checked against public sources (linked in each popup). "approx"
+   marks locations taken from a village/complex centroid rather than a
+   surveyed plant coordinate -- the heat-history radius (up to 3 km) still
+   covers them, but the pin itself may be 1-2 km off. */
+const KNOWN_BURNERS = [
+  { n: 'Lafarge BFC cement plant (Beočin)', a: 45.20786, o: 19.70843, k: 'cement', approx: false,
+    fuel: { en: 'Cement kilns. Fossil fuel plus alternative fuels: waste tyres, biomass and processed waste-derived fuel (co-processing in Serbia since 2008–2010, per industry sources).',
+            sr: 'Peći za cement. Fosilno gorivo plus alternativna goriva: otpadne gume, biomasa i gorivo dobijeno iz otpada (koprocesiranje u Srbiji od 2008–2010, prema izvorima iz industrije).' },
+    src: [['Global Energy Monitor', 'https://www.gem.wiki/Holcim_BFC_Serbia_doo_Beocin_Cement_Plant'],
+          ['Serbian cement industry presentation', 'https://www.zerowasteitaly.org/documenti/barletta/DESPOTOV_CoincinerationWasteCementKilnsSerbia.pdf']] },
+  { n: 'Moravacem cement plant (Popovac, Paraćin)', a: 43.90895, o: 21.50976, k: 'cement', approx: false,
+    fuel: { en: 'Cement kilns. Co-incineration of waste since 2006: waste tyres and solid recovered fuel; the company also processes waste into alternative fuels.',
+            sr: 'Peći za cement. Koinsineracija otpada od 2006: otpadne gume i čvrsto gorivo iz otpada; kompanija i sama prerađuje otpad u alternativna goriva.' },
+    src: [['Serbian cement industry presentation', 'https://www.zerowasteitaly.org/documenti/barletta/DESPOTOV_CoincinerationWasteCementKilnsSerbia.pdf'],
+          ['Moravacem', 'https://moravacem.rs/en/'],
+          ['Global Energy Monitor', 'https://www.gem.wiki/Moravacem_Popovac_Cement_Plant']] },
+  { n: 'Titan cement plant (Kosjerić)', a: 44.017, o: 19.883, k: 'cement', approx: true,
+    fuel: { en: 'Cement kilns on conventional fuel. Industry sources (2014, 2018) said it had not yet started using waste as fuel; check for newer permits.',
+            sr: 'Peći za cement na konvencionalna goriva. Izvori iz industrije (2014, 2018) navode da još nije počela da koristi otpad kao gorivo; proverite novije dozvole.' },
+    src: [['Balkan Green Energy News (2018)', 'https://balkangreenenergynews.com/serbias-cement-industry-important-link-sustainable-waste-management-standards-are-necessary/']] },
+  { n: 'TE Nikola Tesla A & B (Obrenovac)', a: 44.67167, o: 20.15722, k: 'power', approx: true,
+    fuel: { en: 'Lignite (coal), over 3,000 MW. Serbia\'s largest coal power station; EPS reported roughly 59,000 t (unit A) and 77,000 t (unit B) of SO₂ for 2024.',
+            sr: 'Lignit (ugalj), preko 3.000 MW. Najveća termoelektrana na ugalj u Srbiji; EPS je za 2024. prijavio oko 59.000 t (blok A) i 77.000 t (blok B) SO₂.' },
+    src: [['Global Energy Monitor', 'https://www.gem.wiki/Nikola_Tesla_power_station'], ['Wikipedia', 'https://en.wikipedia.org/wiki/TPP_Nikola_Tesla']] },
+  { n: 'TE Kostolac A & B', a: 44.7307, o: 21.2104, k: 'power', approx: false,
+    fuel: { en: 'Lignite (coal). Kostolac A also supplies district heating to Kostolac and Požarevac.',
+            sr: 'Lignit (ugalj). Kostolac A snabdeva i daljinsko grejanje Kostolca i Požarevca.' },
+    src: [['Global Energy Monitor', 'https://www.gem.wiki/Serbia_and_coal'], ['Global Energy Observatory', 'https://globalenergyobservatory.org/geoid/44117']] },
+  { n: 'TE Kolubara A (Veliki Crljeni)', a: 44.46722, o: 20.28389, k: 'power', approx: true,
+    fuel: { en: 'Lignite (coal), about 239 MW. Residents of Veliki Crljeni have had a lawsuit against EPS over environmental and health impacts since 2021.',
+            sr: 'Lignit (ugalj), oko 239 MW. Meštani Velikih Crljena od 2021. vode spor protiv EPS-a zbog uticaja na životnu sredinu i zdravlje.' },
+    src: [['Global Energy Monitor', 'https://www.gem.wiki/Kolubara_A_power_station']] },
+  { n: 'Vinča landfill (Belgrade)', a: 44.768, o: 20.625, k: 'landfill', approx: true,
+    fuel: { en: 'Large open dump. Surface fires and long-running underground fires have been reported repeatedly (2016, 2017, 2021). Mixed municipal and construction waste.',
+            sr: 'Velika otvorena deponija. Više puta su prijavljivani površinski i dugotrajni podzemni požari (2016, 2017, 2021). Mešani komunalni i građevinski otpad.' },
+    src: [['RFE/RL (2021)', 'https://www.rferl.org/a/belgrade-landfill-fire-serbia/31400377.html'],
+          ['Balkan Green Energy News (2021)', 'https://balkangreenenergynews.com/vinca-landfill-fire-who-is-responsible-for-golden-utility-project/']] },
+];
+const BURNER_KIND_KEY = { cement: 'burnerKindCement', power: 'burnerKindPower', landfill: 'factoryKindLandfill' };
+let burnerLayer = null;
+
+function makeBurnerIcon() {
+  return L.divIcon({
+    className: 'factory-pin-wrap',
+    html: `<div class="burner-pin"><svg viewBox="0 0 24 24" width="17" height="17"><path fill="#fff" d="M12 2c1 3.5 5 5.5 5 10a5 5 0 0 1-10 0c0-1.7.7-3 1.6-4.2C9 9 9.6 10 10.8 10.4 10.3 7 11 4.3 12 2z"/></svg></div>`,
+    iconSize: [30, 30], iconAnchor: [15, 15], popupAnchor: [0, -15]
+  });
+}
+
+function buildBurnerPopupHtml(idx) {
+  const b = KNOWN_BURNERS[idx];
+  const srcs = b.src.map(([label, url]) => `<a href="${ttEsc(url)}" target="_blank" rel="noopener" style="color:var(--accent);">${ttEsc(label)}</a>`).join(' · ');
+  return `<div class="popup-inner" style="padding:0;min-width:230px;max-width:380px;font-family:sans-serif;">
+  <div style="background:#d84315;padding:5px 8px;border-radius:6px 6px 0 0;">
+    <div style="font-size:12px;font-weight:700;color:#fff;">${ttEsc(b.n)}</div>
+    <div style="font-size:9px;color:rgba(255,255,255,.85);">${t(BURNER_KIND_KEY[b.k])}</div>
+  </div>
+  <div style="padding:6px 8px;display:flex;flex-direction:column;gap:5px;">
+    <div style="font-size:9px;color:var(--text-secondary);text-transform:uppercase;">${t('burnerWhatBurns')}</div>
+    <div style="font-size:11px;color:var(--text-primary);line-height:1.35;">${ttEsc(b.fuel[lang] || b.fuel.en)}</div>
+    ${b.approx ? `<div style="font-size:10px;color:#ffb300;">${t('burnerApprox')}</div>` : ''}
+    <button type="button" class="hh-open-btn" onclick="openHeatHistoryForBurner(${idx})">${t('hhOpenBtn')}</button>
+    <div style="font-size:10px;color:var(--text-secondary);">${t('burnerSources')}: ${srcs}</div>
+    <div style="font-size:10px;color:var(--text-secondary);font-style:italic;">${t('burnerNote')}</div>
+  </div>
+</div>`;
+}
+
+function renderBurnerMarkers() {
+  if (burnerLayer) map.removeLayer(burnerLayer);
+  burnerLayer = L.layerGroup();
+  KNOWN_BURNERS.forEach((b, idx) => {
+    L.marker([b.a, b.o], { icon: makeBurnerIcon(), zIndexOffset: 800 })
+      .bindPopup(() => buildBurnerPopupHtml(idx), { maxWidth: 380, minWidth: 230 })
+      .addTo(burnerLayer);
+  });
+  if (factoryVisible) burnerLayer.addTo(map);
+}
+
+let ttToastTimer = null;
+function ttToast(msg, ms) {
+  let el = document.getElementById('ttToast');
+  if (!el) { el = document.createElement('div'); el.id = 'ttToast'; document.body.appendChild(el); }
+  if (!msg) { el.style.display = 'none'; return; }
+  el.textContent = msg; el.style.display = 'block';
+  clearTimeout(ttToastTimer);
+  if (ms) ttToastTimer = setTimeout(() => { el.style.display = 'none'; }, ms);
 }
 
 async function toggleFactoryLayer() {
   const btn = document.getElementById('factoryBtn');
   if (!factoryVisible) {
     factoryVisible = true;
-    if (btn) btn.classList.add('loading');
-    const ok = await loadFactoryData(false);
-    if (btn) btn.classList.remove('loading');
-    if (!ok) { factoryVisible = false; return; }
+    renderBurnerMarkers();               // curated list: instant, works offline
     if (btn) btn.classList.add('active');
     try { localStorage.setItem('ttt_factory_visible', 'true'); } catch (e) {}
+    if (!factoryData) ttToast(t('factoryLoading'), 0);
+    const ok = await loadFactoryData(true); // OSM list: slower, may fail
+    if (!factoryVisible) return;         // toggled off while loading
+    if (ok) ttToast(null); else ttToast(t('factoryOsmFailed'), 8000);
   } else {
     factoryVisible = false;
+    ttToast(null);
+    if (burnerLayer && map.hasLayer(burnerLayer)) map.removeLayer(burnerLayer);
     if (factoryLayer && map.hasLayer(factoryLayer)) map.removeLayer(factoryLayer);
     if (btn) btn.classList.remove('active');
     try { localStorage.setItem('ttt_factory_visible', 'false'); } catch (e) {}
@@ -6062,24 +6166,26 @@ const FactoryControl = L.Control.extend({
 new FactoryControl().addTo(map);
 document.getElementById('factoryBtn').style.display = 'flex';
 if (factoryVisible) {
-  loadFactoryData(true).then(ok => {
-    const btn = document.getElementById('factoryBtn');
-    if (ok) { if (btn) btn.classList.add('active'); }
-    else { factoryVisible = false; try { localStorage.setItem('ttt_factory_visible', 'false'); } catch (e) {} }
-  });
+  renderBurnerMarkers();
+  document.getElementById('factoryBtn').classList.add('active');
+  loadFactoryData(true).then(ok => { if (!ok && factoryVisible) ttToast(t('factoryOsmFailed'), 8000); });
 }
 
-// Nearest known factory to a point (used in the fire popup). Only searches
-// what's already loaded -- never triggers a network fetch by itself.
+// Nearest known factory/burner to a point (used in the fire popup). Only
+// searches what's already loaded -- never triggers a network fetch itself.
 function nearestFactory(lat, lon, maxKm) {
-  if (!factoryData) return null;
   let best = null, bestD = Infinity;
-  for (let i = 0; i < factoryData.length; i++) {
-    const f = factoryData[i];
-    if (Math.abs(f.a - lat) > 0.05 || Math.abs(f.o - lon) > 0.08) continue; // cheap pre-filter
-    const d = getHaversineDistance(lat, lon, f.a, f.o);
-    if (d < bestD) { bestD = d; best = f; }
-  }
+  const scan = (list) => {
+    if (!list) return;
+    for (let i = 0; i < list.length; i++) {
+      const f = list[i];
+      if (Math.abs(f.a - lat) > 0.05 || Math.abs(f.o - lon) > 0.08) continue; // cheap pre-filter
+      const d = getHaversineDistance(lat, lon, f.a, f.o);
+      if (d < bestD) { bestD = d; best = f; }
+    }
+  };
+  scan(KNOWN_BURNERS);
+  scan(factoryData);
   return best && bestD <= maxKm ? { f: best, km: bestD } : null;
 }
 
@@ -6439,6 +6545,11 @@ async function openHeatHistory(lat, lon, name) {
     mine.status = 'error';
     hhRenderSheet();
   }
+}
+
+function openHeatHistoryForBurner(idx) {
+  const b = KNOWN_BURNERS[idx];
+  if (b) openHeatHistory(b.a, b.o, b.n);
 }
 
 function openHeatHistoryForFactory(idx) {
