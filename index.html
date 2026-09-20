@@ -1088,6 +1088,21 @@ span.flatpickr-weekday {
 .hh-bar-traced{ width:100%; background:#8e24aa; border-radius:2px 2px 0 0; }
 .hh-bar-reports{ width:100%; background:#00acc1; border-radius:2px 2px 0 0; }
 .hh-bar-labels{ display:flex; justify-content:space-between; font-size:9px; color:var(--text-muted); margin-top:2px; }
+/* Stacked comparison charts: every row shares the same columns, so a bar in
+   one row sits directly above/below the same day (or month) in the others. */
+.hh-cmp{ margin:4px 0 8px; }
+.hh-cmp-cap{ display:flex; align-items:center; gap:5px; font-size:10px; color:var(--text-secondary); text-transform:uppercase; margin:7px 0 2px; }
+.hh-cmp-cap i{ display:inline-block; width:8px; height:8px; border-radius:2px; flex-shrink:0; }
+.hh-cmp .hh-bars{ height:34px; border-bottom:1px solid var(--border-color-strong); }
+.hh-cmp .hh-bar-col{ position:relative; cursor:pointer; border-radius:2px; -webkit-tap-highlight-color:transparent; }
+.hh-cmp .hh-bar-col.sel{ background:rgba(128,128,128,.24); }
+.hh-cmp .hh-bar-n{ position:absolute; left:0; right:0; text-align:center; font-size:9px; font-weight:700; line-height:1; color:var(--text-primary); pointer-events:none; }
+.hh-cmp-axis{ display:flex; gap:2px; font-size:9px; color:var(--text-muted); margin-top:2px; }
+.hh-cmp-axis span{ flex:1; text-align:center; }
+.hh-cmp-axis.ends{ justify-content:space-between; }
+.hh-cmp-axis.ends span{ flex:none; }
+.hh-cmp-read{ font-size:11px; color:var(--text-secondary); min-height:15px; margin-top:5px; line-height:1.35; }
+.hh-cmp-read b{ color:var(--text-primary); }
 .hh-legend{ display:flex; flex-wrap:wrap; gap:10px; font-size:10px; color:var(--text-secondary); margin:10px 0 6px; }
 .hh-legend i{ display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:4px; }
 .hh-check{ display:flex; align-items:center; gap:6px; font-size:11px; color:var(--text-secondary); margin:4px 0; }
@@ -2628,34 +2643,36 @@ const T = {
   nearbyReportsStat0: { en:'No nearby reports, {range}', sr:'Nema obližnjih prijava, {range}' },
   tracedReportsStat:  { en:'{n} of {total} reports traced to this site', sr:'{n} od {total} prijava povezano sa ovim objektom' },
   hhReportsInRange:   { en:'Nearby reports (map filter)', sr:'Obližnje prijave (filter mape)' },
-  hhTracedByDay:      { en:'Traced reports, per day', sr:'Povezane prijave, po danima' },
-  hhTracedByMonth:    { en:'Traced reports, per month', sr:'Povezane prijave, po mesecima' },
   hhTracedReports:    { en:'Traced to this site', sr:'Povezano sa ovim objektom' },
   nearestSite:        { en:'Nearest known site', sr:'Najbliži poznati objekat' },
   hhOpenBtn:          { en:'Details', sr:'Detalji' },
   hhTitle:            { en:'Site details', sr:'Detalji lokacije' },
   hhSectReports:      { en:'Community reports', sr:'Prijave zajednice' },
-  hhSectHeat:         { en:'Satellite heat history (2 years)', sr:'Satelitska istorija toplote (2 godine)' },
+  hhSectHeat:        { en:'Satellite heat detection', sr:'Satelitska toplotna detekcija' },
+  hhPeriod:           { en:'Period (map filter)', sr:'Period (filter mape)' },
+  hhHeatDetections:   { en:'Heat detections', sr:'Toplotne detekcije' },
+  hhHeatDaysRow:      { en:'Days with heat detection', sr:'Dani sa toplotnom detekcijom' },
+  hhNearbyRow:        { en:'Nearby reports', sr:'Obližnje prijave' },
+  hhTracedRow:        { en:'Traced reports', sr:'Povezane prijave' },
+  hhCmpByDay:         { en:'Comparison by day', sr:'Poređenje po danima' },
+  hhCmpByMonth:       { en:'Comparison by month', sr:'Poređenje po mesecima' },
+  hhCmpHint:          { en:'Tap a column to compare all rows', sr:'Dodirnite stubac da uporedite sve redove' },
+  hhBeyondData:       { en:'Satellite data only covers the last 2 years.', sr:'Satelitski podaci obuhvataju samo poslednje 2 godine.' },
   hhLoading:          { en:'Reading NASA archive…', sr:'Čitanje NASA arhive…' },
   hhFatal:            { en:'Could not read the NASA archive right now. Please try again shortly.', sr:'Trenutno nije moguće pročitati NASA arhivu. Pokušajte ponovo uskoro.' },
   hhRadius:           { en:'Radius', sr:'Radijus' },
-  hhDaysWith:         { en:'Days with a detection', sr:'Dani sa detekcijom' },
+  hhDaysWith:        { en:'Days with heat detection', sr:'Dani sa toplotnom detekcijom' },
   hhDaysUnit:         { en:'days', sr:'dana' },
   hhNightDays:        { en:'Of which at night', sr:'Od toga noću' },
-  hhLast90:           { en:'Last 90 days', sr:'Poslednjih 90 dana' },
-  hhBaseline:         { en:'Usual per 90 days before', sr:'Uobičajeno na 90 dana ranije' },
-  hhNewSpots:         { en:'New hot spots (last 90 days)', sr:'Nove tačke (poslednjih 90 dana)' },
   hhNewTag:           { en:'First seen in last 90 days', sr:'Prvi put viđeno u poslednjih 90 dana' },
   hhFirstLast:        { en:'First / last', sr:'Prvo / poslednje' },
   hhAvgFrp:           { en:'Avg power', sr:'Prosečna snaga' },
-  hhMonthly:          { en:'Days with a detection, per month', sr:'Dani sa detekcijom, po mesecima' },
-  hhReportsMonthly:   { en:'Nearby community reports, per month', sr:'Obližnje prijave zajednice, po mesecima' },
-  hhIncludeLow:       { en:'Include low-confidence detections', sr:'Uključi detekcije niske pouzdanosti' },
+  hhIncludeLow:      { en:'Include low-confidence heat detections', sr:'Uključi toplotne detekcije niske pouzdanosti' },
   hhCsv:              { en:'Download CSV', sr:'Preuzmi CSV' },
   hhCollapse:         { en:'Minimize / expand', sr:'Umanji / proširi' },
   hhRetry:            { en:'Try again', sr:'Pokušaj ponovo' },
   hhClose:            { en:'Close', sr:'Zatvori' },
-  hhNoData:           { en:'No detections in this area over the period.', sr:'Nema detekcija u ovoj oblasti u posmatranom periodu.' },
+  hhNoData:          { en:'No heat detections in this area over the period.', sr:'Nema toplotnih detekcija u ovoj oblasti u posmatranom periodu.' },
   hhIncomplete:       { en:'Some archive requests failed, so counts may be too low. Try again later.', sr:'Neki zahtevi ka arhivi nisu uspeli, pa su brojevi možda premali. Pokušajte ponovo kasnije.' },
   hhCaveat:           { en:'A satellite pixel is about 375 m. A recurring detection at an industrial site is often a normal heat source (kiln, furnace, stack). What matters is change over time and whether it lines up with air-quality readings. Clouds hide detections, so counts are minimums.', sr:'Satelitski piksel je oko 375 m. Ponavljana detekcija na industrijskom objektu je često uobičajen izvor toplote (peć, dimnjak). Bitna je promena kroz vreme i da li se poklapa sa merenjima kvaliteta vazduha. Oblaci skrivaju detekcije, pa su brojevi minimalni.' },
 };
@@ -6681,83 +6698,93 @@ function hhDedupe(rows) {
   return out;
 }
 
+// FIRMS gives an acquisition date (UTC) and a UTC HHMM time. Turn that into a
+// real timestamp so detections can be placed on the same LOCAL calendar days
+// as the community reports and the on-map filter.
+function hhDetTs(r) {
+  return Date.UTC(+r.d.slice(0, 4), +r.d.slice(5, 7) - 1, +r.d.slice(8, 10), +r.t.slice(0, 2), +r.t.slice(2, 4));
+}
+function hhLocalDay(ts) {
+  const d = new Date(ts), pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 // Pure function: rows -> the numbers and cells shown in the sheet/map.
+// Only detections inside [rangeStart, rangeEnd] (ms, the on-map filter's
+// period) are counted, so the heat numbers, the map circles and the CSV all
+// follow the filter like everything else.
 function hhAnalyze(rows, o) {
   const { lat, lon, radiusKm, includeLow, todayStr, startStr } = o;
-  const used = rows.filter(r =>
+  const rangeStart = o.rangeStart ?? -Infinity, rangeEnd = o.rangeEnd ?? Infinity;
+  const recentStart = hhAddDays(todayStr, -89);
+  const gl = HH_GRID_DEG, go = HH_GRID_DEG / Math.max(Math.cos(lat * Math.PI / 180), 0.01);
+  const cellKey = r => `${Math.round(r.a / gl)},${Math.round(r.o / go)}`;
+
+  const all = rows.filter(r =>
     (includeLow || r.c !== 'l') &&
     getHaversineDistance(lat, lon, r.a, r.o) <= radiusKm);
 
-  const recentStart = hhAddDays(todayStr, -89);
-  const days = new Set(), nightDays = new Set(), recentDays = new Set(), baseDays = new Set();
-  const monthSets = {};
-  const gl = HH_GRID_DEG, go = HH_GRID_DEG / Math.max(Math.cos(lat * Math.PI / 180), 0.01);
+  // "First seen" per grid cell is judged over the WHOLE archive (not just the
+  // filtered period) -- otherwise every cell would look new inside a short window.
+  const firstEver = new Map();
+  all.forEach(r => { const k = cellKey(r); const f = firstEver.get(k); if (f == null || r.d < f) firstEver.set(k, r.d); });
+
+  const used = [], points = [];
+  const days = new Set(), nightDays = new Set();
   const cells = new Map();
-  let frpSum = 0, frpN = 0;
 
-  for (const r of used) {
-    days.add(r.d);
-    if (r.n === 'N') nightDays.add(r.d);
-    (r.d >= recentStart ? recentDays : baseDays).add(r.d);
-    const mk = r.d.slice(0, 7);
-    (monthSets[mk] = monthSets[mk] || new Set()).add(r.d);
-    if (!isNaN(r.f)) { frpSum += r.f; frpN++; }
+  for (const r of all) {
+    const ts = hhDetTs(r);
+    if (ts < rangeStart || ts > rangeEnd) continue;
+    const day = hhLocalDay(ts), night = r.n === 'N';
+    used.push(r);
+    points.push({ ts, day, night });
+    days.add(day);
+    if (night) nightDays.add(day);
 
-    const ck = `${Math.round(r.a / gl)},${Math.round(r.o / go)}`;
+    const ck = cellKey(r);
     let c = cells.get(ck);
-    if (!c) { c = { sa: 0, so: 0, n: 0, dates: new Set(), nights: new Set(), frpSum: 0, frpN: 0, frpMax: 0, first: r.d, last: r.d }; cells.set(ck, c); }
+    if (!c) { c = { key: ck, sa: 0, so: 0, n: 0, dates: new Set(), nights: new Set(), frpSum: 0, frpN: 0, frpMax: 0, first: day, last: day }; cells.set(ck, c); }
     c.sa += r.a; c.so += r.o; c.n++;
-    c.dates.add(r.d);
-    if (r.n === 'N') c.nights.add(r.d);
+    c.dates.add(day);
+    if (night) c.nights.add(day);
     if (!isNaN(r.f)) { c.frpSum += r.f; c.frpN++; if (r.f > c.frpMax) c.frpMax = r.f; }
-    if (r.d < c.first) c.first = r.d;
-    if (r.d > c.last) c.last = r.d;
+    if (day < c.first) c.first = day;
+    if (day > c.last) c.last = day;
   }
 
-  const months = [];
-  let m = startStr.slice(0, 7);
-  const endM = todayStr.slice(0, 7);
-  for (let guard = 0; guard < 40; guard++) {
-    months.push({ key: m, n: monthSets[m] ? monthSets[m].size : 0 });
-    if (m === endM) break;
-    const [y, mo] = m.split('-').map(Number);
-    m = mo === 12 ? `${y + 1}-01` : `${y}-${String(mo + 1).padStart(2, '0')}`;
-  }
+  // Days the archive can actually cover inside the period (it only reaches
+  // back HH_DAYS and up to now), so "N of M days" is a fair ratio.
+  const from = Math.max(rangeStart, Date.parse(startStr + 'T00:00:00Z'));
+  const to = Math.min(rangeEnd, Date.now());
+  const spanDays = Math.max(1, Math.ceil((to - from) / 86400000));
 
-  // Community reports within the same radius, bucketed onto the same month
-  // keys as the heat bars above, so the two can be charted side by side.
-  // Straight-line proximity only (like nearbyReportsStatHtml), not
-  // wind-trace matched -- running the wind-trace check across a whole
-  // multi-year window would mean one historic-wind fetch per report ever
-  // filed near here, which isn't practical to do just for opening a panel.
-  const reportsByMonth = {};
-  months.forEach(mo => { reportsByMonth[mo.key] = 0; });
-  (globalActiveData || []).forEach(r => {
-    if (r.latitude == null || r.longitude == null) return;
-    const d = new Date(r.created_at);
-    if (isNaN(d.getTime())) return;
-    const key = d.toISOString().slice(0, 7);
-    if (!(key in reportsByMonth)) return;
-    if (getHaversineDistance(lat, lon, parseFloat(r.latitude), parseFloat(r.longitude)) <= radiusKm) reportsByMonth[key]++;
-  });
-
-  const spanDays = hhDaysBetween(startStr, todayStr) + 1;
-  const baseSpan = Math.max(1, spanDays - 90);
   const cellList = [...cells.values()].map(c => ({
     lat: c.sa / c.n, lon: c.so / c.n, days: c.dates.size, nightDays: c.nights.size,
     frpAvg: c.frpN ? c.frpSum / c.frpN : NaN, frpMax: c.frpMax, first: c.first, last: c.last,
-    isNew: c.first >= recentStart
+    isNew: firstEver.get(c.key) >= recentStart
   })).sort((a, b) => b.days - a.days);
 
-  return {
-    used, spanDays,
-    totalDays: days.size, nightDays: nightDays.size,
-    recentDays: recentDays.size,
-    baselinePer90: baseDays.size / baseSpan * 90,
-    avgFrp: frpN ? frpSum / frpN : NaN,
-    months, reportsByMonth, cells: cellList,
-    newCells: cellList.filter(c => c.isNew).length
-  };
+  return { used, points, spanDays, totalDays: days.size, nightDays: nightDays.size, cells: cellList };
+}
+
+// Heat detections bucketed onto the same buckets as the report charts (one
+// per local day up to 62 days, else one per month). Daily bars count
+// detections; monthly bars count distinct days with a detection.
+function hhHeatBuckets(points, rng) {
+  if ((rng.end - rng.start) / 86400000 <= 62) {
+    return bucketReportsByRange(points.map(p => ({ created_at: p.ts })), rng).buckets;
+  }
+  const { buckets } = bucketReportsByRange([], rng);
+  const idx = {}, sets = buckets.map(() => new Set());
+  buckets.forEach((b, i) => { idx[b.label] = i; });
+  points.forEach(p => {
+    const d = new Date(p.ts);
+    const i = idx[`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`];
+    if (i != null) sets[i].add(p.day);
+  });
+  buckets.forEach((b, i) => { b.n = sets[i].size; });
+  return buckets;
 }
 
 /* cache (small LRU so localStorage never fills up) */
@@ -6809,80 +6836,104 @@ function hhStat(label, value, sub) {
   return `<div class="hh-stat"><div class="hh-stat-v">${value}</div><div class="hh-stat-l">${label}</div>${sub ? `<div class="hh-stat-s">${sub}</div>` : ''}</div>`;
 }
 
+// Stacked bar charts on ONE shared axis (same buckets, same column widths), so
+// a heat detection, the nearby reports and the traced reports for the same day
+// sit directly above each other. Tapping a column highlights it in every row.
+// `a` (the heat analysis) is null while the NASA archive is still loading.
+function hhCompareHtml(s, rng, nearList, trHere, a) {
+  const near = bucketReportsByRange(nearList, rng);
+  const daily = near.daily;
+  const labels = near.buckets.map(b => b.label);
+  const rows = [];
+  if (a) rows.push({ name: t(daily ? 'hhHeatDetections' : 'hhHeatDaysRow'), vals: hhHeatBuckets(a.points, rng).map(b => b.n), cls: 'hh-bar', color: '#d84315' });
+  rows.push({ name: `${t('hhNearbyRow')} (${s.radiusKm} km)`, vals: near.buckets.map(b => b.n), cls: 'hh-bar-reports', color: '#00acc1' });
+  if (trHere) rows.push({ name: t('hhTracedRow'), vals: bucketReportsByRange(trHere.reports, rng).buckets.map(b => b.n), cls: 'hh-bar-traced', color: '#8e24aa' });
+  s.cmp = { labels, rows: rows.map(r => ({ name: r.name, vals: r.vals })) };
+
+  const showN = labels.length <= 16;      // few columns: print the count above each bar
+  const top = showN ? 78 : 100;           // leave headroom for that count
+  const sel = s.pick != null && s.pick < labels.length ? s.pick : null;
+  const rowsHtml = rows.map(r => {
+    const max = Math.max(1, ...r.vals);
+    const total = r.vals.reduce((x, y) => x + y, 0);
+    const cols = r.vals.map((n, i) => {
+      const h = Math.round(n / max * top);
+      return `<div class="hh-bar-col${sel === i ? ' sel' : ''}" data-i="${i}" onclick="hhCmpPick(${i})"><div class="${r.cls}" style="height:${h}%;${n ? 'min-height:2px;' : ''}"></div>${showN && n ? `<span class="hh-bar-n" style="bottom:calc(${h}% + 1px)">${n}</span>` : ''}</div>`;
+    }).join('');
+    return `<div class="hh-cmp-cap"><i style="background:${r.color}"></i>${r.name} — ${total}</div><div class="hh-bars">${cols}</div>`;
+  }).join('');
+  const axis = (daily && showN)
+    ? `<div class="hh-cmp-axis">${labels.map(l => `<span>${l.slice(0, 2)}</span>`).join('')}</div>`
+    : `<div class="hh-cmp-axis ends"><span>${labels[0]}</span><span>${labels[labels.length - 1]}</span></div>`;
+  return `<div class="hh-cmp">
+      <div class="hh-sect">${t(daily ? 'hhCmpByDay' : 'hhCmpByMonth')}</div>
+      ${rowsHtml}${axis}
+      <div class="hh-cmp-read" id="hhCmpRead">${hhCmpReadout()}</div>
+    </div>`;
+}
+
+function hhCmpReadout() {
+  const c = hhState && hhState.cmp;
+  if (!c) return '';
+  const i = hhState.pick;
+  if (i == null || i >= c.labels.length) return t('hhCmpHint');
+  return `<b>${c.labels[i]}</b>` + c.rows.map(r => ` · ${r.name}: <b>${r.vals[i]}</b>`).join('');
+}
+
+function hhCmpPick(i) {
+  if (!hhState || !hhState.cmp) return;
+  hhState.pick = hhState.pick === i ? null : i;
+  document.querySelectorAll('#hhSheet .hh-bar-col[data-i]').forEach(c =>
+    c.classList.toggle('sel', hhState.pick != null && +c.dataset.i === hhState.pick));
+  const rd = document.getElementById('hhCmpRead');
+  if (rd) rd.innerHTML = hhCmpReadout();
+}
+
 function hhRenderSheet() {
   const el = document.getElementById('hhSheet');
   if (!el || !hhState) return;
   const s = hhState;
   const chips = [0.5, 1.5, 3, 5].map(km =>
     `<button type="button" class="hh-chip${km === s.radiusKm ? ' on' : ''}" ${s.status === 'done' ? '' : 'disabled'} onclick="hhSetRadius(${km})">${km} km</button>`).join('');
-  // Report stats come from data already in the page, so they show right away
-  // instead of waiting for the NASA archive. They use the on-map filter's
-  // period; the traced count only shows when Trace Possible Source was run
-  // from this very site.
+
+  // Everything below -- report numbers AND satellite heat detections -- is
+  // scoped to the on-map filter's period. Report data is already in the page,
+  // so it shows right away while the NASA archive is still loading; the
+  // traced count only shows when Trace Possible Source was run from this site.
   const rng = mapFilterRange();
-  const nearInRange = countNearbyReports(s.lat, s.lon, s.radiusKm);
+  const nearList = reportsNearPoint(s.lat, s.lon, s.radiusKm);
   const trHere = tracedReportsForPoint(s.lat, s.lon);
-  let tracedChartHtml = '';
-  if (trHere) {
-    const { buckets, daily } = bucketReportsByRange(trHere.reports, rng);
-    const tmax = Math.max(1, ...buckets.map(b => b.n));
-    const tbars = buckets.map(b =>
-      `<div class="hh-bar-col" title="${b.label}: ${b.n} ${b.n === 1 ? t('reportCount1') : t('reportCount')}"><div class="hh-bar-traced" style="height:${Math.round(b.n / tmax * 100)}%;${b.n ? 'min-height:2px;' : ''}"></div></div>`).join('');
-    tracedChartHtml = `
-    <div class="hh-sect" style="margin-top:8px;">${t(daily ? 'hhTracedByDay' : 'hhTracedByMonth')} — ${trHere.reports.length}</div>
-    <div class="hh-bars">${tbars}</div>
-    <div class="hh-bar-labels"><span>${buckets[0].label}</span><span>${buckets[buckets.length - 1].label}</span></div>`;
-  }
-  const reportStatsHtml = `<div class="hh-sect">${t('hhSectReports')}</div>
-    <div class="hh-stats">
-      ${hhStat(t('hhReportsInRange'), nearInRange, `${rng.label} · ${s.radiusKm} km`)}
-      ${trHere ? hhStat(t('hhTracedReports'), `${trHere.reports.length}<span class="hh-of"> / ${trHere.total}</span>`, rng.label) : ''}
-    </div>${tracedChartHtml}`;
+  const a = s.status === 'done' ? s.analysis : null;
+  const periodHtml = `<div class="hh-muted" style="margin:2px 0 6px;">${t('hhPeriod')}: <b>${rng.label}</b></div>`;
+  const cards = [
+    hhStat(t('hhReportsInRange'), nearList.length, `${s.radiusKm} km`),
+    trHere ? hhStat(t('hhTracedReports'), `${trHere.reports.length}<span class="hh-of"> / ${trHere.total}</span>`) : ''
+  ];
+  if (a) cards.push(
+    hhStat(t('hhDaysWith'), `${a.totalDays}<span class="hh-of"> / ${a.spanDays}</span>`, `${Math.round(a.totalDays / a.spanDays * 100)}%`),
+    hhStat(t('hhNightDays'), a.nightDays));
+  const topHtml = `${periodHtml}<div class="hh-stats">${cards.join('')}</div>${hhCompareHtml(s, rng, nearList, trHere, a)}`;
+  const heatHead = `<div class="hh-sect" style="margin-top:8px;">${t('hhSectHeat')}</div>`;
+
   let body = '';
   if (s.status === 'loading') {
-    body = `${reportStatsHtml}
-            <div class="hh-sect" style="margin-top:8px;">${t('hhSectHeat')}</div>
+    body = `${topHtml}${heatHead}
             <div class="hh-progress"><div class="hh-progress-bar" id="hhProgressBar" style="width:${s.pct || 0}%"></div></div>
             <div class="hh-muted" id="hhProgressText">${t('hhLoading')} ${s.pctText || ''}</div>`;
   } else if (s.status === 'nokey') {
-    body = `${reportStatsHtml}
-            <div class="hh-sect" style="margin-top:8px;">${t('hhSectHeat')}</div>
+    body = `${topHtml}${heatHead}
             <div class="hh-warn">${t('wildfireNoKeyMsg')}</div>`;
   } else if (s.status === 'error') {
-    body = `${reportStatsHtml}
-            <div class="hh-sect" style="margin-top:8px;">${t('hhSectHeat')}</div>
+    body = `${topHtml}${heatHead}
             <div class="hh-warn">${t('hhFatal')}</div>
             <div class="hh-actions"><button type="button" class="hh-btn" onclick="hhRetry()">${t('hhRetry')}</button></div>`;
-  } else if (s.analysis) {
-    const a = s.analysis;
-    const trend = a.baselinePer90 > 0 ? a.recentDays / a.baselinePer90 : null;
-    const trendTxt = trend == null ? '' : `(×${trend.toFixed(1)})`;
-    const max = Math.max(1, ...a.months.map(m => m.n));
-    const bars = a.months.map(m =>
-      `<div class="hh-bar-col" title="${m.key}: ${m.n} ${t('hhDaysUnit')}"><div class="hh-bar" style="height:${Math.round(m.n / max * 100)}%;${m.n ? 'min-height:2px;' : ''}"></div></div>`).join('');
-    const reportMax = Math.max(1, ...a.months.map(m => a.reportsByMonth[m.key] || 0));
-    const reportBars = a.months.map(m => {
-      const rn = a.reportsByMonth[m.key] || 0;
-      return `<div class="hh-bar-col" title="${m.key}: ${rn} ${rn === 1 ? t('reportCount1') : t('reportCount')}"><div class="hh-bar-reports" style="height:${Math.round(rn / reportMax * 100)}%;${rn ? 'min-height:2px;' : ''}"></div></div>`;
-    }).join('');
-    const totalNearbyReports = a.months.reduce((sum, m) => sum + (a.reportsByMonth[m.key] || 0), 0);
+  } else if (a) {
+    const beyond = rng.start < Date.parse(s.startStr + 'T00:00:00Z') - 86400000;
     body = `
       ${s.failed ? `<div class="hh-warn">${t('hhIncomplete')}</div>` : ''}
-      ${reportStatsHtml}
-      <div class="hh-sect" style="margin-top:8px;">${t('hhSectHeat')}</div>
-      ${a.totalDays === 0 ? `<div class="hh-muted" style="margin:8px 0;">${t('hhNoData')}</div>` : `
-      <div class="hh-stats">
-        ${hhStat(t('hhDaysWith'), `${a.totalDays}<span class="hh-of"> / ${a.spanDays}</span>`, `${Math.round(a.totalDays / a.spanDays * 100)}%`)}
-        ${hhStat(t('hhNightDays'), a.nightDays)}
-        ${hhStat(t('hhLast90'), a.recentDays, `${t('hhBaseline')}: ${a.baselinePer90.toFixed(1)} ${trendTxt}`)}
-        ${hhStat(t('hhNewSpots'), a.newCells, a.newCells ? `<span style="color:#00acc1;">◯ ${t('hhNewTag')}</span>` : '')}
-      </div>
-      <div class="hh-sect">${t('hhMonthly')}</div>
-      <div class="hh-bars">${bars}</div>
-      <div class="hh-bar-labels"><span>${a.months[0].key}</span><span>${a.months[a.months.length - 1].key}</span></div>
-      <div class="hh-sect" style="margin-top:8px;">${t('hhReportsMonthly')} (${s.radiusKm} km) — ${totalNearbyReports}</div>
-      <div class="hh-bars">${reportBars}</div>
-      <div class="hh-bar-labels"><span>${a.months[0].key}</span><span>${a.months[a.months.length - 1].key}</span></div>`}
+      ${topHtml}
+      ${a.totalDays === 0 ? `<div class="hh-muted" style="margin:6px 0;">${t('hhNoData')}</div>` : ''}
+      ${beyond ? `<div class="hh-muted" style="margin:6px 0;">${t('hhBeyondData')}</div>` : ''}
       <div class="hh-legend"><span><i style="background:#ffca28"></i>1–2</span><span><i style="background:#f57c00"></i>3–9</span><span><i style="background:#d84315"></i>10–29</span><span><i style="background:#7f0000"></i>30+ ${t('hhDaysUnit')}</span></div>
       <label class="hh-check"><input type="checkbox" ${s.includeLow ? 'checked' : ''} onchange="hhSetIncludeLow(this.checked)"> ${t('hhIncludeLow')}</label>
       <div class="hh-caveat">${t('hhCaveat')}</div>
@@ -6920,7 +6971,8 @@ function hhRecompute() {
   if (!hhState || !hhState.rows) return;
   hhState.analysis = hhAnalyze(hhState.rows, {
     lat: hhState.lat, lon: hhState.lon, radiusKm: hhState.radiusKm,
-    includeLow: hhState.includeLow, todayStr: hhState.todayStr, startStr: hhState.startStr
+    includeLow: hhState.includeLow, todayStr: hhState.todayStr, startStr: hhState.startStr,
+    rangeStart: mapFilterRange().start, rangeEnd: mapFilterRange().end
   });
   hhState.status = 'done';
   hhRenderSheet();
