@@ -1269,7 +1269,7 @@ span.flatpickr-weekday {
       <label class="settings-toggle-row" for="factoryToggle">
         <span id="factoryToggleLabel">Factories &amp; industrial sites</span>
         <span class="toggle-switch">
-          <input type="checkbox" id="factoryToggle" onchange="toggleFactoryLayer()">
+          <input type="checkbox" id="factoryToggle" autocomplete="off" onchange="setFactoryLayer(this.checked)">
           <span class="toggle-switch-track"><span class="toggle-switch-thumb"></span></span>
         </span>
       </label>
@@ -1280,7 +1280,7 @@ span.flatpickr-weekday {
       <label class="settings-toggle-row" for="wildfireToggle">
         <span id="wildfireToggleLabel">Active wildfires</span>
         <span class="toggle-switch">
-          <input type="checkbox" id="wildfireToggle" onchange="toggleWildfireLayer()">
+          <input type="checkbox" id="wildfireToggle" autocomplete="off" onchange="setWildfireLayer(this.checked)">
           <span class="toggle-switch-track"><span class="toggle-switch-thumb"></span></span>
         </span>
       </label>
@@ -1291,7 +1291,7 @@ span.flatpickr-weekday {
       <label class="settings-toggle-row" for="traceModeToggle">
         <span id="traceModeToggleLabel">Trace Possible Source</span>
         <span class="toggle-switch">
-          <input type="checkbox" id="traceModeToggle" onchange="toggleTraceMode()">
+          <input type="checkbox" id="traceModeToggle" autocomplete="off" onchange="setTraceMode(this.checked)">
           <span class="toggle-switch-track"><span class="toggle-switch-thumb"></span></span>
         </span>
       </label>
@@ -1302,7 +1302,7 @@ span.flatpickr-weekday {
       <label class="settings-toggle-row" for="splineVisibilityToggle">
         <span id="splineVisibilityLabel">Show historical wind trails</span>
         <span class="toggle-switch">
-          <input type="checkbox" id="splineVisibilityToggle" onchange="setSplineVisibility(this.checked)">
+          <input type="checkbox" id="splineVisibilityToggle" autocomplete="off" onchange="setSplineVisibility(this.checked)">
           <span class="toggle-switch-track"><span class="toggle-switch-thumb"></span></span>
         </span>
       </label>
@@ -1313,7 +1313,7 @@ span.flatpickr-weekday {
       <label class="settings-toggle-row" for="traceHeatmapToggle">
         <span id="traceHeatmapLabel">Show heatmap when tracing possible source</span>
         <span class="toggle-switch">
-          <input type="checkbox" id="traceHeatmapToggle" onchange="setTraceHeatmapEnabled(this.checked)">
+          <input type="checkbox" id="traceHeatmapToggle" autocomplete="off" onchange="setTraceHeatmapEnabled(this.checked)">
           <span class="toggle-switch-track"><span class="toggle-switch-thumb"></span></span>
         </span>
       </label>
@@ -1324,7 +1324,7 @@ span.flatpickr-weekday {
       <label class="settings-toggle-row" for="sourceHeatToggle">
         <span id="sourceHeatToggleLabel">Source heatmap</span>
         <span class="toggle-switch">
-          <input type="checkbox" id="sourceHeatToggle" onchange="toggleSourceHeat()">
+          <input type="checkbox" id="sourceHeatToggle" autocomplete="off" onchange="setSourceHeat(this.checked)">
           <span class="toggle-switch-track"><span class="toggle-switch-thumb"></span></span>
         </span>
       </label>
@@ -1646,10 +1646,10 @@ function renderWizDetailsStep() {
         <div class="wind-compass-wrap">
           <svg class="wind-compass-dial" id="windCompassDial" viewBox="0 0 200 200" width="200" height="200">
             <circle cx="100" cy="100" r="90" fill="none" stroke="var(--border-color-strong)" stroke-width="2"/>
-            <text class="compass-label-text" x="100" y="30" text-anchor="middle" dominant-baseline="middle">N</text>
-            <text class="compass-label-text" x="170" y="100" text-anchor="middle" dominant-baseline="middle">E</text>
-            <text class="compass-label-text" x="100" y="170" text-anchor="middle" dominant-baseline="middle">S</text>
-            <text class="compass-label-text" x="30" y="100" text-anchor="middle" dominant-baseline="middle">W</text>
+            <text class="compass-label-text" x="100" y="30" text-anchor="middle" dominant-baseline="middle">${CARDINALS[lang][0]}</text>
+            <text class="compass-label-text" x="170" y="100" text-anchor="middle" dominant-baseline="middle">${CARDINALS[lang][2]}</text>
+            <text class="compass-label-text" x="100" y="170" text-anchor="middle" dominant-baseline="middle">${CARDINALS[lang][4]}</text>
+            <text class="compass-label-text" x="30" y="100" text-anchor="middle" dominant-baseline="middle">${CARDINALS[lang][6]}</text>
             <g id="compassArrowGroup" transform="rotate(90 100 100)">
               <line x1="100" y1="100" x2="100" y2="50" stroke="var(--accent)" stroke-width="4" stroke-linecap="round"/>
               <polygon points="100,36 90,52 110,52" fill="var(--accent)"/>
@@ -1917,10 +1917,26 @@ function showSettingsModal() {
   // flex:1/min-height:0 scroll fix on .fullscreen-modal-body, which is
   // exactly why the settings panel wasn't scrolling.
   document.getElementById('settingsModal').style.display = 'flex';
-  const splineToggle = document.getElementById('splineVisibilityToggle');
-  if (splineToggle) splineToggle.checked = splinesVisible;
-  const traceHeatToggle = document.getElementById('traceHeatmapToggle');
-  if (traceHeatToggle) traceHeatToggle.checked = traceHeatmapEnabled;
+  syncSettingsToggles();
+}
+
+// Single source of truth: every Settings switch is set from the live state
+// variables, never the other way round. Called after every state change,
+// whenever Settings opens, on load, and when the page is restored from the
+// back/forward cache -- so a switch can't show "on" while its layer is off
+// (or vice versa), e.g. after a failed fetch or after tapping a factory pin
+// (which turns Trace Possible Source on by itself).
+function syncSettingsToggles() {
+  const set = (id, on) => {
+    const el = document.getElementById(id);
+    if (el) el.checked = !!on;
+  };
+  set('factoryToggle', factoryVisible);
+  set('wildfireToggle', wildfireVisible);
+  set('traceModeToggle', traceMode);
+  set('splineVisibilityToggle', splinesVisible);
+  set('traceHeatmapToggle', traceHeatmapEnabled);
+  set('sourceHeatToggle', sourceHeatVisible);
 }
 function hideSettingsModal() {
   document.getElementById('settingsModal').style.display = 'none';
@@ -2022,12 +2038,12 @@ function buildMapKeyModalContent() {
 
     <div style="font-weight:600; margin-bottom:6px;">${t('mapKeyStationsTitle')}</div>
     <div style="display:flex; flex-wrap:wrap; gap:8px 14px; margin-bottom:2px;">
-      <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;background:#4CAF50;display:inline-block;transform:rotate(45deg);"></span><span style="color:var(--text-secondary);">Dobar (good)</span></span>
-      <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;background:#8BC34A;display:inline-block;transform:rotate(45deg);"></span><span style="color:var(--text-secondary);">Prihvatljiv (acceptable)</span></span>
-      <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;background:#FFC107;display:inline-block;transform:rotate(45deg);"></span><span style="color:var(--text-secondary);">Umeren (moderate)</span></span>
-      <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;background:#FF9800;display:inline-block;transform:rotate(45deg);"></span><span style="color:var(--text-secondary);">Zagađen (polluted)</span></span>
-      <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;background:#F44336;display:inline-block;transform:rotate(45deg);"></span><span style="color:var(--text-secondary);">Veoma zagađen (very polluted)</span></span>
-      <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;background:#9C27B0;display:inline-block;transform:rotate(45deg);"></span><span style="color:var(--text-secondary);">Izuzetno zagađen (extremely polluted)</span></span>
+      <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;background:#4CAF50;display:inline-block;transform:rotate(45deg);"></span><span style="color:var(--text-secondary);">${t('aqiGood')}</span></span>
+      <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;background:#8BC34A;display:inline-block;transform:rotate(45deg);"></span><span style="color:var(--text-secondary);">${t('aqiAcceptable')}</span></span>
+      <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;background:#FFC107;display:inline-block;transform:rotate(45deg);"></span><span style="color:var(--text-secondary);">${t('aqiModerate')}</span></span>
+      <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;background:#FF9800;display:inline-block;transform:rotate(45deg);"></span><span style="color:var(--text-secondary);">${t('aqiPolluted')}</span></span>
+      <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;background:#F44336;display:inline-block;transform:rotate(45deg);"></span><span style="color:var(--text-secondary);">${t('aqiVeryPolluted')}</span></span>
+      <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;background:#9C27B0;display:inline-block;transform:rotate(45deg);"></span><span style="color:var(--text-secondary);">${t('aqiExtremelyPolluted')}</span></span>
     </div>
     <p style="color:var(--text-secondary); margin:6px 0 0;">${t('mapKeyStationsBody')}</p>
 
@@ -2050,6 +2066,22 @@ let lastSyncTimestamp = new Date().toISOString();
 
 let lang = 'sr';
 let traceMode = false;
+
+// Map layer toggles (factories, wildfires, trace, wind trails, heatmaps) are
+// session-only and ALWAYS start off. Earlier versions saved them to
+// localStorage and restored them on load, which is how a stale "true" could
+// switch a layer on (and fire network requests) without the Settings switch
+// agreeing. Drop those legacy keys so old values can never resurface.
+['ttt_wildfire_visible', 'ttt_factory_visible', 'ttt_source_heat_visible',
+ 'ttt_splines_visible', 'ttt_trace_heatmap_enabled'].forEach(k => {
+  try { localStorage.removeItem(k); } catch (e) {}
+});
+
+// The reports currently drawn on the map (date-filtered, or the traced
+// subset while Trace Possible Source is active). The source heatmap draws
+// from this, so switching it on shows what the map shows -- not every
+// report ever submitted.
+let mapDisplayedReports = null;
 let tracerMarker = null;
 let tracerVisualCircles = []; 
 let globalActiveData = [];
@@ -2100,12 +2132,8 @@ function setTrailDisplayHours(hours) {
 
 // Historical wind-trail splines (the dashed lines + their tap targets) —
 // off by default, since most people just want to see the pins.
-let splinesVisible = (function () {
-  try { return localStorage.getItem('ttt_splines_visible') === 'true'; } catch (e) { return false; }
-})();
-let traceHeatmapEnabled = (function () {
-  try { return localStorage.getItem('ttt_trace_heatmap_enabled') === 'true'; } catch (e) { return false; }
-})();
+let splinesVisible = false;
+let traceHeatmapEnabled = false;
 function applySplineVisibility() {
   const pane = map.getPane('splinePane');
   // Trace Possible Source relies on the trail being visible to mean
@@ -2116,10 +2144,8 @@ function applySplineVisibility() {
 }
 function setSplineVisibility(visible) {
   splinesVisible = !!visible;
-  try { localStorage.setItem('ttt_splines_visible', String(splinesVisible)); } catch (e) {}
   applySplineVisibility();
-  const toggle = document.getElementById('splineVisibilityToggle');
-  if (toggle) toggle.checked = splinesVisible;
+  syncSettingsToggles();
 }
 
 // lastTraceTracerCoords/lastTraceMatchedReports/traceHeatLayer/
@@ -2129,9 +2155,7 @@ function setSplineVisibility(visible) {
 // whole script (and those declarations) has finished loading.
 function setTraceHeatmapEnabled(enabled) {
   traceHeatmapEnabled = !!enabled;
-  try { localStorage.setItem('ttt_trace_heatmap_enabled', String(traceHeatmapEnabled)); } catch (e) {}
-  const toggle = document.getElementById('traceHeatmapToggle');
-  if (toggle) toggle.checked = traceHeatmapEnabled;
+  syncSettingsToggles();
 
   if (!traceHeatmapEnabled) {
     if (traceHeatLayer && map.hasLayer(traceHeatLayer)) map.removeLayer(traceHeatLayer);
@@ -2302,9 +2326,7 @@ const WILDFIRE_REFRESH_MS = 15 * 60 * 1000;
 // at script-execution time, and a `let` isn't usable before its own
 // declaration runs even though the function declarations around it are
 // hoisted.
-let wildfireVisible = (function () {
-  try { return localStorage.getItem('ttt_wildfire_visible') === 'true'; } catch (e) { return false; }
-})();
+let wildfireVisible = false;
 let wildfireLayer = null;
 let wildfireLastFetchedAt = 0;
 // {lat, lon} the currently-loaded wildfireLayer was centered on -- lets
@@ -2425,6 +2447,36 @@ const T = {
 
   settingsMapKeyBtn: { en:'Map key', sr:'Legenda mape' },
 
+  // Settings switches for the map layers
+  factoryToggleLabel:   { en:'Factories & industrial sites', sr:'Fabrike i industrijski objekti' },
+  factoryToggleHint:    { en:'Show factories, power plants and landfills near you (OpenStreetMap data plus a hand-checked list). Off by default.', sr:'Prikaži fabrike, elektrane i deponije u vašoj blizini (podaci sa OpenStreetMap-a plus ručno proverena lista). Podrazumevano isključeno.' },
+  wildfireToggleLabel:  { en:'Active wildfires', sr:'Aktivni požari' },
+  wildfireToggleHint:   { en:'Show active wildfires detected by NASA satellite data (FIRMS) near you. Off by default.', sr:'Prikaži aktivne požare koje su otkrili NASA sateliti (FIRMS) u vašoj blizini. Podrazumevano isključeno.' },
+  traceModeToggleLabel: { en:'Trace Possible Source', sr:'Traži mogući izvor' },
+  traceModeToggleHint:  { en:'Turn this on, then tap the map (or a factory/power-plant/landfill marker) to see which reports\' wind trails trace back to that point. Off by default.', sr:'Uključite, pa dodirnite mapu (ili oznaku fabrike/elektrane/deponije) da vidite tragove vetra kojih prijava vode do te tačke. Podrazumevano isključeno.' },
+  sourceHeatToggleLabel:{ en:'Source heatmap', sr:'Toplotna mapa izvora' },
+  sourceHeatToggleHint: { en:'A concentration heatmap: one weighted point per report, so brighter/redder areas mean more (and stronger, more recent) reports nearby. Off by default.', sr:'Toplotna mapa koncentracije: jedna ponderisana tačka po prijavi, tako da svetlije/crvenije oblasti znače više (i jačih, skorijih) prijava u blizini. Podrazumevano isključeno.' },
+
+  // Map buttons / tooltips / aria labels
+  mapFilterBtnTitle:    { en:'Filter reports shown on the map by date', sr:'Filtriraj prijave prikazane na mapi po datumu' },
+  pinMapBtnTitle:       { en:'Set location manually', sr:'Ručno postavi lokaciju' },
+  traceSourceBtnTitle:  { en:'Trace Possible Source', sr:'Traži mogući izvor' },
+  sourceHeatBtnTitle:   { en:'Show probable source heatmap', sr:'Prikaži toplotnu mapu mogućeg izvora' },
+  wildfireBtnTitle:     { en:'Show active wildfires (NASA satellite data)', sr:'Prikaži aktivne požare (NASA satelitski podaci)' },
+  reportFabTitle:       { en:'Report bad air', sr:'Prijavi loš vazduh' },
+  windCompassTitle:     { en:'Live wind direction', sr:'Smer vetra uživo' },
+  splashLoading:        { en:'Loading map…', sr:'Učitavanje mape…' },
+  backLabel:            { en:'Back', sr:'Nazad' },
+  cancelLabel:          { en:'Cancel', sr:'Otkaži' },
+
+  // Air-quality tiers (the API returns Serbian category names)
+  aqiGood:              { en:'Good', sr:'Dobar' },
+  aqiAcceptable:        { en:'Acceptable', sr:'Prihvatljiv' },
+  aqiModerate:          { en:'Moderate', sr:'Umeren' },
+  aqiPolluted:          { en:'Polluted', sr:'Zagađen' },
+  aqiVeryPolluted:      { en:'Very polluted', sr:'Veoma zagađen' },
+  aqiExtremelyPolluted: { en:'Extremely polluted', sr:'Izuzetno zagađen' },
+
   traceHeatmapLabel: { en:'Show heatmap when tracing possible source', sr:'Prikaži toplotnu mapu prilikom traženja mogućeg izvora' },
   traceHeatmapHint:  {
     en:'While using Trace Possible Source: purple at the tracer pin, fading to red then orange toward each matched report, then a yellow tail continuing ~5km further along the wind past the report -- brightening back toward orange wherever it crosses another report\'s trail.',
@@ -2432,13 +2484,13 @@ const T = {
 
   sourceHeatSectionTitle: { en:'Source Heatmap', sr:'Toplotna mapa izvora' },
   sourceHeatSectionBody:  {
-    en:'The flame button shows a plain concentration heatmap: one weighted point per report, so brighter/redder areas simply mean more (and stronger, more recent) reports nearby.',
-    sr:'Dugme plamen prikazuje jednostavnu toplotnu mapu koncentracije: jedna ponderisana tačka po prijavi, tako da svetlije/crvenije oblasti jednostavno znače više (i jačih, skorijih) prijava u blizini.' },
+    en:'The source heatmap toggle above shows a plain concentration heatmap: one weighted point per report, so brighter/redder areas simply mean more (and stronger, more recent) reports nearby.',
+    sr:'Prekidač za toplotnu mapu izvora iznad prikazuje jednostavnu toplotnu mapu koncentracije: jedna ponderisana tačka po prijavi, tako da svetlije/crvenije oblasti jednostavno znače više (i jačih, skorijih) prijava u blizini.' },
 
   heatMethTitle: { en:'How the source heatmap works', sr:'Kako funkcioniše toplotna mapa izvora' },
   heatMethIntro: {
-    en:'The flame button shows where reports are concentrated -- it\'s not a wind or dispersion model, just a weighted density map of active reports:',
-    sr:'Dugme plamen prikazuje gde su prijave koncentrisane -- to nije model vetra ili disperzije, već samo ponderisana mapa gustine aktivnih prijava:' },
+    en:'The source heatmap shows where reports are concentrated -- it\'s not a wind or dispersion model, just a weighted density map of active reports:',
+    sr:'Toplotna mapa izvora prikazuje gde su prijave koncentrisane -- to nije model vetra ili disperzije, već samo ponderisana mapa gustine aktivnih prijava:' },
   heatMethLi1: { en:'Every active report contributes one point at its own location.', sr:'Svaka aktivna prijava doprinosi jednom tačkom na svojoj lokaciji.' },
   heatMethLi2: {
     en:'<strong>Intensity &amp; time-decay</strong> weight stronger, more recent reports more heavily than older or milder ones.',
@@ -2469,7 +2521,7 @@ const T = {
   mapKeyTrailsBody2: {
     en:'Tap a report to spotlight its trail -- every other trail and pin dims so it\'s easy to follow. Close the popup (or tap elsewhere) to bring everything back.',
     sr:'Dodirnite prijavu da istaknete njen trag -- svi ostali tragovi i oznake se zatamne radi lakšeg praćenja. Zatvorite iskačući prozor (ili dodirnite negde drugde) da vratite sve na prikaz.' },
-  mapKeySourceHeatTitle: { en:'Source heatmap (flame button)', sr:'Toplotna mapa izvora (dugme plamen)' },
+  mapKeySourceHeatTitle: { en:'Source heatmap (Settings)', sr:'Toplotna mapa izvora (Podešavanja)' },
   mapKeySourceHeatBody: {
     en:'Brighter/redder = more (and stronger, more recent) reports clustered in that area.',
     sr:'Svetlije/crvenije = više (i jačih, skorijih) prijava grupisanih u tom području.' },
@@ -2652,6 +2704,36 @@ function applyLang(){
   if (el('sourceHeatSectionBody'))  el('sourceHeatSectionBody').textContent = t('sourceHeatSectionBody');
   if (el('sourceHeatMethBtn'))      el('sourceHeatMethBtn').textContent = t('heatMethTitle');
   if (el('pullRefreshLabel'))      el('pullRefreshLabel').textContent = t('pullToRefresh');
+
+  // Settings switches for map layers
+  ['factory', 'wildfire', 'traceMode', 'sourceHeat'].forEach(k => {
+    if (el(k + 'ToggleLabel')) el(k + 'ToggleLabel').textContent = t(k + 'ToggleLabel');
+    if (el(k + 'ToggleHint'))  el(k + 'ToggleHint').textContent  = t(k + 'ToggleHint');
+  });
+
+  // Tooltips / aria labels / splash
+  const setTitle = (id, key) => { const e = el(id); if (e) e.title = t(key); };
+  setTitle('mapFilterBtn', 'mapFilterBtnTitle');
+  setTitle('pinMapBtn', 'pinMapBtnTitle');
+  setTitle('traceSourceBtn', 'traceSourceBtnTitle');
+  setTitle('sourceHeatBtn', 'sourceHeatBtnTitle');
+  setTitle('wildfireBtn', 'wildfireBtnTitle');
+  setTitle('factoryBtn', 'factoryBtnTitle');
+  setTitle('windCompassWidget', 'windCompassTitle');
+  setTitle('settingsBtn', 'settingsTitle');
+  const fab = el('reportFabBtn');
+  if (fab) {
+    fab.title = fab.disabled ? t('wizNoLocationHint') : t('reportFabTitle');
+    fab.setAttribute('aria-label', t('reportFabTitle'));
+  }
+  if (el('wizBackBtn')) el('wizBackBtn').setAttribute('aria-label', t('backLabel'));
+  const wizClose = document.querySelector('.wiz-close-btn');
+  if (wizClose) wizClose.setAttribute('aria-label', t('cancelLabel'));
+  const setClose = document.querySelector('.fullscreen-modal-close');
+  if (setClose) setClose.setAttribute('aria-label', t('helpClose'));
+  if (el('splashText')) el('splashText').textContent = t('splashLoading');
+  if (el('windCompassDir') && currentWindDegForMarker != null) el('windCompassDir').textContent = degToCardinal(currentWindDegForMarker);
+  updateSourceHeatBadge(mapDisplayedReports || globalActiveData);
   if (lastKnownReportCount !== null) updateReportCountUI(lastKnownReportCount, lastKnownReportTotal);
   if (lastKnownExportCount !== null) updateExportCountUI();
 
@@ -3039,7 +3121,7 @@ function checkFormReady() {
   const fabBtn = document.getElementById('reportFabBtn');
   if (fabBtn) {
     fabBtn.disabled = !hasLoc;
-    fabBtn.title = hasLoc ? 'Report bad air' : t('wizNoLocationHint');
+    fabBtn.title = hasLoc ? t('reportFabTitle') : t('wizNoLocationHint');
   }
   if (typeof checkWizSubmitReady === 'function') checkWizSubmitReady();
 
@@ -3207,28 +3289,11 @@ document.getElementById('pinMapBtn').style.display = 'flex';
 // (still display:none) purely so the toggle functions' classList calls
 // keep working harmlessly.
 
-// Restore last session's on/off state. Unlike the other toggles above this
-// one needs a live network fetch, not just a local re-render, so this
-// deliberately calls loadWildfireData() directly rather than routing
-// through toggleWildfireLayer() (which would flip wildfireVisible from the
-// true value we just loaded from storage back to false).
-if (wildfireVisible) {
-  loadWildfireData(true).then(ok => {
-    const btn = document.getElementById('wildfireBtn');
-    if (ok) {
-      if (btn) btn.classList.add('active');
-    } else {
-      wildfireVisible = false;
-      try { localStorage.setItem('ttt_wildfire_visible', 'false'); } catch (e) {}
-    }
-  });
-}
-
 function togglePinMode() {
   pinMode = !pinMode;
   
   if (pinMode) {
-    if (traceMode) toggleTraceMode(); 
+    if (traceMode) setTraceMode(false, { skipReload: true });
   }
   
   const btn = document.getElementById('pinMapBtn');
@@ -3262,6 +3327,8 @@ function togglePinMode() {
 // factory/burner marker click, which turns trace mode on implicitly).
 function enterTraceMode() {
   traceMode = true;
+  mapDisplayedReports = [];   // nothing traced yet, so nothing on the map
+  syncSettingsToggles();      // also reached via a factory-pin tap, not just the switch
 
   const btn = document.getElementById('traceSourceBtn');
   if (btn) btn.classList.add('active');
@@ -3281,17 +3348,23 @@ function enterTraceMode() {
   if (traceHeatLayer && map.hasLayer(traceHeatLayer)) map.removeLayer(traceHeatLayer);
   lastTraceTracerCoords = null;
   lastTraceMatchedReports = [];
+  applySplineVisibility();
+  if (sourceHeatVisible) renderSourceHeatLayer([]);
 }
 
-function toggleTraceMode() {
-  if (!traceMode) {
+// Explicit on/off (the Settings switch passes its own checked state, so the
+// two can never disagree). `skipReload` is for callers that immediately
+// take over the map themselves (manual pin mode).
+function setTraceMode(on, opts) {
+  on = !!on;
+  if (on === traceMode) { syncSettingsToggles(); return; }
+  if (on) {
     enterTraceMode();
   } else {
     traceMode = false;
     const btn = document.getElementById('traceSourceBtn');
     if (btn) btn.classList.remove('active');
 
-    // Returning back to normal mode: Restore everything safely
     if (tracerMarker) {
       map.removeLayer(tracerMarker);
       tracerMarker = null;
@@ -3301,11 +3374,15 @@ function toggleTraceMode() {
     if (traceHeatLayer && map.hasLayer(traceHeatLayer)) map.removeLayer(traceHeatLayer);
     lastTraceTracerCoords = null;
     lastTraceMatchedReports = [];
+    mapDisplayedReports = null;
 
-    loadPinsByWindow(); // Re-render default historical background trails and pins
+    if (!(opts && opts.skipReload)) loadPinsByWindow(); // back to normal pins + trails
   }
-  checkFormReady(); // Maintain UI integrity
+  applySplineVisibility();
+  syncSettingsToggles();
+  checkFormReady();
 }
+function toggleTraceMode() { setTraceMode(!traceMode); }
 
 // Drops/moves the red tracer dot at {lat, lon} and runs the trace, exactly
 // like a map click does while Trace Possible Source is active.
@@ -3587,14 +3664,15 @@ const AQI_TIER_ORDER = ['DOBAR', 'PRIHVATLJIV', 'UMEREN', 'ZAGAĐEN', 'VEOMA ZAG
 // Bilingual tier labels, reused as-is from the map legend's own text so the
 // hover tooltip on a colored pollutant value always matches what the legend
 // says that color means.
-const AQI_TIER_LABELS = {
-  'DOBAR':            'Dobar (good)',
-  'PRIHVATLJIV':       'Prihvatljiv (acceptable)',
-  'UMEREN':            'Umeren (moderate)',
-  'ZAGAĐEN':           'Zagađen (polluted)',
-  'VEOMA ZAGAĐEN':     'Veoma zagađen (very polluted)',
-  'IZUZETNO ZAGAĐEN':  'Izuzetno zagađen (extremely polluted)',
+const AQI_TIER_KEYS = {
+  'DOBAR': 'aqiGood', 'PRIHVATLJIV': 'aqiAcceptable', 'UMEREN': 'aqiModerate',
+  'ZAGAĐEN': 'aqiPolluted', 'VEOMA ZAGAĐEN': 'aqiVeryPolluted', 'IZUZETNO ZAGAĐEN': 'aqiExtremelyPolluted',
 };
+// Tier name in the active language (falls back to the raw API value).
+function aqiTierLabel(cat) {
+  const key = AQI_TIER_KEYS[String(cat || '').toUpperCase()];
+  return key ? t(key) : (cat || '');
+}
 
 // Shared lookup: which of the 6 tiers a given pollutant+value falls into,
 // or null if the pollutant/value isn't recognized. Both the color and the
@@ -3626,8 +3704,12 @@ function categoryColor(cat) {
   return key ? CATEGORY_COLORS[key] : '#aaaaaa';
 }
 
+const CARDINALS = {
+  en: ['N','NE','E','SE','S','SW','W','NW'],
+  sr: ['S','SI','I','JI','J','JZ','Z','SZ'],   // sever, severoistok, istok, jugoistok, jug, jugozapad, zapad, severozapad
+};
 function degToCardinal(deg){
-  return ['N','NE','E','SE','S','SW','W','NW'][Math.round(deg/45)%8];
+  return (CARDINALS[lang] || CARDINALS.en)[Math.round(deg/45)%8];
 }
 
 // Updates the header badge: how many reports the ON-MAP filter (mapFp) is
@@ -4051,7 +4133,7 @@ function buildStationPopupHtml(station, reading) {
     <div style="padding:5px 8px;display:flex;flex-direction:column;gap:2px;">
       ${reading ? `
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
-          <span style="font-size:10px;font-weight:700;" title="${reading.category || ''}">${reading.category || '–'}</span>
+          <span style="font-size:10px;font-weight:700;" title="${aqiTierLabel(reading.category)}">${aqiTierLabel(reading.category) || '–'}</span>
           <span style="font-size:9px;color:var(--text-secondary);">${t('aqUpdated')} ${formatStationTime(reading.recorded_at)}</span>
         </div>
         <div style="height:1px;background:var(--border-color);margin:2px 0;"></div>
@@ -5353,9 +5435,7 @@ function updateConeVisibilityForClustering() {
    where reports actually cluster, so it's back to measuring report
    density.
 ═══════════════════════════════════════════════════ */
-let sourceHeatVisible = (function () {
-  try { return localStorage.getItem('ttt_source_heat_visible') === 'true'; } catch (e) { return false; }
-})();
+let sourceHeatVisible = false;
 let sourceHeatLayer = null;
 
 // Sets heat-layer data without ever touching a layer that's currently
@@ -5445,23 +5525,27 @@ function updateSourceHeatBadge(reports) {
   const totalReports = (reports || globalActiveData || []).length;
   badge.style.display = 'flex';
   badge.style.removeProperty('--confidence-color');
-  badge.innerHTML = `${totalReports} report${totalReports === 1 ? '' : 's'}`;
+  badge.textContent = `${totalReports} ${totalReports === 1 ? t('reportCount1') : t('reportCount')}`.toLowerCase();
 }
 
-function toggleSourceHeat() {
-  sourceHeatVisible = !sourceHeatVisible;
-  try { localStorage.setItem('ttt_source_heat_visible', String(sourceHeatVisible)); } catch (e) {}
+function setSourceHeat(on) {
+  sourceHeatVisible = !!on;
 
   const btn = document.getElementById('sourceHeatBtn');
   if (btn) btn.classList.toggle('active', sourceHeatVisible);
 
+  // Use what's actually on the map (date filter / traced subset), not every
+  // report ever loaded.
+  const shown = mapDisplayedReports || globalActiveData;
   if (sourceHeatVisible) {
-    renderSourceHeatLayer(globalActiveData);
+    renderSourceHeatLayer(shown);
   } else {
     if (sourceHeatLayer && map.hasLayer(sourceHeatLayer)) map.removeLayer(sourceHeatLayer);
-    updateSourceHeatBadge(globalActiveData);
+    updateSourceHeatBadge(shown);
   }
+  syncSettingsToggles();
 }
+function toggleSourceHeat() { setSourceHeat(!sourceHeatVisible); }
 
 /* ═══════════════════════════════════════════════════
    WILDFIRES (NASA FIRMS) -- satellite-detected hotspot dots,
@@ -5955,17 +6039,19 @@ async function growWildfireRadiusIfNeeded() {
 map.on('zoomend moveend', growWildfireRadiusIfNeeded);
 
 
-async function toggleWildfireLayer() {
-  const turningOn = !wildfireVisible;
+// Guards against rapid on/off/on taps: only the latest request may finish.
+let wildfireToggleSeq = 0;
+async function setWildfireLayer(on) {
+  on = !!on;
   const btn = document.getElementById('wildfireBtn');
+  const seq = ++wildfireToggleSeq;
 
-  if (turningOn) {
+  if (on) {
     wildfireVisible = true; // set before fetching so renderWildfireMarkers() adds the layer once data arrives
+    syncSettingsToggles();
     const { lat, lon } = activeWizLocation();
-    // Re-center the 100km box once the user has moved roughly a third of
-    // its radius, rather than waiting on the time-based window -- otherwise
-    // walking/driving away from where the layer was first loaded would
-    // leave fires near the old spot on screen and miss new ones nearby.
+    // Re-center the box once the user has moved roughly a third of its
+    // radius, rather than waiting on the time-based window.
     const movedFar = wildfireLastFetchedAround &&
       getHaversineDistance(lat, lon, wildfireLastFetchedAround.lat, wildfireLastFetchedAround.lon) > WILDFIRE_RADIUS_KM / 3;
     const stale = !wildfireLayer || movedFar || (Date.now() - wildfireLastFetchedAt) > WILDFIRE_REFRESH_MS;
@@ -5975,16 +6061,24 @@ async function toggleWildfireLayer() {
     } else {
       wildfireLayer.addTo(map);
     }
-    if (!ok) { wildfireVisible = false; return; } // fetch failed -- leave the toggle off, no localStorage write
+    if (seq !== wildfireToggleSeq) return; // a newer toggle took over
+    if (!ok) {
+      // Fetch failed: put everything (including the switch) back to off.
+      wildfireVisible = false;
+      if (wildfireLayer && map.hasLayer(wildfireLayer)) map.removeLayer(wildfireLayer);
+      if (btn) btn.classList.remove('active');
+      syncSettingsToggles();
+      return;
+    }
     if (btn) btn.classList.add('active');
-    try { localStorage.setItem('ttt_wildfire_visible', 'true'); } catch (e) {}
   } else {
     wildfireVisible = false;
     if (wildfireLayer && map.hasLayer(wildfireLayer)) map.removeLayer(wildfireLayer);
     if (btn) btn.classList.remove('active');
-    try { localStorage.setItem('ttt_wildfire_visible', 'false'); } catch (e) {}
   }
+  syncSettingsToggles();
 }
+function toggleWildfireLayer() { return setWildfireLayer(!wildfireVisible); }
 
 
 /* ═══════════════════════════════════════════════════
@@ -6016,9 +6110,7 @@ area["ISO3166-1"="RS"][admin_level=2]->.rs;
 out center tags;`;
 const FACTORY_KIND_COLORS = { works: '#607d8b', energy: '#f9a825', landfill: '#8d6e63' };
 
-let factoryVisible = (function () {
-  try { return localStorage.getItem('ttt_factory_visible') === 'true'; } catch (e) { return false; }
-})();
+let factoryVisible = false;
 let factoryLayer = null;
 let factoryData = null; // [{i, a, o, n, k, d}] id, lat, lon, name, kind, detail
 
@@ -6253,16 +6345,20 @@ function ttToast(msg, ms) {
   if (ms) ttToastTimer = setTimeout(() => { el.style.display = 'none'; }, ms);
 }
 
-async function toggleFactoryLayer() {
+let factoryToggleSeq = 0;
+async function setFactoryLayer(on) {
+  on = !!on;
   const btn = document.getElementById('factoryBtn');
-  if (!factoryVisible) {
+  const seq = ++factoryToggleSeq;
+
+  if (on) {
     factoryVisible = true;
     renderBurnerMarkers();               // curated list: instant, works offline
     if (btn) btn.classList.add('active');
-    try { localStorage.setItem('ttt_factory_visible', 'true'); } catch (e) {}
+    syncSettingsToggles();
     if (!factoryData) ttToast(t('factoryLoading'), 0);
     const ok = await loadFactoryData(true); // OSM list: slower, may fail
-    if (!factoryVisible) return;         // toggled off while loading
+    if (seq !== factoryToggleSeq || !factoryVisible) return; // toggled off/on again while loading
     if (ok) ttToast(null); else ttToast(t('factoryOsmFailed'), 8000);
   } else {
     factoryVisible = false;
@@ -6270,18 +6366,14 @@ async function toggleFactoryLayer() {
     if (burnerLayer && map.hasLayer(burnerLayer)) map.removeLayer(burnerLayer);
     if (factoryLayer && map.hasLayer(factoryLayer)) map.removeLayer(factoryLayer);
     if (btn) btn.classList.remove('active');
-    try { localStorage.setItem('ttt_factory_visible', 'false'); } catch (e) {}
+    syncSettingsToggles();
   }
 }
+function toggleFactoryLayer() { return setFactoryLayer(!factoryVisible); }
 
-// Factories no longer gets its own floating map button -- it defaults off
-// and lives as a toggle in Settings instead (#factoryBtn stays in the DOM,
-// still display:none, so the classList calls below keep working harmlessly).
-if (factoryVisible) {
-  renderBurnerMarkers();
-  document.getElementById('factoryBtn').classList.add('active');
-  loadFactoryData(true).then(ok => { if (!ok && factoryVisible) ttToast(t('factoryOsmFailed'), 8000); });
-}
+// Factories default to off every load and are switched on from Settings
+// (#factoryBtn stays in the DOM, display:none, only so the classList calls
+// above keep working).
 
 // Nearest known factory/burner to a point (used in the fire popup). Only
 // searches what's already loaded -- never triggers a network fetch itself.
@@ -6780,7 +6872,7 @@ function pollutantSummaryRowHtml(reading) {
     const display = (val != null && !isNaN(val)) ? Number(val).toFixed(1) : '–';
     const color = (val != null && !isNaN(val)) ? pollutantValueColor(key, val) : 'var(--text-primary)';
     const tier = (val != null && !isNaN(val)) ? pollutantValueTier(key, val) : null;
-    const tooltip = tier ? ` title="${AQI_TIER_LABELS[tier]}"` : '';
+    const tooltip = tier ? ` title="${aqiTierLabel(tier)}"` : '';
     return `<span style="white-space:nowrap;"><span style="color:var(--text-secondary);">${label}</span> <span style="font-weight:700;color:${color};"${tooltip}>${display}</span></span>`;
   });
   return `<div style="display:flex;flex-wrap:nowrap;gap:5px 8px;font-size:10px;align-items:baseline;overflow-x:auto;">${parts.join(`<span style="color:var(--border-color-strong);">·</span>`)}</div>`;
@@ -7059,8 +7151,11 @@ async function loadPinsByWindow() {
   updateReportCountUI(n);
 
   evaluateActiveNearbyClusters();
-  if (!traceMode) generateAllBackgroundTrails(activeReports);
-  if (sourceHeatVisible) renderSourceHeatLayer(activeReports);
+  if (!traceMode) {
+    mapDisplayedReports = activeReports;
+    generateAllBackgroundTrails(activeReports);
+    if (sourceHeatVisible) renderSourceHeatLayer(activeReports);
+  }
 }
 
 /* ═══════════════════════════════════════════════════
@@ -7272,6 +7367,7 @@ async function filterPinsBySourceTrajectory(tracerCoords) {
     }
   });
 
+  mapDisplayedReports = activeReportsToDrawTrails;
   generateAllBackgroundTrails(activeReportsToDrawTrails, tracerCoords);
   if (sourceHeatVisible) renderSourceHeatLayer(activeReportsToDrawTrails);
 
@@ -7784,10 +7880,12 @@ async function downloadStationCSVInner() {
 ═══════════════════════════════════════════════════ */
 initTheme();
 
-// Reflect the persisted source-heatmap toggle on the button; the actual
-// layer gets built the first time loadPinsByWindow() runs (it checks
-// sourceHeatVisible itself once reports are loaded).
-document.getElementById('sourceHeatBtn')?.classList.toggle('active', sourceHeatVisible);
+// Every map-layer toggle starts off; make the Settings switches say so
+// (autocomplete="off" on them stops the browser restoring old checked
+// states, this covers the rest).
+syncSettingsToggles();
+window.addEventListener('pageshow', syncSettingsToggles);
+window.addEventListener('load', syncSettingsToggles);
 
 try {
   const savedLangMode = localStorage.getItem('ttt_lang_mode');
