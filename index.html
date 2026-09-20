@@ -7311,6 +7311,7 @@ async function computeTrajectoryMatchedReports(lat, lon, { days = NEARBY_REPORTS
 // not just the awaited part) is now inside the try/catch, so a bug here
 // surfaces as an error message in the popup instead of a dead button.
 async function checkWindMatchedReports(kind, idx, btnEl) {
+  alert('DEBUG: checkWindMatchedReports fired, kind=' + kind + ' idx=' + idx); // TEMP diagnostic -- remove once confirmed
   const container = btnEl ? btnEl.parentElement : document.getElementById(`wtm-${kind}-${idx}`);
   if (!container) return;
   try {
