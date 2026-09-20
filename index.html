@@ -6098,6 +6098,30 @@ function buildFactoryPopupHtml(idx) {
 </div>`;
 }
 
+// "man_made=works" in OSM covers everything from furniture makers to print
+// shops to metal fabricators -- most of which aren't what someone's actually
+// smelling from their balcony. Landfills and fossil/waste power plants are
+// odor/smoke sources by nature and always shown; a generic "works" site is
+// only shown if its name/product/industrial tags hint at a specific
+// odor-prone industry. This is a heuristic over often-thin OSM tagging, not
+// a certainty -- extend the keyword list below as false negatives turn up.
+const ODOR_PRONE_KEYWORDS = new RegExp([
+  'chemical', 'petrochemical', 'refiner', 'tannery', 'leather', 'slaughter', 'abattoir',
+  'rubber', 'plastic', 'paint', 'varnish', 'asphalt', 'foundry', 'smelter', 'coke',
+  'paper', 'pulp', 'fertilizer', 'pesticide', 'battery', 'glue', 'solvent', 'acid',
+  'sulf?ur', 'incinerat', 'wastewater', 'sewage', 'rendering', 'biogas', 'cement',
+  // Serbian/regional equivalents -- name/operator tags here are often Serbian-only
+  'hemij', 'petrohemij', 'rafinerij', 'cementar', '[đd]ubriv', 'azotar',
+  'ko[žz]', 'klanic', 'gum[ae]', 'plastik', 'farbar', 'lak[ie]?r',
+  'asfalt', 'livnic', 'topionic', 'koksar', 'papir', 'celuloz', 'baterij', 'akumulator',
+  'lepak', 'rastvara[cč]', 'kiselin', 'spalionic', 'kanalizacij', 'pre[cč]ista[cč]'
+].join('|'), 'i');
+
+function isLikelyOdorSource(f) {
+  if (f.k === 'landfill' || f.k === 'energy') return true; // waste/combustion -- always relevant
+  return ODOR_PRONE_KEYWORDS.test(f.n) || ODOR_PRONE_KEYWORDS.test(f.d);
+}
+
 function renderFactoryMarkers() {
   if (factoryLayer) map.removeLayer(factoryLayer);
   factoryLayer = L.markerClusterGroup({
@@ -6108,6 +6132,7 @@ function renderFactoryMarkers() {
     })
   });
   factoryData.forEach((f, idx) => {
+    if (!isLikelyOdorSource(f)) return; // idx is still the real array index -- just skip rendering
     L.marker([f.a, f.o], { icon: makeFactoryIcon(f.k) })
       .bindPopup(() => buildFactoryPopupHtml(idx), { maxWidth: 360, minWidth: 220 })
       .addTo(factoryLayer);
@@ -7311,12 +7336,15 @@ async function computeTrajectoryMatchedReports(lat, lon, { days = NEARBY_REPORTS
 // not just the awaited part) is now inside the try/catch, so a bug here
 // surfaces as an error message in the popup instead of a dead button.
 async function checkWindMatchedReports(kind, idx, btnEl) {
-  alert('DEBUG: checkWindMatchedReports fired, kind=' + kind + ' idx=' + idx); // TEMP diagnostic -- remove once confirmed
   const container = btnEl ? btnEl.parentElement : document.getElementById(`wtm-${kind}-${idx}`);
-  if (!container) return;
+  if (!container) { alert('DEBUG: no container element found for ' + kind + ' ' + idx); return; }
+  container.innerHTML = '<div style="color:#ff5252;font-weight:bold;">DEBUG STEP 1: container found</div>';
+  await new Promise(r => setTimeout(r, 900));
   try {
     const src = kind === 'factory' ? (factoryData && factoryData[idx]) : KNOWN_BURNERS[idx];
     if (!src) throw new Error(`no ${kind} at idx ${idx}`);
+    container.innerHTML = `<div style="color:#ff5252;font-weight:bold;">DEBUG STEP 2: src found, lat=${src.a} lon=${src.o}</div>`;
+    await new Promise(r => setTimeout(r, 900));
 
     const remaining = getWtmCooldownRemainingMs();
     if (remaining > 0) {
@@ -7325,8 +7353,9 @@ async function checkWindMatchedReports(kind, idx, btnEl) {
       return;
     }
     markWtmRunNow();
+    container.innerHTML = '<div style="color:#ff5252;font-weight:bold;">DEBUG STEP 3: cooldown OK, starting trajectory check (this may take a while)</div>';
+    await new Promise(r => setTimeout(r, 900));
 
-    container.innerHTML = `<div style="font-size:10px;color:var(--text-secondary);">${t('wtmChecking')}</div>`;
     const { matched, checked, capped, uncappedCount } = await computeTrajectoryMatchedReports(src.a, src.o, {
       onProgress: (doneN, total) => {
         container.innerHTML = `<div style="font-size:10px;color:var(--text-secondary);">${t('wtmCheckingProgress').replace('{done}', doneN).replace('{total}', total)}</div>`;
@@ -7343,7 +7372,7 @@ async function checkWindMatchedReports(kind, idx, btnEl) {
     container.innerHTML = `<div style="font-size:10px;color:var(--text-secondary);">🌬️ ${label}</div>${cappedNote}`;
   } catch (e) {
     console.warn('[wind-trace-match] failed', e);
-    container.innerHTML = `<div style="font-size:10px;color:var(--danger);">${t('wtmError')}</div>`;
+    container.innerHTML = `<div style="color:#ff5252;font-weight:bold;">DEBUG CAUGHT ERROR: ${(e && e.message) || e}</div>`;
   }
 }
 
