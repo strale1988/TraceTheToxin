@@ -3416,14 +3416,17 @@ function placeTracerAndTrace(lat, lon) {
 }
 
 // Entry point for tracing a possible source from a factory/burner marker
-// click while Trace Possible Source is on: traces from that site's location,
-// exactly like tapping the map there. Runs alongside the marker's popup
+// click: traces from that site's location, exactly like tapping the map there. Runs alongside the marker's popup
 // opening, not instead of it.
 function traceFromPoint(lat, lon) {
-  // Only when the user has already switched Trace Possible Source on with
-  // the map button; tapping a pin never turns it on by itself.
-  if (!traceMode) return Promise.resolve();
-  tracePoiActive = true;
+  // Tapping a pin while Trace is off turns it on and traces from that pin;
+  // the next tap elsewhere on the map ends it (tracePoiActive). If the user
+  // already turned Trace on with the map button, it stays a manual trace
+  // (every map tap traces until the button is pressed again).
+  if (!traceMode) {
+    enterTraceMode();
+    tracePoiActive = true;
+  }
   checkFormReady();
   return placeTracerAndTrace(lat, lon);
 }
@@ -6420,7 +6423,7 @@ function hhPopupExtraHtml(flat, flon) {
 /* ─────────────── Heat history ─────────────── */
 const HH_DAYS = 730;
 const HH_CHUNK_DAYS = 5;            // FIRMS Area API max days per request
-const HH_MAX_RADIUS_KM = 20;        // fetch box; smaller radii filter client-side
+const HH_MAX_RADIUS_KM = 5;         // fetch box = largest radius option; smaller radii filter client-side
 const HH_DEFAULT_RADIUS_KM = 1.5;
 const HH_CONCURRENCY = 6;
 const HH_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
@@ -6665,7 +6668,7 @@ function hhRenderSheet() {
   const el = document.getElementById('hhSheet');
   if (!el || !hhState) return;
   const s = hhState;
-  const chips = [0.5, 1.5, 3, 5, 10, 15, 20].map(km =>
+  const chips = [0.5, 1.5, 3, 5].map(km =>
     `<button type="button" class="hh-chip${km === s.radiusKm ? ' on' : ''}" ${s.status === 'done' ? '' : 'disabled'} onclick="hhSetRadius(${km})">${km} km</button>`).join('');
   let body = '';
   if (s.status === 'loading') {
