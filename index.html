@@ -1287,6 +1287,17 @@ span.flatpickr-weekday {
       <p class="detail-export-hint" id="wildfireToggleHint">Show active wildfires detected by NASA satellite data (FIRMS) near you. Off by default.</p>
     </div>
 
+    <div class="detail-section" id="traceButtonSettingsSection">
+      <label class="settings-toggle-row" for="traceButtonToggle">
+        <span id="traceButtonToggleLabel">Trace Possible Source button</span>
+        <span class="toggle-switch">
+          <input type="checkbox" id="traceButtonToggle" autocomplete="off" onchange="setTraceButtonVisible(this.checked)">
+          <span class="toggle-switch-track"><span class="toggle-switch-thumb"></span></span>
+        </span>
+      </label>
+      <p class="detail-export-hint" id="traceButtonToggleHint">Show the Trace Possible Source button on the map. Turn it on, then tap the map to see which reports' wind trails trace back to that point. Off by default.</p>
+    </div>
+
     <div class="detail-section" id="splineVisibilitySettingsSection">
       <label class="settings-toggle-row" for="splineVisibilityToggle">
         <span id="splineVisibilityLabel">Show historical wind trails</span>
@@ -1922,9 +1933,54 @@ function syncSettingsToggles() {
   };
   set('factoryToggle', factoryVisible);
   set('wildfireToggle', wildfireVisible);
+  set('traceButtonToggle', traceButtonVisible);
   set('splineVisibilityToggle', splinesVisible);
   set('traceHeatmapToggle', traceHeatmapEnabled);
   set('sourceHeatToggle', sourceHeatVisible);
+  saveSettings();
+}
+
+const SETTINGS_KEY = 'ttt_settings_v1';
+function saveSettings() {
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify({
+      factory: factoryVisible, wildfire: wildfireVisible, traceButton: traceButtonVisible,
+      splines: splinesVisible, traceHeat: traceHeatmapEnabled, sourceHeat: sourceHeatVisible
+    }));
+  } catch (e) {}
+}
+// Re-applies the saved switches on load. Reads everything first, because each
+// setter re-saves the (partly restored) state as it goes.
+function restoreSettings() {
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || 'null'); } catch (e) {}
+  if (!saved || typeof saved !== 'object') return;
+  if (saved.splines) setSplineVisibility(true);
+  if (saved.traceHeat) setTraceHeatmapEnabled(true);
+  if (saved.traceButton) setTraceButtonVisible(true);
+  if (saved.sourceHeat) {
+    // Just flag it: loadPinsByWindow() draws the layer once reports arrive.
+    sourceHeatVisible = true;
+    const b = document.getElementById('sourceHeatBtn');
+    if (b) b.classList.add('active');
+  }
+  if (saved.factory) setFactoryLayer(true);
+  if (saved.wildfire) setWildfireLayer(true, true); // silent: no alert popups at page load
+}
+
+// Shows/hides the Trace Possible Source map button (Settings switch).
+function setTraceButtonVisible(on) {
+  traceButtonVisible = !!on;
+  applyTraceButtonVisibility();
+  if (!traceButtonVisible && traceMode) setTraceMode(false);
+  syncSettingsToggles();
+}
+function applyTraceButtonVisibility() {
+  const btn = document.getElementById('traceSourceBtn');
+  if (!btn) return;
+  // Hide the Leaflet control wrapper too, so it leaves no empty gap.
+  const holder = btn.closest('.leaflet-control') || btn;
+  holder.style.display = traceButtonVisible ? '' : 'none';
 }
 function hideSettingsModal() {
   document.getElementById('settingsModal').style.display = 'none';
@@ -2055,11 +2111,10 @@ let lastSyncTimestamp = new Date().toISOString();
 let lang = 'sr';
 let traceMode = false;
 
-// Map layer toggles (factories, wildfires, trace, wind trails, heatmaps) are
-// session-only and ALWAYS start off. Earlier versions saved them to
-// localStorage and restored them on load, which is how a stale "true" could
-// switch a layer on (and fire network requests) without the Settings switch
-// agreeing. Drop those legacy keys so old values can never resurface.
+// Map layer settings (factories, wildfires, trace button, wind trails,
+// heatmaps) are all OFF by default and saved as one JSON object (SETTINGS_KEY,
+// see saveSettings/restoreSettings) whenever the user changes one. The old
+// per-setting keys from earlier versions are dropped so they can't resurface.
 ['ttt_wildfire_visible', 'ttt_factory_visible', 'ttt_source_heat_visible',
  'ttt_splines_visible', 'ttt_trace_heatmap_enabled'].forEach(k => {
   try { localStorage.removeItem(k); } catch (e) {}
@@ -2075,6 +2130,10 @@ let mapDisplayedReports = null;
 // landfill pin (rather than by tapping the map). The next tap elsewhere on
 // the map then ends Trace Possible Source instead of starting a new trace.
 let tracePoiActive = false;
+
+// Whether the Trace Possible Source button is shown on the map (Settings
+// switch). Off by default; hiding it also ends any active trace.
+let traceButtonVisible = false;
 let tracerMarker = null;
 let tracerVisualCircles = []; 
 let globalActiveData = [];
@@ -2445,8 +2504,8 @@ const T = {
   factoryToggleHint:    { en:'Show factories, power plants and landfills near you (OpenStreetMap data plus a hand-checked list). Off by default.', sr:'Prikaži fabrike, elektrane i deponije u vašoj blizini (podaci sa OpenStreetMap-a plus ručno proverena lista). Podrazumevano isključeno.' },
   wildfireToggleLabel:  { en:'Active wildfires', sr:'Aktivni požari' },
   wildfireToggleHint:   { en:'Show active wildfires detected by NASA satellite data (FIRMS) near you. Off by default.', sr:'Prikaži aktivne požare koje su otkrili NASA sateliti (FIRMS) u vašoj blizini. Podrazumevano isključeno.' },
-  traceModeToggleLabel: { en:'Trace Possible Source', sr:'Traži mogući izvor' },
-  traceModeToggleHint:  { en:'Turn this on, then tap the map (or a factory/power-plant/landfill marker) to see which reports\' wind trails trace back to that point. Off by default.', sr:'Uključite, pa dodirnite mapu (ili oznaku fabrike/elektrane/deponije) da vidite tragove vetra kojih prijava vode do te tačke. Podrazumevano isključeno.' },
+  traceButtonToggleLabel: { en:'Trace Possible Source button', sr:'Dugme „Traži mogući izvor“' },
+  traceButtonToggleHint:  { en:'Show the Trace Possible Source button on the map. Turn it on, then tap the map to see which reports\' wind trails trace back to that point. Off by default.', sr:'Prikaži dugme „Traži mogući izvor“ na mapi. Uključite ga, pa dodirnite mapu da vidite tragove vetra kojih prijava vode do te tačke. Podrazumevano isključeno.' },
   sourceHeatToggleLabel:{ en:'Source heatmap', sr:'Toplotna mapa izvora' },
   sourceHeatToggleHint: { en:'A concentration heatmap: one weighted point per report, so brighter/redder areas mean more (and stronger, more recent) reports nearby. Off by default.', sr:'Toplotna mapa koncentracije: jedna ponderisana tačka po prijavi, tako da svetlije/crvenije oblasti znače više (i jačih, skorijih) prijava u blizini. Podrazumevano isključeno.' },
 
@@ -2563,9 +2622,12 @@ const T = {
   factoryUnnamed:     { en:'Unnamed site', sr:'Objekat bez naziva' },
   factoryOsm:         { en:'View on OpenStreetMap', sr:'Prikaži na OpenStreetMap-u' },
   factorySource:      { en:'Source: OpenStreetMap contributors (may be incomplete)', sr:'Izvor: OpenStreetMap saradnici (može biti nepotpuno)' },
-  nearbyReportsStat:  { en:'{n} nearby reports in the last 30 days (within 2km)', sr:'{n} obližnjih prijava u poslednjih 30 dana (u krugu od 2km)' },
-  nearbyReportsStat1: { en:'{n} nearby report in the last 30 days (within 2km)', sr:'{n} obližnja prijava u poslednjih 30 dana (u krugu od 2km)' },
-  nearbyReportsStat0: { en:'No nearby reports in the last 30 days', sr:'Nema obližnjih prijava u poslednjih 30 dana' },
+  nearbyReportsStat:  { en:'{n} nearby reports, {range} (within 2km)', sr:'{n} obližnjih prijava, {range} (u krugu od 2km)' },
+  nearbyReportsStat1: { en:'{n} nearby report, {range} (within 2km)', sr:'{n} obližnja prijava, {range} (u krugu od 2km)' },
+  nearbyReportsStat0: { en:'No nearby reports, {range}', sr:'Nema obližnjih prijava, {range}' },
+  tracedReportsStat:  { en:'{n} of {total} reports traced to this site', sr:'{n} od {total} prijava povezano sa ovim objektom' },
+  hhReportsInRange:   { en:'Nearby reports (map filter)', sr:'Obližnje prijave (filter mape)' },
+  hhTracedReports:    { en:'Traced to this site', sr:'Povezano sa ovim objektom' },
   nearestSite:        { en:'Nearest known site', sr:'Najbliži poznati objekat' },
   hhOpenBtn:          { en:'Heat history (2 years)', sr:'Istorija toplote (2 godine)' },
   hhTitle:            { en:'Satellite heat history', sr:'Satelitska istorija toplote' },
@@ -2699,7 +2761,7 @@ function applyLang(){
   if (el('pullRefreshLabel'))      el('pullRefreshLabel').textContent = t('pullToRefresh');
 
   // Settings switches for map layers
-  ['factory', 'wildfire', 'sourceHeat'].forEach(k => {
+  ['factory', 'wildfire', 'traceButton', 'sourceHeat'].forEach(k => {
     if (el(k + 'ToggleLabel')) el(k + 'ToggleLabel').textContent = t(k + 'ToggleLabel');
     if (el(k + 'ToggleHint'))  el(k + 'ToggleHint').textContent  = t(k + 'ToggleHint');
   });
@@ -3274,7 +3336,7 @@ const PinControl = L.Control.extend({
 new PinControl().addTo(map);
 document.getElementById('pinMapBtn').style.display = 'flex';
 
-// Trace Possible Source is a map button (off until tapped), not a Settings switch.
+// Trace Possible Source map button; shown/hidden by a Settings switch (hidden by default).
 const TraceControl = L.Control.extend({
   options:{ position:'bottomleft' },
   onAdd(){
@@ -3285,6 +3347,7 @@ const TraceControl = L.Control.extend({
 });
 new TraceControl().addTo(map);
 document.getElementById('traceSourceBtn').style.display = 'flex';
+applyTraceButtonVisibility();
 
 // Source Heatmap and Wildfires no longer get their
 // own floating map buttons -- they default off and live as toggles in
@@ -3791,34 +3854,63 @@ function getHaversineDistance(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
-// Simple proximity+recency count -- NOT wind-trace matched (see
-// filterPinsBySourceTrajectory for that). Used as a quick "activity" stat on
-// factory/burner popups: how many reports have landed within radiusKm of
-// this source in the last `days` days, straight-line distance only. Reads
-// from globalActiveData (everything currently synced), independent of
-// whatever date range the on-map filter (mapFp) happens to be scoped to.
+// Date range of the on-map filter (mapFp) -- the same window the map itself
+// is showing. Falls back to the last 30 days if the filter isn't ready yet.
 const NEARBY_REPORTS_RADIUS_KM = 2;
 const NEARBY_REPORTS_DAYS = 30;
-function countNearbyReports(lat, lon, radiusKm = NEARBY_REPORTS_RADIUS_KM, days = NEARBY_REPORTS_DAYS) {
-  if (!globalActiveData?.length) return 0;
-  const cutoff = Date.now() - days * 86400000;
-  let n = 0;
-  for (const r of globalActiveData) {
-    if (new Date(r.created_at).getTime() < cutoff) continue;
-    if (r.latitude == null || r.longitude == null) continue;
-    if (getHaversineDistance(lat, lon, parseFloat(r.latitude), parseFloat(r.longitude)) <= radiusKm) n++;
+function mapFilterRange() {
+  let start, end;
+  if (mapFp && mapFp.selectedDates && mapFp.selectedDates.length >= 2) {
+    start = new Date(mapFp.selectedDates[0]); start.setHours(0, 0, 0, 0);
+    end = new Date(mapFp.selectedDates[1]); end.setHours(23, 59, 59, 999);
+  } else {
+    end = new Date();
+    start = new Date(Date.now() - NEARBY_REPORTS_DAYS * 86400000);
   }
-  return n;
+  const pad = n => String(n).padStart(2, '0');
+  const f = d => `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}`;
+  return { start: start.getTime(), end: end.getTime(), label: `${f(start)} – ${f(end)}` };
 }
 
-// Shared popup line for the stat above -- same wording/singular-plural
-// handling as the main report-count badge, reused by both the factory and
-// burner popups.
+// Reports within radiusKm of a point (straight-line, NOT wind-trace matched --
+// see filterPinsBySourceTrajectory for that) that fall inside the on-map
+// filter's date range. Reads from globalActiveData.
+function reportsNearPoint(lat, lon, radiusKm = NEARBY_REPORTS_RADIUS_KM) {
+  if (!globalActiveData?.length) return [];
+  const { start, end } = mapFilterRange();
+  return globalActiveData.filter(r => {
+    if (r.latitude == null || r.longitude == null) return false;
+    const ts = new Date(r.created_at).getTime();
+    if (ts < start || ts > end) return false;
+    return getHaversineDistance(lat, lon, parseFloat(r.latitude), parseFloat(r.longitude)) <= radiusKm;
+  });
+}
+function countNearbyReports(lat, lon, radiusKm = NEARBY_REPORTS_RADIUS_KM) {
+  return reportsNearPoint(lat, lon, radiusKm).length;
+}
+
+// The finished Trace Possible Source result, if (and only if) it was run from
+// this exact point: { reports: matched reports, total: reports in the map
+// filter's range that were checked }. Otherwise null.
+function tracedReportsForPoint(lat, lon) {
+  if (!traceMode || !lastTraceTracerCoords) return null;
+  if (getHaversineDistance(lat, lon, lastTraceTracerCoords.lat, lastTraceTracerCoords.lon) > 0.1) return null;
+  return { reports: lastTraceMatchedReports || [], total: lastTraceTotalInRange };
+}
+
+// Shared popup lines for the factory and burner popups: nearby reports in the
+// on-map filter's period, plus the traced count when a trace ran from here.
 function nearbyReportsStatHtml(lat, lon) {
   const n = countNearbyReports(lat, lon);
   const key = n === 0 ? 'nearbyReportsStat0' : n === 1 ? 'nearbyReportsStat1' : 'nearbyReportsStat';
-  const label = t(key).replace('{n}', n);
-  return `<div style="font-size:10px;color:var(--text-secondary);">📋 ${label}</div>`;
+  const label = t(key).replace('{n}', n).replace('{range}', mapFilterRange().label);
+  let html = `<div style="font-size:10px;color:var(--text-secondary);">📋 ${label}</div>`;
+  const tr = tracedReportsForPoint(lat, lon);
+  if (tr) {
+    const tl = t('tracedReportsStat').replace('{n}', tr.reports.length).replace('{total}', tr.total);
+    html += `<div style="font-size:10px;color:var(--text-secondary);">🔎 ${tl}</div>`;
+  }
+  return html;
 }
 
 // Perpendicular distance (km) from a point to the segment a→b, using a
@@ -6054,7 +6146,7 @@ map.on('zoomend moveend', growWildfireRadiusIfNeeded);
 
 // Guards against rapid on/off/on taps: only the latest request may finish.
 let wildfireToggleSeq = 0;
-async function setWildfireLayer(on) {
+async function setWildfireLayer(on, silent) {
   on = !!on;
   const btn = document.getElementById('wildfireBtn');
   const seq = ++wildfireToggleSeq;
@@ -6070,7 +6162,7 @@ async function setWildfireLayer(on) {
     const stale = !wildfireLayer || movedFar || (Date.now() - wildfireLastFetchedAt) > WILDFIRE_REFRESH_MS;
     let ok = true;
     if (stale) {
-      ok = await loadWildfireData(false, computeVisibleRadiusKm());
+      ok = await loadWildfireData(!!silent, computeVisibleRadiusKm());
     } else {
       wildfireLayer.addTo(map);
     }
@@ -6251,7 +6343,7 @@ function renderFactoryMarkers() {
     if (!isLikelyOdorSource(f)) return; // idx is still the real array index -- just skip rendering
     L.marker([f.a, f.o], { icon: makeFactoryIcon(f.k) })
       .bindPopup(() => buildFactoryPopupHtml(idx), { maxWidth: 360, minWidth: 220 })
-      .on('click', () => traceFromPoint(f.a, f.o))
+      .on('click', function () { traceFromPoint(f.a, f.o).then(() => { const p = this.getPopup(); if (p && p.isOpen()) p.update(); }); })
       .addTo(factoryLayer);
   });
   if (factoryVisible) factoryLayer.addTo(map);
@@ -6342,7 +6434,7 @@ function renderBurnerMarkers() {
   KNOWN_BURNERS.forEach((b, idx) => {
     L.marker([b.a, b.o], { icon: makeBurnerIcon(), zIndexOffset: 800 })
       .bindPopup(() => buildBurnerPopupHtml(idx), { maxWidth: 380, minWidth: 230 })
-      .on('click', () => traceFromPoint(b.a, b.o))
+      .on('click', function () { traceFromPoint(b.a, b.o).then(() => { const p = this.getPopup(); if (p && p.isOpen()) p.update(); }); })
       .addTo(burnerLayer);
   });
   if (factoryVisible) burnerLayer.addTo(map);
@@ -6690,9 +6782,18 @@ function hhRenderSheet() {
       return `<div class="hh-bar-col" title="${m.key}: ${rn} ${rn === 1 ? t('reportCount1') : t('reportCount')}"><div class="hh-bar-reports" style="height:${Math.round(rn / reportMax * 100)}%;${rn ? 'min-height:2px;' : ''}"></div></div>`;
     }).join('');
     const totalNearbyReports = a.months.reduce((sum, m) => sum + (a.reportsByMonth[m.key] || 0), 0);
+    // Report stats use the on-map filter's period; the traced count only
+    // shows when Trace Possible Source was run from this very site.
+    const rng = mapFilterRange();
+    const nearInRange = countNearbyReports(s.lat, s.lon, s.radiusKm);
+    const trHere = tracedReportsForPoint(s.lat, s.lon);
+    const reportStatsHtml = `<div class="hh-stats">
+        ${hhStat(t('hhReportsInRange'), nearInRange, `${rng.label} · ${s.radiusKm} km`)}
+        ${trHere ? hhStat(t('hhTracedReports'), `${trHere.reports.length}<span class="hh-of"> / ${trHere.total}</span>`, rng.label) : ''}
+      </div>`;
     body = `
       ${s.failed ? `<div class="hh-warn">${t('hhIncomplete')}</div>` : ''}
-      ${a.totalDays === 0 ? `<div class="hh-muted" style="margin:8px 0;">${t('hhNoData')}</div>` : `
+      ${a.totalDays === 0 ? `<div class="hh-muted" style="margin:8px 0;">${t('hhNoData')}</div>${reportStatsHtml}` : `
       <div class="hh-stats">
         ${hhStat(t('hhDaysWith'), `${a.totalDays}<span class="hh-of"> / ${a.spanDays}</span>`, `${Math.round(a.totalDays / a.spanDays * 100)}%`)}
         ${hhStat(t('hhNightDays'), a.nightDays)}
@@ -6702,6 +6803,7 @@ function hhRenderSheet() {
       <div class="hh-sect">${t('hhMonthly')}</div>
       <div class="hh-bars">${bars}</div>
       <div class="hh-bar-labels"><span>${a.months[0].key}</span><span>${a.months[a.months.length - 1].key}</span></div>
+      ${reportStatsHtml}
       <div class="hh-sect" style="margin-top:8px;">${t('hhReportsMonthly')} (${s.radiusKm} km) — ${totalNearbyReports}</div>
       <div class="hh-bars">${reportBars}</div>
       <div class="hh-bar-labels"><span>${a.months[0].key}</span><span>${a.months[a.months.length - 1].key}</span></div>`}
@@ -6829,7 +6931,26 @@ function hhDownloadCsv() {
   const lines = hhState.analysis.used
     .slice().sort((x, y) => (x.d + x.t).localeCompare(y.d + y.t))
     .map(r => [r.d, r.t.slice(0, 2) + ':' + r.t.slice(2), r.a, r.o, isNaN(r.f) ? '' : r.f, isNaN(r.b) ? '' : r.b, r.c, r.n, r.s].join(','));
-  const blob = new Blob([head + '\n' + lines.join('\n') + '\n'], { type: 'text/csv;charset=utf-8' });
+  // Community reports after the satellite rows, as separate labelled sections
+  // (same period as the on-map filter): nearby ones, then the ones traced to
+  // this site if Trace Possible Source was run from here.
+  const rng = mapFilterRange();
+  const repHead = 'created_at_utc,latitude,longitude,distance_km,category,intensity,duration_h,wind_direction,manual_wind_direction,wind_speed_kmh,comment';
+  const repLines = list => list.slice()
+    .sort((x, y) => new Date(x.created_at) - new Date(y.created_at))
+    .map(r => [
+      new Date(r.created_at).toISOString(), r.latitude, r.longitude,
+      getHaversineDistance(hhState.lat, hhState.lon, parseFloat(r.latitude), parseFloat(r.longitude)).toFixed(2),
+      csvField(r.category), csvField(r.intensity), csvField(r.duration),
+      csvField(r.wind_direction), csvField(r.manual_wind_direction), csvField(r.wind_speed), csvField(r.comment)
+    ].join(','));
+  const near = reportsNearPoint(hhState.lat, hhState.lon, hhState.radiusKm);
+  const sections = ['', `# Community reports within ${hhState.radiusKm} km, ${rng.label} (${near.length})`, repHead, ...repLines(near)];
+  const tr = tracedReportsForPoint(hhState.lat, hhState.lon);
+  if (tr) {
+    sections.push('', `# Reports traced to this site, ${rng.label} (${tr.reports.length} of ${tr.total})`, repHead, ...repLines(tr.reports));
+  }
+  const blob = new Blob([head + '\n' + lines.join('\n') + '\n' + sections.join('\n') + '\n'], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = `heat-history_${hhState.lat.toFixed(4)}_${hhState.lon.toFixed(4)}_r${hhState.radiusKm}km.csv`;
@@ -7230,6 +7351,7 @@ function distanceToSegment(p, p1, p2) {
 let traceHeatLayer = null;
 let lastTraceTracerCoords = null;
 let lastTraceMatchedReports = [];
+let lastTraceTotalInRange = 0;
 
 async function buildTraceHeatPoints(tracerCoords, matchedReports) {
   const points = [];
@@ -7386,6 +7508,9 @@ async function filterPinsBySourceTrajectory(tracerCoords) {
 
   lastTraceTracerCoords = tracerCoords;
   lastTraceMatchedReports = activeReportsToDrawTrails;
+  lastTraceTotalInRange = timeFilteredData.length;
+  // Refresh anything on screen that shows trace numbers.
+  if (hhState && hhState.status === 'done' && document.getElementById('hhSheet')?.style.display === 'block') hhRenderSheet();
   if (traceHeatmapEnabled) renderTraceHeatLayer(tracerCoords, activeReportsToDrawTrails);
 
   const n = reportMarkers.length;
@@ -7893,9 +8018,9 @@ async function downloadStationCSVInner() {
 ═══════════════════════════════════════════════════ */
 initTheme();
 
-// Every map-layer toggle starts off; make the Settings switches say so
-// (autocomplete="off" on them stops the browser restoring old checked
-// states, this covers the rest).
+// Apply saved settings (everything is off until the user switches it on),
+// then make the Settings switches reflect the real state.
+restoreSettings();
 syncSettingsToggles();
 window.addEventListener('pageshow', syncSettingsToggles);
 window.addEventListener('load', syncSettingsToggles);
