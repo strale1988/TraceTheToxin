@@ -1111,6 +1111,14 @@ span.flatpickr-weekday {
 .hh-cmp-axis span{ flex:1; text-align:center; }
 .hh-cmp-axis.ends{ justify-content:space-between; }
 .hh-cmp-axis.ends span{ flex:none; }
+.hh-bar-reports.manual, .hh-bar-traced.manual{ background:#9aa0a6; opacity:.8; }
+.hh-cmp-note{ display:flex; align-items:center; gap:5px; font-size:10px; color:var(--text-secondary); margin-top:5px; }
+.hh-cmp-note i{ display:inline-block; width:8px; height:8px; border-radius:2px; background:#9aa0a6; flex-shrink:0; }
+.hh-cmp-nav{ display:flex; align-items:center; gap:6px; margin:2px 0 4px; }
+.hh-cmp-nav .hh-cmp-month{ flex:1; text-align:center; font-size:12px; font-weight:700; }
+.hh-cmp-nav button, .hh-zoom{ border:1px solid var(--border-color-strong); background:var(--bg-surface-alt); color:var(--text-primary); border-radius:999px; padding:3px 11px; font-size:11px; font-weight:600; cursor:pointer; min-height:26px; -webkit-tap-highlight-color:transparent; }
+.hh-cmp-nav button:disabled{ opacity:.4; cursor:default; }
+.hh-zoom{ margin-left:6px; }
 .hh-cmp-read{ font-size:11px; color:var(--text-secondary); min-height:15px; margin-top:5px; line-height:1.35; }
 .hh-cmp-read b{ color:var(--text-primary); }
 .hh-legend{ display:flex; flex-wrap:wrap; gap:10px; font-size:10px; color:var(--text-secondary); margin:10px 0 6px; }
@@ -2675,6 +2683,11 @@ const T = {
   hhCmpByMonth:       { en:'Comparison by month', sr:'Poređenje po mesecima' },
   hhCmpHint:          { en:'Tap a column to compare all rows', sr:'Dodirnite stubac da uporedite sve redove' },
   hhBeyondData:       { en:'Satellite data only covers the last 2 years.', sr:'Satelitski podaci obuhvataju samo poslednje 2 godine.' },
+  hhManualNote:       { en:'Grey = entered by hand from paper records (before {date})', sr:'Sivo = ručno uneto sa papira (pre {date})' },
+  hhManualShort:      { en:'paper record', sr:'ručni unos' },
+  hhZoomIn:           { en:'Show by day ▸', sr:'Prikaži po danima ▸' },
+  hhZoomOut:          { en:'◂ All months', sr:'◂ Svi meseci' },
+  hhCmpHintMonth:     { en:'Tap a month to compare, then zoom in for daily detail', sr:'Dodirnite mesec za poređenje, pa zumirajte za detalje po danima' },
   hhLoading:          { en:'Reading NASA archive…', sr:'Čitanje NASA arhive…' },
   hhFatal:            { en:'Could not read the NASA archive right now. Please try again shortly.', sr:'Trenutno nije moguće pročitati NASA arhivu. Pokušajte ponovo uskoro.' },
   hhRadius:           { en:'Radius', sr:'Radijus' },
@@ -3935,6 +3948,11 @@ function getHaversineDistance(lat1, lon1, lat2, lon2) {
 
 // Date range of the on-map filter (mapFp) -- the same window the map itself
 // is showing. Falls back to the last 30 days if the filter isn't ready yet.
+// The app started collecting reports itself on this date. Anything earlier was
+// entered by hand from people's paper records, so charts draw it in grey.
+// (A bucket counts as "paper" if it STARTS before this; the date sits on a
+// month/day boundary, so no bucket straddles it.)
+const APP_DATA_START_TS = new Date(2026, 5, 1).getTime();   // 1 June 2026
 const NEARBY_REPORTS_RADIUS_KM = 2;
 const NEARBY_REPORTS_DAYS = 30;
 function mapFilterRange() {
@@ -3966,7 +3984,7 @@ function bucketReportsByRange(reports, rng) {
   while (cur <= endD) {
     const k = keyOf(cur);
     index[k] = buckets.length;
-    buckets.push({ label: k, n: 0 });
+    buckets.push({ label: k, n: 0, ts: cur.getTime() });
     if (daily) cur.setDate(cur.getDate() + 1); else cur.setMonth(cur.getMonth() + 1);
   }
   reports.forEach(r => {
@@ -7044,15 +7062,33 @@ function hhStat(label, value, sub) {
 // a heat detection, the nearby reports and the traced reports for the same day
 // sit directly above each other. Tapping a column highlights it in every row.
 // `a` (the heat analysis) is null while the NASA archive is still loading.
+function hhMonthStart(ts) { const d = new Date(ts); return new Date(d.getFullYear(), d.getMonth(), 1).getTime(); }
+
+// The slice of the filter period that falls inside the month starting at `ts`
+// (null if none of it does). Used by the zoom, which shows one month by day.
+function hhMonthWindow(rng, ts) {
+  const d = new Date(ts);
+  const next = new Date(d.getFullYear(), d.getMonth() + 1, 1).getTime();
+  const start = Math.max(rng.start, ts), end = Math.min(rng.end, next - 1);
+  return end >= start ? { start, end, ts, next, label: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` } : null;
+}
+
 function hhCompareHtml(s, rng, nearList, trHere, a) {
-  const near = bucketReportsByRange(nearList, rng);
+  // Zoom: tap a month in the monthly view, then "Show by day" -- the same
+  // rows are drawn for just that month, one column per day.
+  const zoomWin = s.zoom ? hhMonthWindow(rng, s.zoom.ts) : null;
+  if (s.zoom && !zoomWin) s.zoom = null;
+  const win = zoomWin || rng;
+
+  const near = bucketReportsByRange(nearList, win);
   const daily = near.daily;
   const labels = near.buckets.map(b => b.label);
   const rows = [];
-  if (a) rows.push({ name: t(daily ? 'hhHeatDetections' : 'hhHeatDaysRow'), vals: hhHeatBuckets(a.points, rng).map(b => b.n), cls: 'hh-bar', color: '#d84315' });
-  rows.push({ name: `${t('hhNearbyRow')} (${s.radiusKm} km)`, vals: near.buckets.map(b => b.n), cls: 'hh-bar-reports', color: '#00acc1' });
-  if (trHere) rows.push({ name: t('hhTracedRow'), vals: bucketReportsByRange(trHere.reports, rng).buckets.map(b => b.n), cls: 'hh-bar-traced', color: '#8e24aa' });
-  s.cmp = { labels, rows: rows.map(r => ({ name: r.name, vals: r.vals })) };
+  if (a) rows.push({ name: t(daily ? 'hhHeatDetections' : 'hhHeatDaysRow'), vals: hhHeatBuckets(a.points, win).map(b => b.n), cls: 'hh-bar', color: '#d84315' });
+  const paper = near.buckets.map(b => b.ts < APP_DATA_START_TS);   // satellite data is never "paper"
+  rows.push({ name: `${t('hhNearbyRow')} (${s.radiusKm} km)`, vals: near.buckets.map(b => b.n), cls: 'hh-bar-reports', color: '#00acc1', paper: true });
+  if (trHere) rows.push({ name: t('hhTracedRow'), vals: bucketReportsByRange(trHere.reports, win).buckets.map(b => b.n), cls: 'hh-bar-traced', color: '#8e24aa', paper: true });
+  s.cmp = { labels, paper, daily, ts: near.buckets.map(b => b.ts), rows: rows.map(r => ({ name: r.name, vals: r.vals, paper: !!r.paper })) };
 
   const showN = labels.length <= 16;      // few columns: print the count above each bar
   const top = showN ? 78 : 100;           // leave headroom for that count
@@ -7062,26 +7098,48 @@ function hhCompareHtml(s, rng, nearList, trHere, a) {
     const total = r.vals.reduce((x, y) => x + y, 0);
     const cols = r.vals.map((n, i) => {
       const h = Math.round(n / max * top);
-      return `<div class="hh-bar-col${sel === i ? ' sel' : ''}" data-i="${i}" onclick="hhCmpPick(${i})"><div class="${r.cls}" style="height:${h}%;${n ? 'min-height:2px;' : ''}"></div>${showN && n ? `<span class="hh-bar-n" style="bottom:calc(${h}% + 1px)">${n}</span>` : ''}</div>`;
+      return `<div class="hh-bar-col${sel === i ? ' sel' : ''}" data-i="${i}" onclick="hhCmpPick(${i})"><div class="${r.cls}${r.paper && paper[i] ? ' manual' : ''}" style="height:${h}%;${n ? 'min-height:2px;' : ''}"></div>${showN && n ? `<span class="hh-bar-n" style="bottom:calc(${h}% + 1px)">${n}</span>` : ''}</div>`;
     }).join('');
     return `<div class="hh-cmp-cap"><i style="background:${r.color}"></i>${r.name} — ${total}</div><div class="hh-bars">${cols}</div>`;
   }).join('');
-  const axis = (daily && showN)
-    ? `<div class="hh-cmp-axis">${labels.map(l => `<span>${l.slice(0, 2)}</span>`).join('')}</div>`
-    : `<div class="hh-cmp-axis ends"><span>${labels[0]}</span><span>${labels[labels.length - 1]}</span></div>`;
+
+  let axis;
+  if (daily && showN) {
+    axis = `<div class="hh-cmp-axis">${labels.map(l => `<span>${l.slice(0, 2)}</span>`).join('')}</div>`;
+  } else if (daily) {
+    // many day columns: a date label every few columns instead of every one
+    const step = labels.length > 31 ? 7 : 5;
+    axis = `<div class="hh-cmp-axis">${labels.map((l, i) => `<span>${i % step === 0 ? l.slice(0, 5) : ''}</span>`).join('')}</div>`;
+  } else {
+    axis = `<div class="hh-cmp-axis ends"><span>${labels[0]}</span><span>${labels[labels.length - 1]}</span></div>`;
+  }
+
+  const nav = zoomWin ? `<div class="hh-cmp-nav">
+        <button type="button" onclick="hhCmpZoomOut()">${t('hhZoomOut')}</button>
+        <button type="button" ${zoomWin.ts > hhMonthStart(rng.start) ? '' : 'disabled'} onclick="hhCmpZoomStep(-1)" aria-label="‹">‹</button>
+        <span class="hh-cmp-month">${zoomWin.label}</span>
+        <button type="button" ${zoomWin.next <= rng.end ? '' : 'disabled'} onclick="hhCmpZoomStep(1)" aria-label="›">›</button>
+      </div>` : '';
   return `<div class="hh-cmp">
       <div class="hh-sect">${t(daily ? 'hhCmpByDay' : 'hhCmpByMonth')}</div>
-      ${rowsHtml}${axis}
+      ${nav}${rowsHtml}${axis}
+      ${paper.some(Boolean) ? `<div class="hh-cmp-note"><i></i>${t('hhManualNote').replace('{date}', hhFmtDate(APP_DATA_START_TS))}</div>` : ''}
       <div class="hh-cmp-read" id="hhCmpRead">${hhCmpReadout()}</div>
     </div>`;
+}
+
+function hhFmtDate(ts) {
+  const d = new Date(ts), pad = n => String(n).padStart(2, '0');
+  return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}`;
 }
 
 function hhCmpReadout() {
   const c = hhState && hhState.cmp;
   if (!c) return '';
   const i = hhState.pick;
-  if (i == null || i >= c.labels.length) return t('hhCmpHint');
-  return `<b>${c.labels[i]}</b>` + c.rows.map(r => ` · ${r.name}: <b>${r.vals[i]}</b>`).join('');
+  if (i == null || i >= c.labels.length) return t(c.daily ? 'hhCmpHint' : 'hhCmpHintMonth');
+  return `<b>${c.labels[i]}</b>` + c.rows.map(r => ` · ${r.name}: <b>${r.vals[i]}</b>${r.paper && c.paper[i] ? ` <i>(${t('hhManualShort')})</i>` : ''}`).join('') +
+    (c.daily ? '' : ` <button type="button" class="hh-zoom" onclick="hhCmpZoom(${i})">${t('hhZoomIn')}</button>`);
 }
 
 function hhCmpPick(i) {
@@ -7091,6 +7149,26 @@ function hhCmpPick(i) {
     c.classList.toggle('sel', hhState.pick != null && +c.dataset.i === hhState.pick));
   const rd = document.getElementById('hhCmpRead');
   if (rd) rd.innerHTML = hhCmpReadout();
+}
+
+function hhCmpZoom(i) {
+  const c = hhState && hhState.cmp;
+  if (!c || c.daily) return;
+  hhState.zoom = { ts: c.ts[i] };
+  hhState.pick = null;
+  hhRenderSheet();
+}
+function hhCmpZoomOut() {
+  if (!hhState) return;
+  hhState.zoom = null; hhState.pick = null;
+  hhRenderSheet();
+}
+function hhCmpZoomStep(dir) {
+  if (!hhState || !hhState.zoom) return;
+  const d = new Date(hhState.zoom.ts);
+  hhState.zoom = { ts: new Date(d.getFullYear(), d.getMonth() + dir, 1).getTime() };
+  hhState.pick = null;
+  hhRenderSheet();
 }
 
 function hhRenderSheet() {
@@ -7146,6 +7224,7 @@ function hhRenderSheet() {
       </div>`;
   }
   el.classList.toggle('collapsed', !!s.collapsed);
+  const keepScroll = el.scrollTop;   // zoom re-renders in place; don't jump back to the top
   el.innerHTML = `
     <div class="hh-head">
       <div class="hh-head-main">
@@ -7160,6 +7239,7 @@ function hhRenderSheet() {
       ${body}
     </div>`;
   el.style.display = 'block';
+  el.scrollTop = keepScroll;
 }
 
 function hhUpdateProgress(done, total, failed) {
