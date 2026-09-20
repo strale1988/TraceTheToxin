@@ -1085,6 +1085,7 @@ span.flatpickr-weekday {
 .hh-bars{ display:flex; align-items:flex-end; gap:2px; height:46px; }
 .hh-bar-col{ flex:1; height:100%; display:flex; align-items:flex-end; }
 .hh-bar{ width:100%; background:#d84315; border-radius:2px 2px 0 0; }
+.hh-bar-traced{ width:100%; background:#8e24aa; border-radius:2px 2px 0 0; }
 .hh-bar-reports{ width:100%; background:#00acc1; border-radius:2px 2px 0 0; }
 .hh-bar-labels{ display:flex; justify-content:space-between; font-size:9px; color:var(--text-muted); margin-top:2px; }
 .hh-legend{ display:flex; flex-wrap:wrap; gap:10px; font-size:10px; color:var(--text-secondary); margin:10px 0 6px; }
@@ -2627,6 +2628,8 @@ const T = {
   nearbyReportsStat0: { en:'No nearby reports, {range}', sr:'Nema obližnjih prijava, {range}' },
   tracedReportsStat:  { en:'{n} of {total} reports traced to this site', sr:'{n} od {total} prijava povezano sa ovim objektom' },
   hhReportsInRange:   { en:'Nearby reports (map filter)', sr:'Obližnje prijave (filter mape)' },
+  hhTracedByDay:      { en:'Traced reports, per day', sr:'Povezane prijave, po danima' },
+  hhTracedByMonth:    { en:'Traced reports, per month', sr:'Povezane prijave, po mesecima' },
   hhTracedReports:    { en:'Traced to this site', sr:'Povezano sa ovim objektom' },
   nearestSite:        { en:'Nearest known site', sr:'Najbliži poznati objekat' },
   hhOpenBtn:          { en:'Heat history (2 years)', sr:'Istorija toplote (2 godine)' },
@@ -3870,6 +3873,31 @@ function mapFilterRange() {
   const pad = n => String(n).padStart(2, '0');
   const f = d => `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}`;
   return { start: start.getTime(), end: end.getTime(), label: `${f(start)} – ${f(end)}` };
+}
+
+// Buckets reports onto the map filter's date range: one bucket per day for
+// ranges up to 62 days, otherwise one per month. Returns [{label, n}] plus
+// whether it's daily.
+function bucketReportsByRange(reports, rng) {
+  const pad = n => String(n).padStart(2, '0');
+  const startD = new Date(rng.start), endD = new Date(rng.end);
+  const daily = (rng.end - rng.start) / 86400000 <= 62;
+  const keyOf = d => daily
+    ? `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}`
+    : `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
+  const buckets = [], index = {};
+  const cur = daily ? new Date(startD) : new Date(startD.getFullYear(), startD.getMonth(), 1);
+  while (cur <= endD) {
+    const k = keyOf(cur);
+    index[k] = buckets.length;
+    buckets.push({ label: k, n: 0 });
+    if (daily) cur.setDate(cur.getDate() + 1); else cur.setMonth(cur.getMonth() + 1);
+  }
+  reports.forEach(r => {
+    const i = index[keyOf(new Date(r.created_at))];
+    if (i != null) buckets[i].n++;
+  });
+  return { buckets, daily };
 }
 
 // Reports within radiusKm of a point (straight-line, NOT wind-trace matched --
@@ -6787,10 +6815,21 @@ function hhRenderSheet() {
     const rng = mapFilterRange();
     const nearInRange = countNearbyReports(s.lat, s.lon, s.radiusKm);
     const trHere = tracedReportsForPoint(s.lat, s.lon);
+    let tracedChartHtml = '';
+    if (trHere) {
+      const { buckets, daily } = bucketReportsByRange(trHere.reports, rng);
+      const tmax = Math.max(1, ...buckets.map(b => b.n));
+      const tbars = buckets.map(b =>
+        `<div class="hh-bar-col" title="${b.label}: ${b.n} ${b.n === 1 ? t('reportCount1') : t('reportCount')}"><div class="hh-bar-traced" style="height:${Math.round(b.n / tmax * 100)}%;${b.n ? 'min-height:2px;' : ''}"></div></div>`).join('');
+      tracedChartHtml = `
+      <div class="hh-sect" style="margin-top:8px;">${t(daily ? 'hhTracedByDay' : 'hhTracedByMonth')} — ${trHere.reports.length}</div>
+      <div class="hh-bars">${tbars}</div>
+      <div class="hh-bar-labels"><span>${buckets[0].label}</span><span>${buckets[buckets.length - 1].label}</span></div>`;
+    }
     const reportStatsHtml = `<div class="hh-stats">
         ${hhStat(t('hhReportsInRange'), nearInRange, `${rng.label} · ${s.radiusKm} km`)}
         ${trHere ? hhStat(t('hhTracedReports'), `${trHere.reports.length}<span class="hh-of"> / ${trHere.total}</span>`, rng.label) : ''}
-      </div>`;
+      </div>${tracedChartHtml}`;
     body = `
       ${s.failed ? `<div class="hh-warn">${t('hhIncomplete')}</div>` : ''}
       ${a.totalDays === 0 ? `<div class="hh-muted" style="margin:8px 0;">${t('hhNoData')}</div>${reportStatsHtml}` : `
