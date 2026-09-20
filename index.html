@@ -2628,17 +2628,14 @@ const T = {
   nearbyReportsStat0: { en:'No nearby reports, {range}', sr:'Nema obližnjih prijava, {range}' },
   tracedReportsStat:  { en:'{n} of {total} reports traced to this site', sr:'{n} od {total} prijava povezano sa ovim objektom' },
   hhReportsInRange:   { en:'Nearby reports (map filter)', sr:'Obližnje prijave (filter mape)' },
-  hhPrevPeriod:       { en:'Previous period (same length)', sr:'Prethodni period (iste dužine)' },
-  hhPrevPeriodNone:   { en:'No earlier data (archive covers 2 years)', sr:'Nema ranijih podataka (arhiva pokriva 2 godine)' },
-  hhDetectionsByDay:  { en:'Detections, per day', sr:'Detekcije, po danima' },
-  hhDetectionsUnit:   { en:'detections', sr:'detekcija' },
-  hhReportsByDay:     { en:'Nearby community reports, per day', sr:'Obližnje prijave zajednice, po danima' },
   hhTracedByDay:      { en:'Traced reports, per day', sr:'Povezane prijave, po danima' },
   hhTracedByMonth:    { en:'Traced reports, per month', sr:'Povezane prijave, po mesecima' },
   hhTracedReports:    { en:'Traced to this site', sr:'Povezano sa ovim objektom' },
   nearestSite:        { en:'Nearest known site', sr:'Najbliži poznati objekat' },
-  hhOpenBtn:          { en:'Heat history (2 years)', sr:'Istorija toplote (2 godine)' },
-  hhTitle:            { en:'Satellite heat history', sr:'Satelitska istorija toplote' },
+  hhOpenBtn:          { en:'Details', sr:'Detalji' },
+  hhTitle:            { en:'Site details', sr:'Detalji lokacije' },
+  hhSectReports:      { en:'Community reports', sr:'Prijave zajednice' },
+  hhSectHeat:         { en:'Satellite heat history (2 years)', sr:'Satelitska istorija toplote (2 godine)' },
   hhLoading:          { en:'Reading NASA archive…', sr:'Čitanje NASA arhive…' },
   hhFatal:            { en:'Could not read the NASA archive right now. Please try again shortly.', sr:'Trenutno nije moguće pročitati NASA arhivu. Pokušajte ponovo uskoro.' },
   hhRadius:           { en:'Radius', sr:'Radijus' },
@@ -2647,8 +2644,8 @@ const T = {
   hhNightDays:        { en:'Of which at night', sr:'Od toga noću' },
   hhLast90:           { en:'Last 90 days', sr:'Poslednjih 90 dana' },
   hhBaseline:         { en:'Usual per 90 days before', sr:'Uobičajeno na 90 dana ranije' },
-  hhNewSpots:         { en:'New hot spots (this period)', sr:'Nove tačke (u ovom periodu)' },
-  hhNewTag:           { en:'First seen in this period', sr:'Prvi put viđeno u ovom periodu' },
+  hhNewSpots:         { en:'New hot spots (last 90 days)', sr:'Nove tačke (poslednjih 90 dana)' },
+  hhNewTag:           { en:'First seen in last 90 days', sr:'Prvi put viđeno u poslednjih 90 dana' },
   hhFirstLast:        { en:'First / last', sr:'Prvo / poslednje' },
   hhAvgFrp:           { en:'Avg power', sr:'Prosečna snaga' },
   hhMonthly:          { en:'Days with a detection, per month', sr:'Dani sa detekcijom, po mesecima' },
@@ -2903,22 +2900,42 @@ function initMapCalendarFilter(optionalDefaultDates) {
     defaultDate: initialDates,
     positionElement: document.getElementById('mapFilterBtn'),
     onClose: async function(selectedDates) {
-      if (selectedDates.length === 2) {
-        await loadPinsByWindow();
-        // An open heat-history sheet follows the same period.
-        if (hhState && hhState.status === 'done') hhRecompute();
+      if (selectedDates.length !== 2) return;
+      // flatpickr fires onClose every time the calendar closes, even if the
+      // range wasn't touched -- don't wipe popups/reload for a no-op.
+      const key = mapRangeKey(selectedDates);
+      if (key === lastAppliedMapRangeKey) return;
+      lastAppliedMapRangeKey = key;
 
-        if (traceMode && tracerMarker) {
-          // getLatLng() returns {lat, lng} (Leaflet's own property name), but
-          // filterPinsBySourceTrajectory expects {lat, lon} like every other
-          // coords object in this app -- passing it straight through left
-          // .lon undefined and crashed L.circle() downstream.
-          const ll = tracerMarker.getLatLng();
-          filterPinsBySourceTrajectory({ lat: ll.lat, lon: ll.lng });
-        }
-      }
+      // The old popups / trail focus / heat-history sheet describe the OLD
+      // date window, so close them before the map is redrawn.
+      closeMapInfoForFilterChange();
+
+      // In Trace mode loadPinsByWindow() re-runs the trace itself from the
+      // current tracer dot, so it is not repeated here.
+      await loadPinsByWindow();
     }
   });
+  lastAppliedMapRangeKey = mapRangeKey(initialDates);
+}
+
+// Day-granular fingerprint of a date range, to tell a real filter change
+// from the calendar just being opened and closed.
+let lastAppliedMapRangeKey = '';
+function mapRangeKey(dates) {
+  if (!dates || dates.length < 2) return '';
+  const day = d => new Date(d).setHours(0, 0, 0, 0);
+  return day(dates[0]) + '-' + day(dates[1]);
+}
+
+// Everything that would be stale once the on-map date filter changes:
+// open Leaflet popups (report, station, factory, wildfire...), the solo
+// trail-focus dimming, and the heat-history sheet (its numbers are scoped
+// to the filter window).
+function closeMapInfoForFilterChange() {
+  try { map.closePopup(); } catch (e) {}
+  try { clearTrailFocus(); } catch (e) {}
+  try { closeHeatHistory(); } catch (e) {}
 }
 
 // Opens the map filter's calendar — called by the round filter button.
@@ -3442,6 +3459,7 @@ function setTraceMode(on, opts) {
   } else {
     traceMode = false;
     tracePoiActive = false;
+    activeTraceRequestId++;   // a trace still computing must not draw pins after trace mode is off
     const btn = document.getElementById('traceSourceBtn');
     if (btn) btn.classList.remove('active');
 
@@ -3905,26 +3923,6 @@ function bucketReportsByRange(reports, rng) {
     if (i != null) buckets[i].n++;
   });
   return { buckets, daily };
-}
-
-// Buckets over [startMs, endMs]: one per day up to 62 days, else one per
-// month. indexOf(date) gives the bucket for a Date (or undefined if outside).
-function makeRangeBuckets(startMs, endMs) {
-  const pad = n => String(n).padStart(2, '0');
-  const daily = (endMs - startMs) / 86400000 <= 62;
-  const keyOf = d => daily
-    ? `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}`
-    : `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
-  const buckets = [], index = {};
-  const s0 = new Date(startMs);
-  const cur = daily ? new Date(s0.getFullYear(), s0.getMonth(), s0.getDate()) : new Date(s0.getFullYear(), s0.getMonth(), 1);
-  while (cur.getTime() <= endMs) {
-    const k = keyOf(cur);
-    index[k] = buckets.length;
-    buckets.push({ label: k, n: 0 });
-    if (daily) cur.setDate(cur.getDate() + 1); else cur.setMonth(cur.getMonth() + 1);
-  }
-  return { buckets, daily, indexOf: d => index[keyOf(d)] };
 }
 
 // Reports within radiusKm of a point (straight-line, NOT wind-trace matched --
@@ -6684,56 +6682,30 @@ function hhDedupe(rows) {
 }
 
 // Pure function: rows -> the numbers and cells shown in the sheet/map.
-function hhLocalDateStr(ms) {
-  const d = new Date(ms), pad = n => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-
-// Everything here follows the on-map filter's date range (mapFilterRange), so
-// heat, reports and traces can be compared over the same period. The archive
-// itself is still fetched for 2 years (that's what lets us also compare with
-// the previous period of equal length).
 function hhAnalyze(rows, o) {
   const { lat, lon, radiusKm, includeLow, todayStr, startStr } = o;
-  const rng = mapFilterRange();
-  let fromStr = hhLocalDateStr(rng.start), toStr = hhLocalDateStr(rng.end);
-  if (fromStr < startStr) fromStr = startStr;
-  if (toStr > todayStr) toStr = todayStr;
-  const spanDays = Math.max(1, hhDaysBetween(fromStr, toStr) + 1);
-
-  const inRadius = rows.filter(r =>
+  const used = rows.filter(r =>
     (includeLow || r.c !== 'l') &&
     getHaversineDistance(lat, lon, r.a, r.o) <= radiusKm);
-  const used = inRadius.filter(r => r.d >= fromStr && r.d <= toStr);
 
-  // Previous period of the same length, right before the selected one.
-  const prevTo = hhAddDays(fromStr, -1);
-  const prevFromWanted = hhAddDays(fromStr, -spanDays);
-  const prevFrom = prevFromWanted < startStr ? startStr : prevFromWanted;
-  const prevSpan = prevTo >= prevFrom ? hhDaysBetween(prevFrom, prevTo) + 1 : 0;
-  const prevDaysSet = new Set();
-  inRadius.forEach(r => { if (r.d >= prevFrom && r.d <= prevTo) prevDaysSet.add(r.d); });
-
+  const recentStart = hhAddDays(todayStr, -89);
+  const days = new Set(), nightDays = new Set(), recentDays = new Set(), baseDays = new Set();
+  const monthSets = {};
   const gl = HH_GRID_DEG, go = HH_GRID_DEG / Math.max(Math.cos(lat * Math.PI / 180), 0.01);
-  const cellKey = r => `${Math.round(r.a / gl)},${Math.round(r.o / go)}`;
-  // First time each grid cell ever lit up in the fetched history, so "new"
-  // means new relative to before the selected period.
-  const firstSeen = new Map();
-  inRadius.forEach(r => {
-    const ck = cellKey(r);
-    if (!firstSeen.has(ck) || r.d < firstSeen.get(ck)) firstSeen.set(ck, r.d);
-  });
-
-  const days = new Set(), nightDays = new Set();
   const cells = new Map();
   let frpSum = 0, frpN = 0;
+
   for (const r of used) {
     days.add(r.d);
     if (r.n === 'N') nightDays.add(r.d);
+    (r.d >= recentStart ? recentDays : baseDays).add(r.d);
+    const mk = r.d.slice(0, 7);
+    (monthSets[mk] = monthSets[mk] || new Set()).add(r.d);
     if (!isNaN(r.f)) { frpSum += r.f; frpN++; }
-    const ck = cellKey(r);
+
+    const ck = `${Math.round(r.a / gl)},${Math.round(r.o / go)}`;
     let c = cells.get(ck);
-    if (!c) { c = { sa: 0, so: 0, n: 0, dates: new Set(), nights: new Set(), frpSum: 0, frpN: 0, frpMax: 0, first: r.d, last: r.d, ck }; cells.set(ck, c); }
+    if (!c) { c = { sa: 0, so: 0, n: 0, dates: new Set(), nights: new Set(), frpSum: 0, frpN: 0, frpMax: 0, first: r.d, last: r.d }; cells.set(ck, c); }
     c.sa += r.a; c.so += r.o; c.n++;
     c.dates.add(r.d);
     if (r.n === 'N') c.nights.add(r.d);
@@ -6742,38 +6714,48 @@ function hhAnalyze(rows, o) {
     if (r.d > c.last) c.last = r.d;
   }
 
-  // Chart buckets over the (archive-clamped) filter range. Detections: count
-  // per day for daily buckets, distinct days per month for monthly ones.
-  const archiveStartMs = new Date(startStr + 'T00:00:00').getTime();
-  const b0 = Math.max(rng.start, archiveStartMs), b1 = Math.min(rng.end, Date.now());
-  const { buckets, daily, indexOf } = makeRangeBuckets(b0, Math.max(b0, b1));
-  const dayHits = buckets.map(() => new Set());
-  used.forEach(r => {
-    const i = indexOf(new Date(r.d + 'T12:00:00'));
-    if (i == null) return;
-    if (daily) buckets[i].n++; else dayHits[i].add(r.d);
-  });
-  if (!daily) buckets.forEach((b, i) => { b.n = dayHits[i].size; });
+  const months = [];
+  let m = startStr.slice(0, 7);
+  const endM = todayStr.slice(0, 7);
+  for (let guard = 0; guard < 40; guard++) {
+    months.push({ key: m, n: monthSets[m] ? monthSets[m].size : 0 });
+    if (m === endM) break;
+    const [y, mo] = m.split('-').map(Number);
+    m = mo === 12 ? `${y + 1}-01` : `${y}-${String(mo + 1).padStart(2, '0')}`;
+  }
 
-  // Community reports near the site, on the very same buckets.
-  const reportBuckets = buckets.map(b => ({ label: b.label, n: 0 }));
-  reportsNearPoint(lat, lon, radiusKm).forEach(r => {
-    const i = indexOf(new Date(r.created_at));
-    if (i != null) reportBuckets[i].n++;
+  // Community reports within the same radius, bucketed onto the same month
+  // keys as the heat bars above, so the two can be charted side by side.
+  // Straight-line proximity only (like nearbyReportsStatHtml), not
+  // wind-trace matched -- running the wind-trace check across a whole
+  // multi-year window would mean one historic-wind fetch per report ever
+  // filed near here, which isn't practical to do just for opening a panel.
+  const reportsByMonth = {};
+  months.forEach(mo => { reportsByMonth[mo.key] = 0; });
+  (globalActiveData || []).forEach(r => {
+    if (r.latitude == null || r.longitude == null) return;
+    const d = new Date(r.created_at);
+    if (isNaN(d.getTime())) return;
+    const key = d.toISOString().slice(0, 7);
+    if (!(key in reportsByMonth)) return;
+    if (getHaversineDistance(lat, lon, parseFloat(r.latitude), parseFloat(r.longitude)) <= radiusKm) reportsByMonth[key]++;
   });
 
+  const spanDays = hhDaysBetween(startStr, todayStr) + 1;
+  const baseSpan = Math.max(1, spanDays - 90);
   const cellList = [...cells.values()].map(c => ({
     lat: c.sa / c.n, lon: c.so / c.n, days: c.dates.size, nightDays: c.nights.size,
     frpAvg: c.frpN ? c.frpSum / c.frpN : NaN, frpMax: c.frpMax, first: c.first, last: c.last,
-    isNew: fromStr > startStr && firstSeen.get(c.ck) >= fromStr
+    isNew: c.first >= recentStart
   })).sort((a, b) => b.days - a.days);
 
   return {
-    used, spanDays, fromStr, toStr, daily,
+    used, spanDays,
     totalDays: days.size, nightDays: nightDays.size,
-    prevDays: prevDaysSet.size, prevSpan,
+    recentDays: recentDays.size,
+    baselinePer90: baseDays.size / baseSpan * 90,
     avgFrp: frpN ? frpSum / frpN : NaN,
-    buckets, reportBuckets, cells: cellList,
+    months, reportsByMonth, cells: cellList,
     newCells: cellList.filter(c => c.isNew).length
   };
 }
@@ -6833,68 +6815,74 @@ function hhRenderSheet() {
   const s = hhState;
   const chips = [0.5, 1.5, 3, 5].map(km =>
     `<button type="button" class="hh-chip${km === s.radiusKm ? ' on' : ''}" ${s.status === 'done' ? '' : 'disabled'} onclick="hhSetRadius(${km})">${km} km</button>`).join('');
+  // Report stats come from data already in the page, so they show right away
+  // instead of waiting for the NASA archive. They use the on-map filter's
+  // period; the traced count only shows when Trace Possible Source was run
+  // from this very site.
+  const rng = mapFilterRange();
+  const nearInRange = countNearbyReports(s.lat, s.lon, s.radiusKm);
+  const trHere = tracedReportsForPoint(s.lat, s.lon);
+  let tracedChartHtml = '';
+  if (trHere) {
+    const { buckets, daily } = bucketReportsByRange(trHere.reports, rng);
+    const tmax = Math.max(1, ...buckets.map(b => b.n));
+    const tbars = buckets.map(b =>
+      `<div class="hh-bar-col" title="${b.label}: ${b.n} ${b.n === 1 ? t('reportCount1') : t('reportCount')}"><div class="hh-bar-traced" style="height:${Math.round(b.n / tmax * 100)}%;${b.n ? 'min-height:2px;' : ''}"></div></div>`).join('');
+    tracedChartHtml = `
+    <div class="hh-sect" style="margin-top:8px;">${t(daily ? 'hhTracedByDay' : 'hhTracedByMonth')} — ${trHere.reports.length}</div>
+    <div class="hh-bars">${tbars}</div>
+    <div class="hh-bar-labels"><span>${buckets[0].label}</span><span>${buckets[buckets.length - 1].label}</span></div>`;
+  }
+  const reportStatsHtml = `<div class="hh-sect">${t('hhSectReports')}</div>
+    <div class="hh-stats">
+      ${hhStat(t('hhReportsInRange'), nearInRange, `${rng.label} · ${s.radiusKm} km`)}
+      ${trHere ? hhStat(t('hhTracedReports'), `${trHere.reports.length}<span class="hh-of"> / ${trHere.total}</span>`, rng.label) : ''}
+    </div>${tracedChartHtml}`;
   let body = '';
   if (s.status === 'loading') {
-    body = `<div class="hh-progress"><div class="hh-progress-bar" id="hhProgressBar" style="width:${s.pct || 0}%"></div></div>
+    body = `${reportStatsHtml}
+            <div class="hh-sect" style="margin-top:8px;">${t('hhSectHeat')}</div>
+            <div class="hh-progress"><div class="hh-progress-bar" id="hhProgressBar" style="width:${s.pct || 0}%"></div></div>
             <div class="hh-muted" id="hhProgressText">${t('hhLoading')} ${s.pctText || ''}</div>`;
+  } else if (s.status === 'nokey') {
+    body = `${reportStatsHtml}
+            <div class="hh-sect" style="margin-top:8px;">${t('hhSectHeat')}</div>
+            <div class="hh-warn">${t('wildfireNoKeyMsg')}</div>`;
   } else if (s.status === 'error') {
-    body = `<div class="hh-warn">${t('hhFatal')}</div>
+    body = `${reportStatsHtml}
+            <div class="hh-sect" style="margin-top:8px;">${t('hhSectHeat')}</div>
+            <div class="hh-warn">${t('hhFatal')}</div>
             <div class="hh-actions"><button type="button" class="hh-btn" onclick="hhRetry()">${t('hhRetry')}</button></div>`;
   } else if (s.analysis) {
     const a = s.analysis;
-    // Rate comparison with the previous period of the same length.
-    let trendTxt = '';
-    if (a.prevSpan > 0 && a.prevDays > 0) {
-      const ratio = (a.totalDays / a.spanDays) / (a.prevDays / a.prevSpan);
-      trendTxt = `(×${ratio.toFixed(1)})`;
-    }
-    const max = Math.max(1, ...a.buckets.map(m => m.n));
-    const unitKey = a.daily ? 'hhDetectionsUnit' : 'hhDaysUnit';
-    const bars = a.buckets.map(m =>
-      `<div class="hh-bar-col" title="${m.label}: ${m.n} ${t(unitKey)}"><div class="hh-bar" style="height:${Math.round(m.n / max * 100)}%;${m.n ? 'min-height:2px;' : ''}"></div></div>`).join('');
-    const reportMax = Math.max(1, ...a.reportBuckets.map(m => m.n));
-    const reportBars = a.reportBuckets.map(m =>
-      `<div class="hh-bar-col" title="${m.label}: ${m.n} ${m.n === 1 ? t('reportCount1') : t('reportCount')}"><div class="hh-bar-reports" style="height:${Math.round(m.n / reportMax * 100)}%;${m.n ? 'min-height:2px;' : ''}"></div></div>`).join('');
-    const totalNearbyReports = a.reportBuckets.reduce((sum, m) => sum + m.n, 0);
-    const bucketLabels = `<div class="hh-bar-labels"><span>${a.buckets[0].label}</span><span>${a.buckets[a.buckets.length - 1].label}</span></div>`;
-    // Report stats use the on-map filter's period; the traced count only
-    // shows when Trace Possible Source was run from this very site.
-    const rng = mapFilterRange();
-    const nearInRange = countNearbyReports(s.lat, s.lon, s.radiusKm);
-    const trHere = tracedReportsForPoint(s.lat, s.lon);
-    let tracedChartHtml = '';
-    if (trHere) {
-      const { buckets, daily } = bucketReportsByRange(trHere.reports, rng);
-      const tmax = Math.max(1, ...buckets.map(b => b.n));
-      const tbars = buckets.map(b =>
-        `<div class="hh-bar-col" title="${b.label}: ${b.n} ${b.n === 1 ? t('reportCount1') : t('reportCount')}"><div class="hh-bar-traced" style="height:${Math.round(b.n / tmax * 100)}%;${b.n ? 'min-height:2px;' : ''}"></div></div>`).join('');
-      tracedChartHtml = `
-      <div class="hh-sect" style="margin-top:8px;">${t(daily ? 'hhTracedByDay' : 'hhTracedByMonth')} — ${trHere.reports.length}</div>
-      <div class="hh-bars">${tbars}</div>
-      <div class="hh-bar-labels"><span>${buckets[0].label}</span><span>${buckets[buckets.length - 1].label}</span></div>`;
-    }
-    const reportStatsHtml = `<div class="hh-stats">
-        ${hhStat(t('hhReportsInRange'), nearInRange, `${rng.label} · ${s.radiusKm} km`)}
-        ${trHere ? hhStat(t('hhTracedReports'), `${trHere.reports.length}<span class="hh-of"> / ${trHere.total}</span>`, rng.label) : ''}
-      </div>${tracedChartHtml}`;
+    const trend = a.baselinePer90 > 0 ? a.recentDays / a.baselinePer90 : null;
+    const trendTxt = trend == null ? '' : `(×${trend.toFixed(1)})`;
+    const max = Math.max(1, ...a.months.map(m => m.n));
+    const bars = a.months.map(m =>
+      `<div class="hh-bar-col" title="${m.key}: ${m.n} ${t('hhDaysUnit')}"><div class="hh-bar" style="height:${Math.round(m.n / max * 100)}%;${m.n ? 'min-height:2px;' : ''}"></div></div>`).join('');
+    const reportMax = Math.max(1, ...a.months.map(m => a.reportsByMonth[m.key] || 0));
+    const reportBars = a.months.map(m => {
+      const rn = a.reportsByMonth[m.key] || 0;
+      return `<div class="hh-bar-col" title="${m.key}: ${rn} ${rn === 1 ? t('reportCount1') : t('reportCount')}"><div class="hh-bar-reports" style="height:${Math.round(rn / reportMax * 100)}%;${rn ? 'min-height:2px;' : ''}"></div></div>`;
+    }).join('');
+    const totalNearbyReports = a.months.reduce((sum, m) => sum + (a.reportsByMonth[m.key] || 0), 0);
     body = `
       ${s.failed ? `<div class="hh-warn">${t('hhIncomplete')}</div>` : ''}
-      ${a.totalDays === 0 ? `<div class="hh-muted" style="margin:8px 0;">${t('hhNoData')}</div>${reportStatsHtml}` : `
+      ${reportStatsHtml}
+      <div class="hh-sect" style="margin-top:8px;">${t('hhSectHeat')}</div>
+      ${a.totalDays === 0 ? `<div class="hh-muted" style="margin:8px 0;">${t('hhNoData')}</div>` : `
       <div class="hh-stats">
-        ${hhStat(t('hhDaysWith'), `${a.totalDays}<span class="hh-of"> / ${a.spanDays}</span>`, `${Math.round(a.totalDays / a.spanDays * 100)}% · ${rng.label}`)}
+        ${hhStat(t('hhDaysWith'), `${a.totalDays}<span class="hh-of"> / ${a.spanDays}</span>`, `${Math.round(a.totalDays / a.spanDays * 100)}%`)}
         ${hhStat(t('hhNightDays'), a.nightDays)}
-        ${a.prevSpan > 0
-          ? hhStat(t('hhPrevPeriod'), `${a.prevDays}<span class="hh-of"> / ${a.prevSpan}</span>`, trendTxt)
-          : hhStat(t('hhPrevPeriod'), '–', t('hhPrevPeriodNone'))}
+        ${hhStat(t('hhLast90'), a.recentDays, `${t('hhBaseline')}: ${a.baselinePer90.toFixed(1)} ${trendTxt}`)}
         ${hhStat(t('hhNewSpots'), a.newCells, a.newCells ? `<span style="color:#00acc1;">◯ ${t('hhNewTag')}</span>` : '')}
       </div>
-      <div class="hh-sect">${t(a.daily ? 'hhDetectionsByDay' : 'hhMonthly')}</div>
+      <div class="hh-sect">${t('hhMonthly')}</div>
       <div class="hh-bars">${bars}</div>
-      ${bucketLabels}
-      ${reportStatsHtml}
-      <div class="hh-sect" style="margin-top:8px;">${t(a.daily ? 'hhReportsByDay' : 'hhReportsMonthly')} (${s.radiusKm} km) — ${totalNearbyReports}</div>
+      <div class="hh-bar-labels"><span>${a.months[0].key}</span><span>${a.months[a.months.length - 1].key}</span></div>
+      <div class="hh-sect" style="margin-top:8px;">${t('hhReportsMonthly')} (${s.radiusKm} km) — ${totalNearbyReports}</div>
       <div class="hh-bars">${reportBars}</div>
-      ${bucketLabels}`}
+      <div class="hh-bar-labels"><span>${a.months[0].key}</span><span>${a.months[a.months.length - 1].key}</span></div>`}
       <div class="hh-legend"><span><i style="background:#ffca28"></i>1–2</span><span><i style="background:#f57c00"></i>3–9</span><span><i style="background:#d84315"></i>10–29</span><span><i style="background:#7f0000"></i>30+ ${t('hhDaysUnit')}</span></div>
       <label class="hh-check"><input type="checkbox" ${s.includeLow ? 'checked' : ''} onchange="hhSetIncludeLow(this.checked)"> ${t('hhIncludeLow')}</label>
       <div class="hh-caveat">${t('hhCaveat')}</div>
@@ -6959,16 +6947,19 @@ function fitHeatHistory() {
 }
 
 async function openHeatHistory(lat, lon, name) {
-  if (!FIRMS_MAP_KEY || FIRMS_MAP_KEY === 'YOUR_FIRMS_MAP_KEY_HERE') { alert(t('wildfireNoKeyMsg')); return; }
   if (hhState?.abort) hhState.abort.abort();
   map.closePopup();
   const abort = new AbortController();
   const todayStr = hhDateStr(new Date());
   const startStr = hhAddDays(todayStr, -(HH_DAYS - 1));
-  hhState = { lat, lon, name, radiusKm: HH_DEFAULT_RADIUS_KM, includeLow: false, status: 'loading', rows: null, analysis: null, failed: 0, abort, todayStr, startStr, pct: 0 };
+  // Without a NASA key the sheet still opens with the community-report
+  // details; only the satellite section says it's unavailable.
+  const noKey = !FIRMS_MAP_KEY || FIRMS_MAP_KEY === 'YOUR_FIRMS_MAP_KEY_HERE';
+  hhState = { lat, lon, name, radiusKm: HH_DEFAULT_RADIUS_KM, includeLow: false, status: noKey ? 'nokey' : 'loading', rows: null, analysis: null, failed: 0, abort, todayStr, startStr, pct: 0 };
   hhRenderSheet();
   hhRenderMap();
   fitHeatHistory();
+  if (noKey) return;
   const mine = hhState;
   try {
     const cached = hhCacheGet(lat, lon);
@@ -7041,7 +7032,7 @@ function hhDownloadCsv() {
   const blob = new Blob([head + '\n' + lines.join('\n') + '\n' + sections.join('\n') + '\n'], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `heat-history_${hhState.lat.toFixed(4)}_${hhState.lon.toFixed(4)}_r${hhState.radiusKm}km_${hhState.analysis.fromStr}_${hhState.analysis.toStr}.csv`;
+  a.download = `heat-history_${hhState.lat.toFixed(4)}_${hhState.lon.toFixed(4)}_r${hhState.radiusKm}km.csv`;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
@@ -7340,9 +7331,16 @@ async function fetchAll(){
   return data;
 }
 
+// Each call gets a sequence number; if a newer call started while this one
+// was waiting on the network, the older one bails out instead of drawing a
+// second copy of every pin on top of the newer one.
+let pinLoadSeq = 0;
 async function loadPinsByWindow() {
+  const mySeq = ++pinLoadSeq;
+  activeTraceRequestId++;   // cancel any trace still computing against the old filter/data
   clearMarkers(); clearBacktrack(); clearBackgroundTrails();
   const data = await fetchAll();
+  if (mySeq !== pinLoadSeq) return;
   globalActiveData = data; 
   
   if (data.length > 0) {
@@ -7352,6 +7350,19 @@ async function loadPinsByWindow() {
   updateExportCountUI();
 
   if (!mapFp || !mapFp.selectedDates || mapFp.selectedDates.length < 2) return;
+
+  // Trace mode shows ONLY reports matched to the tracer dot -- never draw the
+  // full date range here, or unmatched pins land on top of the trace and the
+  // header count no longer matches the map. Re-run the trace instead.
+  if (traceMode) {
+    updateReportCountUI(0);
+    if (tracerMarker) {
+      // getLatLng() returns {lat, lng}; the tracer expects {lat, lon}.
+      const ll = tracerMarker.getLatLng();
+      filterPinsBySourceTrajectory({ lat: ll.lat, lon: ll.lng }).catch(console.error);
+    }
+    return;
+  }
 
   const filterStart = new Date(mapFp.selectedDates[0]);
   filterStart.setHours(0, 0, 0, 0);
@@ -7598,10 +7609,13 @@ async function filterPinsBySourceTrajectory(tracerCoords) {
   lastTraceMatchedReports = activeReportsToDrawTrails;
   lastTraceTotalInRange = timeFilteredData.length;
   // Refresh anything on screen that shows trace numbers.
-  if (hhState && hhState.status === 'done' && document.getElementById('hhSheet')?.style.display === 'block') hhRenderSheet();
+  if (hhState && hhState.status !== 'loading' && document.getElementById('hhSheet')?.style.display === 'block') hhRenderSheet();
   if (traceHeatmapEnabled) renderTraceHeatLayer(tracerCoords, activeReportsToDrawTrails);
 
-  const n = reportMarkers.length;
+  // Count the matched reports themselves -- reportMarkers is shared global
+  // state and can hold pins from other renders, which is what produced
+  // impossible counts like "759 of 516".
+  const n = activeReportsToDrawTrails.length;
   updateReportCountUI(n, timeFilteredData.length);
 }
 
