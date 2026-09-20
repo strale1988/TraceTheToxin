@@ -1265,6 +1265,39 @@ span.flatpickr-weekday {
       <p class="detail-export-hint" id="trailHoursHint">How far back the wind trail is drawn on the map. Nearest-station matching always uses up to 12h of history regardless of this setting.</p>
     </div>
 
+    <div class="detail-section" id="factorySettingsSection">
+      <label class="settings-toggle-row" for="factoryToggle">
+        <span id="factoryToggleLabel">Factories &amp; industrial sites</span>
+        <span class="toggle-switch">
+          <input type="checkbox" id="factoryToggle" onchange="toggleFactoryLayer()">
+          <span class="toggle-switch-track"><span class="toggle-switch-thumb"></span></span>
+        </span>
+      </label>
+      <p class="detail-export-hint" id="factoryToggleHint">Show factories, power plants and landfills near you (OpenStreetMap data plus a hand-checked list). Off by default.</p>
+    </div>
+
+    <div class="detail-section" id="wildfireSettingsSection">
+      <label class="settings-toggle-row" for="wildfireToggle">
+        <span id="wildfireToggleLabel">Active wildfires</span>
+        <span class="toggle-switch">
+          <input type="checkbox" id="wildfireToggle" onchange="toggleWildfireLayer()">
+          <span class="toggle-switch-track"><span class="toggle-switch-thumb"></span></span>
+        </span>
+      </label>
+      <p class="detail-export-hint" id="wildfireToggleHint">Show active wildfires detected by NASA satellite data (FIRMS) near you. Off by default.</p>
+    </div>
+
+    <div class="detail-section" id="traceModeSettingsSection">
+      <label class="settings-toggle-row" for="traceModeToggle">
+        <span id="traceModeToggleLabel">Trace Possible Source</span>
+        <span class="toggle-switch">
+          <input type="checkbox" id="traceModeToggle" onchange="toggleTraceMode()">
+          <span class="toggle-switch-track"><span class="toggle-switch-thumb"></span></span>
+        </span>
+      </label>
+      <p class="detail-export-hint" id="traceModeToggleHint">Turn this on, then tap the map (or a factory/power-plant/landfill marker) to see which reports' wind trails trace back to that point. Off by default.</p>
+    </div>
+
     <div class="detail-section" id="splineVisibilitySettingsSection">
       <label class="settings-toggle-row" for="splineVisibilityToggle">
         <span id="splineVisibilityLabel">Show historical wind trails</span>
@@ -1287,9 +1320,20 @@ span.flatpickr-weekday {
       <p class="detail-export-hint" id="traceHeatmapHint">While using Trace Possible Source: purple at the tracer pin, fading to red then orange toward each matched report, then a yellow tail continuing ~5km further along the wind past the report -- brightening back toward orange wherever it crosses another report's trail.</p>
     </div>
 
+    <div class="detail-section" id="sourceHeatSettingsSection">
+      <label class="settings-toggle-row" for="sourceHeatToggle">
+        <span id="sourceHeatToggleLabel">Source heatmap</span>
+        <span class="toggle-switch">
+          <input type="checkbox" id="sourceHeatToggle" onchange="toggleSourceHeat()">
+          <span class="toggle-switch-track"><span class="toggle-switch-thumb"></span></span>
+        </span>
+      </label>
+      <p class="detail-export-hint" id="sourceHeatToggleHint">A concentration heatmap: one weighted point per report, so brighter/redder areas mean more (and stronger, more recent) reports nearby. Off by default.</p>
+    </div>
+
     <div class="detail-section" id="sourceHeatScienceSettingsSection">
       <div class="filter-title" style="margin-bottom:10px;" id="sourceHeatSectionTitle">Source Heatmap</div>
-      <p class="detail-export-hint" style="margin-top:-4px;margin-bottom:12px;" id="sourceHeatSectionBody">The flame button shows a plain concentration heatmap: one weighted point per report, so brighter/redder areas simply mean more (and stronger, more recent) reports nearby.</p>
+      <p class="detail-export-hint" style="margin-top:-4px;margin-bottom:12px;" id="sourceHeatSectionBody">The source heatmap toggle above shows a plain concentration heatmap: one weighted point per report, so brighter/redder areas simply mean more (and stronger, more recent) reports nearby.</p>
       <button class="export-btn" style="width:100%;margin-top:4px;" onclick="showHeatMethodologyModal()" id="sourceHeatMethBtn">How the source heatmap works</button>
     </div>
 
@@ -1421,31 +1465,6 @@ function getReportCooldownRemainingMs() {
 
 function markReportSubmittedNow() {
   try { localStorage.setItem(REPORT_COOLDOWN_KEY, Date.now().toString()); } catch (e) {}
-}
-
-// Same idea, separate timer -- "Check wind-matched reports" is far more
-// expensive per use (one historic-wind fetch per report tested, so up to
-// WTM_MAX_REPORTS_PER_RUN external calls per click) so it gets its own,
-// longer cooldown. This is a soft, client-side deterrent against casual
-// repeat-clicking, not real abuse protection -- anyone in devtools can
-// clear localStorage or call computeTrajectoryMatchedReports directly.
-// Genuine rate-limiting would need a small server-side proxy in front of
-// the wind/heat APIs to enforce per-IP limits; this just keeps normal use
-// from accidentally hammering them.
-const WTM_COOLDOWN_MS = 10 * 60 * 1000; // 10 minutes
-const WTM_COOLDOWN_KEY = 'ttt_last_wtm_ts';
-const WTM_MAX_REPORTS_PER_RUN = 40; // hard cap regardless of cooldown
-
-function getWtmCooldownRemainingMs() {
-  try {
-    const last = parseInt(localStorage.getItem(WTM_COOLDOWN_KEY), 10) || 0;
-    const remaining = WTM_COOLDOWN_MS - (Date.now() - last);
-    return remaining > 0 ? remaining : 0;
-  } catch (e) { return 0; }
-}
-
-function markWtmRunNow() {
-  try { localStorage.setItem(WTM_COOLDOWN_KEY, Date.now().toString()); } catch (e) {}
 }
 
 /* ═══════════════════════════════════════════════════
@@ -2502,16 +2521,6 @@ const T = {
   nearbyReportsStat:  { en:'{n} nearby reports in the last 30 days (within 2km)', sr:'{n} obližnjih prijava u poslednjih 30 dana (u krugu od 2km)' },
   nearbyReportsStat1: { en:'{n} nearby report in the last 30 days (within 2km)', sr:'{n} obližnja prijava u poslednjih 30 dana (u krugu od 2km)' },
   nearbyReportsStat0: { en:'No nearby reports in the last 30 days', sr:'Nema obližnjih prijava u poslednjih 30 dana' },
-  wtmCheckBtn:        { en:'Check wind-matched reports (30 days)', sr:'Proveri prijave povezane vetrom (30 dana)' },
-  wtmChecking:        { en:'Checking wind trajectories…', sr:'Provera putanje vetra…' },
-  wtmCheckingProgress:{ en:'Checking wind trajectories… ({done}/{total})', sr:'Provera putanje vetra… ({done}/{total})' },
-  wtmResult:          { en:'{n} of {total} reports\' wind trails trace back to this source', sr:'{n} od {total} prijava ima putanju vetra koja vodi do ovog izvora' },
-  wtmResult1:         { en:'1 of {total} reports\' wind trail traces back to this source', sr:'1 od {total} prijava ima putanju vetra koja vodi do ovog izvora' },
-  wtmResult0:         { en:'None of the {total} reports checked trace back to this source', sr:'Nijedna od {total} proverenih prijava ne vodi do ovog izvora' },
-  wtmNoneToCheck:     { en:'No reports old enough to check yet (last 30 days)', sr:'Nema dovoljno starih prijava za proveru (poslednjih 30 dana)' },
-  wtmError:           { en:'Could not check wind trajectories. Try again.', sr:'Nije moguće proveriti putanju vetra. Pokušajte ponovo.' },
-  wtmCooldown:        { en:'One wind-trajectory check per device every 10 minutes. Try again in {n} min.', sr:'Jedna provera putanje vetra po uređaju na svakih 10 minuta. Pokušajte ponovo za {n} min.' },
-  wtmCapped:          { en:'Checked the {cap} most recent of {total} qualifying reports.', sr:'Provereno {cap} najnovijih od {total} prijava koje ispunjavaju uslove.' },
   nearestSite:        { en:'Nearest known site', sr:'Najbliži poznati objekat' },
   hhOpenBtn:          { en:'Heat history (2 years)', sr:'Istorija toplote (2 godine)' },
   hhTitle:            { en:'Satellite heat history', sr:'Satelitska istorija toplote' },
@@ -3190,39 +3199,14 @@ const PinControl = L.Control.extend({
 new PinControl().addTo(map);
 document.getElementById('pinMapBtn').style.display = 'flex';
 
-const TraceControl = L.Control.extend({
-  options:{ position:'bottomleft' },
-  onAdd(){
-    const btn = document.getElementById('traceSourceBtn');
-    // CRITICAL FIX: Stop trace toggle click from dropping a point onto the canvas below!
-    L.DomEvent.disableClickPropagation(btn);
-    return btn;
-  }
-});
-new TraceControl().addTo(map);
-document.getElementById('traceSourceBtn').style.display = 'flex';
+// Trace Possible Source, Source Heatmap and Wildfires no longer get their
+// own floating map buttons -- they default off and live as toggles in
+// Settings instead (see the settings modal), so the buttons/controls that
+// used to sit on the map for them have been removed. Their underlying
+// #traceSourceBtn/#sourceHeatBtn/#wildfireBtn elements stay in the DOM
+// (still display:none) purely so the toggle functions' classList calls
+// keep working harmlessly.
 
-const SourceHeatControl = L.Control.extend({
-  options:{ position:'bottomleft' },
-  onAdd(){
-    const btn = document.getElementById('sourceHeatBtn');
-    L.DomEvent.disableClickPropagation(btn);
-    return btn;
-  }
-});
-new SourceHeatControl().addTo(map);
-document.getElementById('sourceHeatBtn').style.display = 'flex';
-
-const WildfireControl = L.Control.extend({
-  options:{ position:'bottomleft' },
-  onAdd(){
-    const btn = document.getElementById('wildfireBtn');
-    L.DomEvent.disableClickPropagation(btn);
-    return btn;
-  }
-});
-new WildfireControl().addTo(map);
-document.getElementById('wildfireBtn').style.display = 'flex';
 // Restore last session's on/off state. Unlike the other toggles above this
 // one needs a live network fetch, not just a local re-render, so this
 // deliberately calls loadWildfireData() directly rather than routing
@@ -3272,32 +3256,42 @@ function togglePinMode() {
   checkFormReady();
 }
 
-function toggleTraceMode() {
-  traceMode = !traceMode;
-  
-  const btn = document.getElementById('traceSourceBtn');
-  btn.classList.toggle('active', traceMode);
+// Shared "just switched Trace Possible Source on" cleanup -- sweeps the map
+// for a clean workspace and clears out any stale tracing structures. Used
+// both by toggleTraceMode() (manual toggle) and traceFromPoint() (a
+// factory/burner marker click, which turns trace mode on implicitly).
+function enterTraceMode() {
+  traceMode = true;
 
-  if (traceMode) {
-    if (pinMode) togglePinMode(); // Turn off manual pin mode if active
-    
-    // 1. Sweep everything off the map immediately for a clean workspace
-    clearMarkers();
-    clearBackgroundTrails();
-    
-    // Clear out any stale tracing structures
-    tracerVisualCircles.forEach(c => map.removeLayer(c));
-    tracerVisualCircles = [];
-    
-    if (tracerMarker) {
-      map.removeLayer(tracerMarker);
-      tracerMarker = null;
-    }
-    if (traceHeatLayer && map.hasLayer(traceHeatLayer)) map.removeLayer(traceHeatLayer);
-    lastTraceTracerCoords = null;
-    lastTraceMatchedReports = [];
+  const btn = document.getElementById('traceSourceBtn');
+  if (btn) btn.classList.add('active');
+
+  if (pinMode) togglePinMode(); // Turn off manual pin mode if active
+
+  clearMarkers();
+  clearBackgroundTrails();
+
+  tracerVisualCircles.forEach(c => map.removeLayer(c));
+  tracerVisualCircles = [];
+
+  if (tracerMarker) {
+    map.removeLayer(tracerMarker);
+    tracerMarker = null;
+  }
+  if (traceHeatLayer && map.hasLayer(traceHeatLayer)) map.removeLayer(traceHeatLayer);
+  lastTraceTracerCoords = null;
+  lastTraceMatchedReports = [];
+}
+
+function toggleTraceMode() {
+  if (!traceMode) {
+    enterTraceMode();
   } else {
-    // 2. Returning back to normal mode: Restore everything safely
+    traceMode = false;
+    const btn = document.getElementById('traceSourceBtn');
+    if (btn) btn.classList.remove('active');
+
+    // Returning back to normal mode: Restore everything safely
     if (tracerMarker) {
       map.removeLayer(tracerMarker);
       tracerMarker = null;
@@ -3307,10 +3301,46 @@ function toggleTraceMode() {
     if (traceHeatLayer && map.hasLayer(traceHeatLayer)) map.removeLayer(traceHeatLayer);
     lastTraceTracerCoords = null;
     lastTraceMatchedReports = [];
-    
+
     loadPinsByWindow(); // Re-render default historical background trails and pins
   }
   checkFormReady(); // Maintain UI integrity
+}
+
+// Drops/moves the red tracer dot at {lat, lon} and runs the trace, exactly
+// like a map click does while Trace Possible Source is active.
+function placeTracerAndTrace(lat, lon) {
+  const latlng = L.latLng(lat, lon);
+
+  tracerVisualCircles.forEach(c => map.removeLayer(c));
+  tracerVisualCircles = [];
+
+  if (tracerMarker) {
+    tracerMarker.setLatLng(latlng);
+  } else {
+    tracerMarker = L.marker(latlng, {
+      icon: L.divIcon({
+        className: '',
+        html: `<div style="width:22px;height:22px;background:#ff4d4d;border-radius:50%;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,.5)"></div>`,
+        iconAnchor: [11,11]
+      })
+    }).addTo(map);
+  }
+
+  // Runs tracing calculation across historical dataset, then reveals ONLY the intersections
+  return filterPinsBySourceTrajectory({ lat, lon });
+}
+
+// Entry point for tracing a possible source from a factory/burner marker
+// click. Turns Trace Possible Source on if it wasn't already (same visual
+// mode as tapping the map by hand), then traces from that site's location --
+// so clicking a factory/power-plant/landfill pin works exactly like using
+// Trace Possible Source there yourself. Runs alongside the marker's popup
+// opening, not instead of it.
+function traceFromPoint(lat, lon) {
+  if (!traceMode) enterTraceMode();
+  checkFormReady();
+  return placeTracerAndTrace(lat, lon);
 }
 
 map.on('click', async function(e) {
@@ -3341,25 +3371,7 @@ map.on('click', async function(e) {
   }
   
   if (traceMode) {
-    const tracerCoords = { lat: e.latlng.lat, lon: e.latlng.lng };
-    
-    tracerVisualCircles.forEach(c => map.removeLayer(c));
-    tracerVisualCircles = [];
-    
-    if (tracerMarker) {
-      tracerMarker.setLatLng(e.latlng);
-    } else {
-      tracerMarker = L.marker(e.latlng, {
-        icon: L.divIcon({
-          className: '',
-          html: `<div style="width:22px;height:22px;background:#ff4d4d;border-radius:50%;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,.5)"></div>`,
-          iconAnchor: [11,11]
-        })
-      }).addTo(map);
-    }
-    
-    // Runs tracing calculation across historical dataset, then reveals ONLY the intersections
-    await filterPinsBySourceTrajectory(tracerCoords);
+    await placeTracerAndTrace(e.latlng.lat, e.latlng.lng);
   }
 });
 
@@ -6091,7 +6103,6 @@ function buildFactoryPopupHtml(idx) {
     ${f.d ? `<div style="font-size:11px;color:var(--text-primary);">${ttEsc(f.d)}</div>` : ''}
     <button type="button" class="hh-open-btn" onclick="openHeatHistoryForFactory(${idx})">${t('hhOpenBtn')}</button>
     ${nearbyReportsStatHtml(f.a, f.o)}
-    <div id="wtm-factory-${idx}-wrap"><button type="button" class="hh-open-btn" onclick="checkWindMatchedReports('factory', ${idx}, this)">${t('wtmCheckBtn')}</button><div id="wtm-factory-${idx}"></div></div>
     <a href="https://www.openstreetmap.org/${osmType}/${ttEsc(f.i.slice(1))}" target="_blank" rel="noopener" style="font-size:10px;color:var(--accent);">${t('factoryOsm')}</a>
     <div style="font-size:10px;color:var(--text-secondary);font-style:italic;">${t('factorySource')}</div>
   </div>
@@ -6135,6 +6146,7 @@ function renderFactoryMarkers() {
     if (!isLikelyOdorSource(f)) return; // idx is still the real array index -- just skip rendering
     L.marker([f.a, f.o], { icon: makeFactoryIcon(f.k) })
       .bindPopup(() => buildFactoryPopupHtml(idx), { maxWidth: 360, minWidth: 220 })
+      .on('click', () => traceFromPoint(f.a, f.o))
       .addTo(factoryLayer);
   });
   if (factoryVisible) factoryLayer.addTo(map);
@@ -6214,7 +6226,6 @@ function buildBurnerPopupHtml(idx) {
     ${b.approx ? `<div style="font-size:10px;color:#ffb300;">${t('burnerApprox')}</div>` : ''}
     <button type="button" class="hh-open-btn" onclick="openHeatHistoryForBurner(${idx})">${t('hhOpenBtn')}</button>
     ${nearbyReportsStatHtml(b.a, b.o)}
-    <div id="wtm-burner-${idx}-wrap"><button type="button" class="hh-open-btn" onclick="checkWindMatchedReports('burner', ${idx}, this)">${t('wtmCheckBtn')}</button><div id="wtm-burner-${idx}"></div></div>
     <div style="font-size:10px;color:var(--text-secondary);">${t('burnerSources')}: ${srcs}</div>
   </div>
 </div>`;
@@ -6226,6 +6237,7 @@ function renderBurnerMarkers() {
   KNOWN_BURNERS.forEach((b, idx) => {
     L.marker([b.a, b.o], { icon: makeBurnerIcon(), zIndexOffset: 800 })
       .bindPopup(() => buildBurnerPopupHtml(idx), { maxWidth: 380, minWidth: 230 })
+      .on('click', () => traceFromPoint(b.a, b.o))
       .addTo(burnerLayer);
   });
   if (factoryVisible) burnerLayer.addTo(map);
@@ -6262,16 +6274,9 @@ async function toggleFactoryLayer() {
   }
 }
 
-const FactoryControl = L.Control.extend({
-  options: { position: 'bottomleft' },
-  onAdd() {
-    const btn = document.getElementById('factoryBtn');
-    L.DomEvent.disableClickPropagation(btn);
-    return btn;
-  }
-});
-new FactoryControl().addTo(map);
-document.getElementById('factoryBtn').style.display = 'flex';
+// Factories no longer gets its own floating map button -- it defaults off
+// and lives as a toggle in Settings instead (#factoryBtn stays in the DOM,
+// still display:none, so the classList calls below keep working harmlessly).
 if (factoryVisible) {
   renderBurnerMarkers();
   document.getElementById('factoryBtn').classList.add('active');
@@ -7277,107 +7282,6 @@ async function filterPinsBySourceTrajectory(tracerCoords) {
   const n = reportMarkers.length;
   updateReportCountUI(n, timeFilteredData.length);
 }
-
-// Non-visual sibling of filterPinsBySourceTrajectory: same matching rule
-// (backward wind trail from each report vs. a growing dispersion cone around
-// the source point), but takes a plain {lat, lon} instead of requiring a
-// dropped tracer pin, touches nothing on the map, and scopes candidates by
-// recency (`days`) instead of the on-map filter's date range -- so it works
-// from a factory/burner popup regardless of what's currently shown on the
-// map. Expensive (one historic-wind fetch per untested report), so this is
-// only ever run on demand from a button tap, never automatically.
-async function computeTrajectoryMatchedReports(lat, lon, { days = NEARBY_REPORTS_DAYS, onProgress } = {}) {
-  const BASE_RADIUS_KM = TRACER_BASE_RADIUS_KM;
-  const DISPERSION_RATE_KM_H = TRACER_DISPERSION_RATE_KM_H;
-  const cutoff = Date.now() - days * 86400000;
-  const candidates = (globalActiveData || []).filter(r => new Date(r.created_at).getTime() >= cutoff);
-  const testableAll = candidates.filter(r => (Date.now() - new Date(r.created_at).getTime()) / 3600000 >= 6);
-
-  // Hard cap regardless of how many reports would otherwise qualify -- keeps
-  // a single run bounded (see WTM_MAX_REPORTS_PER_RUN above) even for a
-  // source with a very busy 30-day window. Most recent first, since those
-  // are the ones most relevant to "is this still happening".
-  const capped = testableAll.length > WTM_MAX_REPORTS_PER_RUN;
-  const testable = capped
-    ? testableAll.slice().sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, WTM_MAX_REPORTS_PER_RUN)
-    : testableAll;
-
-  const matched = [];
-  let done = 0;
-  for (const report of testable) {
-    const trail = await renderHistoricSplineTrailForReport(report);
-    done++;
-    if (onProgress) onProgress(done, testable.length);
-
-    if (trail && trail.length >= 2) {
-      for (let i = 0; i < trail.length - 1; i++) {
-        const distanceKM = distanceToSegment({ lat, lon }, trail[i], trail[i + 1]);
-        const maxAllowedDistance = BASE_RADIUS_KM + (DISPERSION_RATE_KM_H * (i + 1) * (6 / trail.length));
-        if (distanceKM <= maxAllowedDistance) { matched.push(report); break; }
-      }
-    }
-    if (!isWindCached(report)) await new Promise(r => setTimeout(r, 100));
-  }
-
-  return { matched, checked: testable.length, skippedTooRecent: candidates.length - testableAll.length, capped, uncappedCount: testableAll.length };
-}
-
-// Wires the "Check wind-matched reports" button in the factory/burner
-// popups to the function above, updating the same popup DOM node in place
-// as it progresses (the popup element persists across re-renders as long as
-// it stays open, so a stale reference just silently no-ops after close).
-// Takes the clicked <button> itself (btnEl) rather than looking the
-// container up by id -- if more than one factory/burner popup has been
-// opened during this session, a stale popup can leave a duplicate
-// wtm-{kind}-{idx} node sitting in the DOM, and getElementById would
-// silently grab that instead of the one actually on screen, making the
-// button appear to do nothing. Using the element the click came from
-// sidesteps that entirely. Everything (including the synchronous setup,
-// not just the awaited part) is now inside the try/catch, so a bug here
-// surfaces as an error message in the popup instead of a dead button.
-// Deliberately does NOT remove/replace the clicked <button> itself (btnEl)
-// -- destroying an element while it's still mid-click can make some
-// browsers (mobile ones especially) synthesize a "ghost click" on whatever
-// ends up underneath afterwards, which was closing the whole popup. Instead
-// the button is just hidden in place, and all status text goes in a
-// separate sibling <div> next to it.
-async function checkWindMatchedReports(kind, idx, btnEl) {
-  const status = btnEl ? btnEl.nextElementSibling : document.getElementById(`wtm-${kind}-${idx}`);
-  if (!status) return;
-  try {
-    const src = kind === 'factory' ? (factoryData && factoryData[idx]) : KNOWN_BURNERS[idx];
-    if (!src) throw new Error(`no ${kind} at idx ${idx}`);
-
-    const remaining = getWtmCooldownRemainingMs();
-    if (remaining > 0) {
-      const mins = Math.ceil(remaining / 60000);
-      status.innerHTML = `<div style="font-size:10px;color:var(--text-secondary);">${t('wtmCooldown').replace('{n}', mins)}</div>`;
-      return;
-    }
-    markWtmRunNow();
-    if (btnEl) btnEl.style.display = 'none';
-    status.innerHTML = `<div style="font-size:10px;color:var(--text-secondary);">${t('wtmChecking')}</div>`;
-
-    const { matched, checked, capped, uncappedCount } = await computeTrajectoryMatchedReports(src.a, src.o, {
-      onProgress: (doneN, total) => {
-        status.innerHTML = `<div style="font-size:10px;color:var(--text-secondary);">${t('wtmCheckingProgress').replace('{done}', doneN).replace('{total}', total)}</div>`;
-      }
-    });
-    if (checked === 0) {
-      status.innerHTML = `<div style="font-size:10px;color:var(--text-secondary);">${t('wtmNoneToCheck')}</div>`;
-      return;
-    }
-    const n = matched.length;
-    const key = n === 0 ? 'wtmResult0' : n === 1 ? 'wtmResult1' : 'wtmResult';
-    const label = t(key).replace('{n}', n).replace('{total}', checked);
-    const cappedNote = capped ? `<div style="font-size:9px;color:var(--text-secondary);font-style:italic;">${t('wtmCapped').replace('{cap}', checked).replace('{total}', uncappedCount)}</div>` : '';
-    status.innerHTML = `<div style="font-size:10px;color:var(--text-secondary);">🌬️ ${label}</div>${cappedNote}`;
-  } catch (e) {
-    console.warn('[wind-trace-match] failed', e);
-    status.innerHTML = `<div style="font-size:10px;color:var(--danger);">${t('wtmError')}</div>`;
-  }
-}
-
 
 /* ═══════════════════════════════════════════════════
    REPORT ACTION
