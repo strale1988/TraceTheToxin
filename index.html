@@ -179,6 +179,16 @@ header p{ font-size:var(--fs-11); opacity:.7; margin-top:2px; }
   white-space:nowrap;
 }
 
+.trail-limit-chip{
+  display:flex; align-items:center; flex-wrap:wrap; gap:6px;
+  margin-top:4px; font-size:var(--fs-11); color:var(--text-secondary);
+}
+.trail-limit-chip button{
+  border:1px solid var(--border-color-strong); background:var(--bg-surface-alt); color:var(--text-primary);
+  border-radius:999px; padding:2px 10px; font-size:var(--fs-11); font-weight:var(--fw-semibold);
+  cursor:pointer; -webkit-tap-highlight-color:transparent;
+}
+
 .right-controls{
   display:flex;
   gap:8px;
@@ -1130,6 +1140,7 @@ span.flatpickr-weekday {
         <p id="subtitle">Community Air Reporting Network</p>
         <span id="headerReportCount" class="header-report-count"></span>
       </div>
+      <div id="trailLimitChip" class="trail-limit-chip" style="display:none"></div>
     </div>
     <div class="right-controls">
       <button class="help-icon-btn" id="settingsBtn" title="Settings / Podešavanja" onclick="showSettingsModal()">
@@ -1431,7 +1442,9 @@ span.flatpickr-weekday {
 (function () {
   const origGetContext = HTMLCanvasElement.prototype.getContext;
   HTMLCanvasElement.prototype.getContext = function (type, options) {
-    if (type === '2d') {
+    // (leaflet-heat reads pixels back; the trail canvas only draws, so it opts
+    // out via __tttPlainCanvas and keeps GPU acceleration.)
+    if (type === '2d' && !window.__tttPlainCanvas) {
       options = Object.assign({ willReadFrequently: true }, options || {});
     }
     return origGetContext.call(this, type, options);
@@ -2209,6 +2222,7 @@ function applySplineVisibility() {
   // general splines-off-by-default setting, which only governs normal
   // browsing.
   if (pane) pane.style.display = (splinesVisible || traceMode) ? '' : 'none';
+  updateTrailChip();
 }
 function setSplineVisibility(visible) {
   splinesVisible = !!visible;
@@ -2415,6 +2429,9 @@ const T = {
   reportCount:  { en:'Reports',                          sr:'Prijava' },
   reportCount1: { en:'Report',                           sr:'Prijava' },
   ofCount:      { en:'of',                                sr:'od' },
+  trailLimitInfo: { en:'Showing {n} of {total} trails', sr:'Prikazano {n} od {total} tragova' },
+  trailShowAll:   { en:'Show all', sr:'Prikaži sve' },
+  trailShowFewer: { en:'Show fewer', sr:'Prikaži manje' },
   reportBtn:    { en:'REPORT BAD AIR',                   sr:'PRIJAVI LOŠ VAZDUH' },
   reportBtnCleanAir: { en:'REPORT CLEAN AIR',             sr:'PRIJAVI ČIST VAZDUH' },
   csvLabel:     { en:'CSV',                              sr:'CSV' },
@@ -2812,6 +2829,7 @@ function applyLang(){
   if (el('windCompassDir') && currentWindDegForMarker != null) el('windCompassDir').textContent = degToCardinal(currentWindDegForMarker);
   updateSourceHeatBadge(mapDisplayedReports || globalActiveData);
   if (lastKnownReportCount !== null) updateReportCountUI(lastKnownReportCount, lastKnownReportTotal);
+  if (trailInfo) updateTrailChip();
   if (lastKnownExportCount !== null) updateExportCountUI();
 
   // Only re-render the active wizard step if the wizard is currently open,
@@ -3032,6 +3050,22 @@ map.getPane('conePane').style.pointerEvents = 'none';
 map.createPane('splinePane');
 map.getPane('splinePane').style.zIndex = 450;
 map.getPane('splinePane').style.pointerEvents = 'none';
+// The selected report's full wind history is drawn here, above the shared
+// trail pane and independent of it, so it shows even when trails are off.
+map.createPane('focusTrailPane');
+map.getPane('focusTrailPane').style.zIndex = 455;
+map.getPane('focusTrailPane').style.pointerEvents = 'none';
+// Bulk trails (everything except the selected report / the few-trail full
+// view) draw on ONE canvas instead of thousands of SVG paths -- far cheaper
+// to paint and pan, and nothing in it animates.
+const trailCanvas = L.canvas({ pane: 'splinePane', padding: 0.3 });
+{ // its <canvas> is created lazily on first use -- keep the read-back patch off it
+  const initContainer = trailCanvas._initContainer;
+  trailCanvas._initContainer = function () {
+    window.__tttPlainCanvas = true;
+    try { return initContainer.apply(this, arguments); } finally { window.__tttPlainCanvas = false; }
+  };
+}
 // Sits above the default marker pane (600), so the user's own
 // location/manual-pin marker is always drawn on top of report pins,
 // clusters, and AQ station markers — never buried under them regardless
@@ -4519,6 +4553,158 @@ let bgTrailLayers = [];
 const splineByReport = {}; 
 let btAnimFrame = null;
 
+/* ═══════════════════════════════════════════════════
+   TRAIL LEVEL OF DETAIL
+   Hundreds of animated, gradient, per-segment SVG trails made Trace mode
+   both unreadable and slow. So how much is drawn depends on how many
+   trails there are, animation is reserved for a handful (or the selected
+   report), and the selected report always gets its full wind history.
+═══════════════════════════════════════════════════ */
+const TRAIL_FULL_MAX = 15;     // up to this many: full detail + animation
+const TRAIL_STATIC_MAX = 60;   // up to this many: thin static lines, all drawn
+const TRAIL_TOP_N = 40;        // above that: only this many best lines (+ heatmap)
+// (`var`, not `let`: language/visibility hooks may touch these before this
+// point of the script has run, and `var` just reads as undefined then.)
+var trailShowAll = false;      // "Show all" toggle for the top tier
+var trailGenSeq = 0;           // newest generateAllBackgroundTrails call wins
+var trailStore = {};           // report.id -> trail geometry, for every report that has one
+var trailStoreTracer = null;
+var trailStoreTier = 'full';
+var trailInfo = null;          // { shown, total } while the display is limited
+var lastTrailArgs = null;
+var focusTrail = { id: null, layers: [] };   // the selected report's overlay
+
+function trailTier(n) {
+  return n <= TRAIL_FULL_MAX ? 'full' : n <= TRAIL_STATIC_MAX ? 'lite' : 'top';
+}
+
+// Most relevant first: in Trace mode, whose trail passes closest to the
+// tracer dot (grouped in 250 m steps so recency can break near-ties);
+// otherwise simply the newest.
+function rankTrailsForDisplay(items, tracerCoords) {
+  return items.map(it => {
+    let d = 0;
+    if (tracerCoords) {
+      d = Infinity;
+      it.splineLatLngs.forEach(([la, lo]) => {
+        const x = getHaversineDistance(la, lo, tracerCoords.lat, tracerCoords.lon);
+        if (x < d) d = x;
+      });
+    }
+    return { it, band: Math.round(d / 0.25), ts: new Date(it.report.created_at).getTime() };
+  }).sort((a, b) => (a.band - b.band) || (b.ts - a.ts)).map(x => x.it);
+}
+
+// A trail as a few constant-colour runs instead of one polyline per segment.
+function drawBandedTrail(points, stops, report, { fixedColor, weight, opacity, bands = 6 }) {
+  const layers = [];
+  const nSeg = points.length - 1;
+  if (nSeg < 1) return layers;
+  const per = Math.max(1, Math.ceil(nSeg / bands));
+  for (let a = 0; a < nSeg; a += per) {
+    const b = Math.min(nSeg, a + per);
+    const t = points.length > 2 ? ((a + b) / 2) / nSeg : 0.5;
+    const seg = L.polyline(points.slice(a, b + 1), {
+      color: stops ? traceGradientColor(stops, t) : fixedColor,
+      weight, opacity, lineCap: 'round', lineJoin: 'round',
+      interactive: false, pane: 'splinePane', renderer: trailCanvas
+    }).addTo(map);
+    seg._baseOpacity = opacity;   // restored after solo-focus dimming (see setTrailFocus)
+    layers.push(seg);
+  }
+  return layers;
+}
+
+// Static, thin, more transparent the more there are, so overlaps build up
+// into density instead of a solid mass.
+function drawLiteTrail(it, tracerCoords, count, tier) {
+  const opacity = Math.min(0.6, Math.max(0.22, 2 / Math.sqrt(count)));
+  return drawBandedTrail(it.splineLatLngs, tracerCoords ? TRACE_SPLINE_BACK_STOPS : null, it.report, {
+    fixedColor: categoryColor(it.report.category),
+    weight: tier === 'top' ? 1.2 : 1.5,
+    opacity
+  });
+}
+
+// Full detail: per-segment gradient/speed-width lines, plus in Trace mode the
+// forward tail past the report. `o` lets the selected-report overlay draw
+// the same thing in its own pane, animated and more opaque.
+function drawFullTrail(it, tracerCoords, o = {}) {
+  const { report, splineLatLngs, rawPointsUsed, tail } = it;
+  const common = { pane: o.pane, animate: !!o.animate };
+  let segments;
+  if (tracerCoords) {
+    // Backtrail + forward tail, smoothed together across the report point so
+    // the whole thing reads as one continuous curve.
+    const { backSmoothed, forwardSmoothed } = smoothTraceJoin(splineLatLngs, tail);
+    const backSpeeds = mapSpeedsOntoPoints(rawPointsUsed, backSmoothed);
+    segments = drawGradientSpline(backSmoothed, TRACE_SPLINE_BACK_STOPS, report, tracerCoords, 'trace-pulse-spline',
+      { ...common, pointSpeeds: backSpeeds, baseOpacity: o.baseOpacity ?? 0.85 });
+    if (forwardSmoothed.length >= 2) {
+      const tailRawWithReport = [
+        { lat: splineLatLngs[0][0], lon: splineLatLngs[0][1], spd: tail?.[0]?.spd },
+        ...(tail || [])
+      ];
+      const forwardSpeeds = mapSpeedsOntoPoints(tailRawWithReport, forwardSmoothed);
+      segments = segments.concat(
+        drawGradientSpline(forwardSmoothed, TRACE_SPLINE_FORWARD_STOPS, report, tracerCoords, 'trace-pulse-spline-forward',
+          { ...common, pointSpeeds: forwardSpeeds, baseOpacity: o.baseOpacity ?? 0.85 })
+      );
+    }
+  } else {
+    const speeds = mapSpeedsOntoPoints(rawPointsUsed, splineLatLngs);
+    segments = drawGradientSpline(splineLatLngs, null, report, tracerCoords, o.animClass,
+      { ...common, fixedColor: categoryColor(report.category), pointSpeeds: speeds, baseOpacity: o.baseOpacity ?? 0.75 });
+  }
+  return segments;
+}
+
+// The selected report's wind history: ALWAYS shown (own pane, so it ignores
+// the "trails" setting and Trace mode's trimmed set), full detail, animated.
+// Only one at a time.
+async function showFocusTrail(report) {
+  hideFocusTrail();
+  const it = trailStore[report.id];
+  if (!it) return;
+  focusTrail.id = report.id;
+  const tracer = trailStoreTracer;
+  if (tracer && it.tail === undefined) {
+    try { it.tail = await computeForwardWindExtension(report, 5, 1); } catch (e) { it.tail = []; }
+    if (focusTrail.id !== report.id) return;   // popup closed/changed while fetching
+  }
+  const layers = drawFullTrail(it, tracer, { pane: 'focusTrailPane', animate: true, baseOpacity: 0.95, animClass: 'bg-trail-animated' });
+  // Trace mode skips cones for big sets; the selected report still gets its own.
+  if (tracer && trailStoreTier !== 'full') {
+    layers.push(...drawReportCone(report, tracer));
+    updateConeVisibilityForClustering();
+  }
+  focusTrail.layers = layers;
+  // the overlay replaces this report's regular line
+  (splineByReport[report.id] || []).forEach(seg => seg.setStyle({ opacity: 0 }));
+}
+function hideFocusTrail(id) {
+  if (!focusTrail || (id != null && focusTrail.id !== id)) return;
+  focusTrail.layers.forEach(l => map.removeLayer(l));
+  focusTrail.layers = [];
+  focusTrail.id = null;
+}
+
+// "Showing 40 of 258 trails · Show all" -- only while the trail set is big
+// enough to be limited and trails are actually visible.
+function updateTrailChip() {
+  const el = document.getElementById('trailLimitChip');
+  if (!el) return;
+  if (!trailInfo || !(splinesVisible || traceMode)) { el.style.display = 'none'; return; }
+  const n = trailShowAll ? trailInfo.total : trailInfo.shown;
+  el.innerHTML = `<span>${t('trailLimitInfo').replace('{n}', n).replace('{total}', trailInfo.total)}</span>` +
+    `<button type="button" onclick="toggleTrailShowAll()">${t(trailShowAll ? 'trailShowFewer' : 'trailShowAll')}</button>`;
+  el.style.display = 'flex';
+}
+function toggleTrailShowAll() {
+  trailShowAll = !trailShowAll;
+  if (lastTrailArgs) generateAllBackgroundTrails(lastTrailArgs.reports, lastTrailArgs.tracerCoords);
+}
+
 // "Solo" focus mode: while a report's popup is open, every OTHER report's
 // trail (and marker) dims down so the one you're actually looking at
 // isn't lost in a tangle of dozens of overlapping dashed lines. Cleared
@@ -5166,8 +5352,14 @@ async function startBacktrack(lat, lon, createdAt) {
 ═══════════════════════════════════════════════════ */
 
 function clearBackgroundTrails() {
+  hideFocusTrail();
   bgTrailLayers.forEach(l => map.removeLayer(l));
   bgTrailLayers = [];
+  // splineByReport / trailStore only ever grew before; drop stale entries.
+  Object.keys(splineByReport).forEach(k => delete splineByReport[k]);
+  trailStore = {};
+  trailInfo = null;
+  updateTrailChip();
 }
 
 // Color stops for the Trace Possible Source spline gradient (only used
@@ -5205,7 +5397,7 @@ function traceGradientColor(stops, t) {
 // optional (omit for a single fixedColor); `speedProfile` is optional
 // (omit to keep a flat default weight). Returns the array of layers added.
 function drawGradientSpline(points, stops, report, tracerCoords, animationClass = 'trace-pulse-spline', opts = {}) {
-  const { fixedColor, pointSpeeds, baseOpacity = 0.85 } = opts;
+  const { fixedColor, pointSpeeds, baseOpacity = 0.85, pane = 'splinePane', animate = false } = opts;
   const layers = [];
   for (let i = 0; i < points.length - 1; i++) {
     const t = points.length > 2 ? (i + 0.5) / (points.length - 1) : 0.5;
@@ -5222,9 +5414,9 @@ function drawGradientSpline(points, stops, report, tracerCoords, animationClass 
       dashArray: '4, 7',
       lineCap: 'round',
       lineJoin: 'round',
-      className: `spline-report-${report.id}${tracerCoords ? ' ' + animationClass : ''}`,
+      className: `spline-report-${report.id}${(tracerCoords || animate) ? ' ' + animationClass : ''}`,
       interactive: false,
-      pane: 'splinePane'
+      pane
     }).addTo(map);
     // Focus mode (see setTrailFocus) dims every trail except the one
     // whose popup is open, then needs to restore this exact opacity --
@@ -5267,119 +5459,128 @@ function smoothTraceJoin(backLatLngs, tailPoints) {
   return { backSmoothed, forwardSmoothed };
 }
 
+// One report's dispersion cone (edge lines + 5 fading polygons). Returns the
+// layers it added so callers can also track/remove them separately.
+function drawReportCone(report, tracerCoords) {
+  const firstNew = bgTrailLayers.length;
+  const startLat = parseFloat(report.latitude);
+  const startLon = parseFloat(report.longitude);
+  const windDeg = parseFloat(report.manual_wind_direction ?? report.wind_direction);
+
+
+  const totalDistKm = 1.5;
+  const totalSegments = 5;
+  const stepDistKm = totalDistKm / totalSegments;
+  const expansionAngleDeg = 30;
+
+  const baseColor = categoryColor(report.category);
+  const upwindBearingRad = ((windDeg + 180) % 360) * Math.PI / 180;
+
+  const edges = { left: [], right: [] };
+
+  const coneClipDistKm = tracerCoords ? (() => {
+    const distToSource = getHaversineDistance(startLat, startLon, tracerCoords.lat, tracerCoords.lon);
+    return distToSource + 5.0;
+  })() : Infinity;
+
+  for (let i = 0; i < totalSegments; i++) {
+    const currentSegmentDistStart = i * stepDistKm;
+    const currentSegmentDistEnd = (i + 1) * stepDistKm;
+    if (currentSegmentDistStart >= coneClipDistKm) continue;
+
+    const pStart = moveUpwind(startLat, startLon, windDeg, currentSegmentDistStart);
+    const pEnd = moveUpwind(startLat, startLon, windDeg, currentSegmentDistEnd);
+
+    const widthStart = currentSegmentDistStart * Math.sin(expansionAngleDeg * Math.PI / 180);
+    const widthEnd = currentSegmentDistEnd * Math.sin(expansionAngleDeg * Math.PI / 180);
+
+    const leftAngle = upwindBearingRad - Math.PI / 2;
+    const rightAngle = upwindBearingRad + Math.PI / 2;
+
+    const cosStartLat = Math.cos(pStart.lat * Math.PI / 180);
+    const cosEndLat = Math.cos(pEnd.lat * Math.PI / 180);
+
+    const pStartLeftLat = pStart.lat + (Math.cos(leftAngle) * widthStart) / 111.32;
+    const pStartLeftLon = pStart.lon + (Math.sin(leftAngle) * widthStart) / (111.32 * cosStartLat);
+    const pStartRightLat = pStart.lat + (Math.cos(rightAngle) * widthStart) / 111.32;
+    const pStartRightLon = pStart.lon + (Math.sin(rightAngle) * widthStart) / (111.32 * cosStartLat);
+    const pEndLeftLat = pEnd.lat + (Math.cos(leftAngle) * widthEnd) / 111.32;
+    const pEndLeftLon = pEnd.lon + (Math.sin(leftAngle) * widthEnd) / (111.32 * cosEndLat);
+    const pEndRightLat = pEnd.lat + (Math.cos(rightAngle) * widthEnd) / 111.32;
+    const pEndRightLon = pEnd.lon + (Math.sin(rightAngle) * widthEnd) / (111.32 * cosEndLat);
+
+    const leftLine = L.polyline(edges.left, {
+      color: baseColor,
+      weight: 1,
+      opacity: 0.5,
+      className: `bg-trail-teal cone-report-${report.id}`,
+      interactive: false,
+      pane: 'conePane'
+    }).addTo(map);
+
+    const rightLine = L.polyline(edges.right, {
+      color: baseColor,
+      weight: 1,
+      opacity: 0.5,
+      className: `bg-trail-teal cone-report-${report.id}`,
+      interactive: false,
+      pane: 'conePane'
+    }).addTo(map);
+
+    bgTrailLayers.push(leftLine, rightLine);
+
+    // build continuous left/right boundary lines
+    if (i === 0) {
+      edges.left.push([pStartLeftLat, pStartLeftLon]);
+      edges.right.push([pStartRightLat, pStartRightLon]);
+    }
+
+    edges.left.push([pEndLeftLat, pEndLeftLon]);
+    edges.right.push([pEndRightLat, pEndRightLon]);
+
+
+    const segmentEnvelope = [
+      [pStartLeftLat, pStartLeftLon],
+      [pEndLeftLat, pEndLeftLon],
+      [pEndRightLat, pEndRightLon],
+      [pStartRightLat, pStartRightLon]
+    ];
+
+    const segmentFactor = i / totalSegments;
+    const segmentFillOpacity = 0.35 * (1.0 - segmentFactor);
+    const segmentStrokeOpacity = 0.15 * (1.0 - segmentFactor);
+
+    const coneSegment = L.polygon(segmentEnvelope, {
+      color: baseColor,
+      fillColor: baseColor,
+      weight: 1,
+      fillOpacity: segmentFillOpacity,
+      opacity: segmentStrokeOpacity,
+      className: `bg-trail-teal cone-report-${report.id}`,
+      interactive: false,
+      pane: 'conePane'
+    }).addTo(map);
+
+    bgTrailLayers.push(coneSegment);
+  }
+
+  return bgTrailLayers.slice(firstNew);
+}
+
 async function generateAllBackgroundTrails(reports, tracerCoords = null) {
+  const mySeq = ++trailGenSeq;   // a newer call supersedes this one (checked after each await)
+  lastTrailArgs = { reports, tracerCoords };
   clearBackgroundTrails();
 
   // Create a shallow copy and sort it so that older reports are drawn first, 
   // and the newest reports are drawn LAST (putting them on top visually)
   const sortedReports = [...reports].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
 
-  // PASS 1: Draw all solid cones synchronously (no API calls needed)
-  const coneEdges = new Map(); // report.id -> { left: [], right: [] }
-  sortedReports.forEach((report) => {
-    const startLat = parseFloat(report.latitude);
-    const startLon = parseFloat(report.longitude);
-    const windDeg = parseFloat(report.manual_wind_direction ?? report.wind_direction);
-
-
-    const totalDistKm = 1.5;
-    const totalSegments = 5;
-    const stepDistKm = totalDistKm / totalSegments;
-    const expansionAngleDeg = 30;
-
-    const baseColor = categoryColor(report.category);
-    const upwindBearingRad = ((windDeg + 180) % 360) * Math.PI / 180;
-
-    coneEdges.set(report.id, { left: [], right: [] });
-
-    const coneClipDistKm = tracerCoords ? (() => {
-      const distToSource = getHaversineDistance(startLat, startLon, tracerCoords.lat, tracerCoords.lon);
-      return distToSource + 5.0;
-    })() : Infinity;
-
-    for (let i = 0; i < totalSegments; i++) {
-      const currentSegmentDistStart = i * stepDistKm;
-      const currentSegmentDistEnd = (i + 1) * stepDistKm;
-      if (currentSegmentDistStart >= coneClipDistKm) continue;
-
-      const pStart = moveUpwind(startLat, startLon, windDeg, currentSegmentDistStart);
-      const pEnd = moveUpwind(startLat, startLon, windDeg, currentSegmentDistEnd);
-
-      const widthStart = currentSegmentDistStart * Math.sin(expansionAngleDeg * Math.PI / 180);
-      const widthEnd = currentSegmentDistEnd * Math.sin(expansionAngleDeg * Math.PI / 180);
-
-      const leftAngle = upwindBearingRad - Math.PI / 2;
-      const rightAngle = upwindBearingRad + Math.PI / 2;
-
-      const cosStartLat = Math.cos(pStart.lat * Math.PI / 180);
-      const cosEndLat = Math.cos(pEnd.lat * Math.PI / 180);
-
-      const pStartLeftLat = pStart.lat + (Math.cos(leftAngle) * widthStart) / 111.32;
-      const pStartLeftLon = pStart.lon + (Math.sin(leftAngle) * widthStart) / (111.32 * cosStartLat);
-      const pStartRightLat = pStart.lat + (Math.cos(rightAngle) * widthStart) / 111.32;
-      const pStartRightLon = pStart.lon + (Math.sin(rightAngle) * widthStart) / (111.32 * cosStartLat);
-      const pEndLeftLat = pEnd.lat + (Math.cos(leftAngle) * widthEnd) / 111.32;
-      const pEndLeftLon = pEnd.lon + (Math.sin(leftAngle) * widthEnd) / (111.32 * cosEndLat);
-      const pEndRightLat = pEnd.lat + (Math.cos(rightAngle) * widthEnd) / 111.32;
-      const pEndRightLon = pEnd.lon + (Math.sin(rightAngle) * widthEnd) / (111.32 * cosEndLat);
-
-      const edges = coneEdges.get(report.id);
-
-      const leftLine = L.polyline(edges.left, {
-        color: baseColor,
-        weight: 1,
-        opacity: 0.5,
-        className: `bg-trail-teal cone-report-${report.id}`,
-        interactive: false,
-        pane: 'conePane'
-      }).addTo(map);
-
-      const rightLine = L.polyline(edges.right, {
-        color: baseColor,
-        weight: 1,
-        opacity: 0.5,
-        className: `bg-trail-teal cone-report-${report.id}`,
-        interactive: false,
-        pane: 'conePane'
-      }).addTo(map);
-
-      bgTrailLayers.push(leftLine, rightLine);
-
-      // build continuous left/right boundary lines
-      if (i === 0) {
-        edges.left.push([pStartLeftLat, pStartLeftLon]);
-        edges.right.push([pStartRightLat, pStartRightLon]);
-      }
-
-      edges.left.push([pEndLeftLat, pEndLeftLon]);
-      edges.right.push([pEndRightLat, pEndRightLon]);
-
-
-      const segmentEnvelope = [
-        [pStartLeftLat, pStartLeftLon],
-        [pEndLeftLat, pEndLeftLon],
-        [pEndRightLat, pEndRightLon],
-        [pStartRightLat, pStartRightLon]
-      ];
-
-      const segmentFactor = i / totalSegments;
-      const segmentFillOpacity = 0.35 * (1.0 - segmentFactor);
-      const segmentStrokeOpacity = 0.15 * (1.0 - segmentFactor);
-
-      const coneSegment = L.polygon(segmentEnvelope, {
-        color: baseColor,
-        fillColor: baseColor,
-        weight: 1,
-        fillOpacity: segmentFillOpacity,
-        opacity: segmentStrokeOpacity,
-        className: `bg-trail-teal cone-report-${report.id}`,
-        interactive: false,
-        pane: 'conePane'
-      }).addTo(map);
-
-      bgTrailLayers.push(coneSegment);
-    }
-  });
+  // PASS 1: dispersion cones (synchronous, no API calls). In Trace mode with
+  // more than a handful of trails they're skipped -- hundreds of overlapping
+  // cones just bury the picture; the selected report still gets its own.
+  const tier = trailTier(sortedReports.length);
+  if (!tracerCoords || tier === 'full') sortedReports.forEach(report => drawReportCone(report, tracerCoords));
 
 // PASS 2: Fetch historic wind trails concurrently — safe to parallelize now that
 // archival reports (>7 days) are served from the persisted historic_wind_json
@@ -5388,6 +5589,7 @@ async function generateAllBackgroundTrails(reports, tracerCoords = null) {
   const trailResults = await Promise.all(
     sortedReports.map(report => buildWindTrailForReport(report))
   );
+  if (mySeq !== trailGenSeq) return;
 
   const displayHours = getTrailDisplayHours();
 
@@ -5483,44 +5685,38 @@ async function generateAllBackgroundTrails(reports, tracerCoords = null) {
     trailsToRender.push({ report, trailResult, splineLatLngs, rawPointsUsed });
   });
 
-  // Trace mode only: one more hour of REAL forward wind data past each
-  // report, for the yellow continuation past the orange report point.
-  const forwardTails = tracerCoords
-    ? await Promise.all(trailsToRender.map(({ report }) => computeForwardWindExtension(report, 5, 1).catch(() => [])))
-    : [];
+  // What gets drawn depends on how many trails there are (see trailTier):
+  //  full -- gradient, forward tail and animation, as before
+  //  lite -- thin static lines on the shared canvas, no forward tail
+  //  top  -- only the TRAIL_TOP_N most relevant lines (the rest appear when
+  //          their report is selected, or via "Show all")
+  trailStoreTracer = tracerCoords;
+  trailStoreTier = tier;
+  trailsToRender.forEach(it => { trailStore[it.report.id] = it; });
 
-  trailsToRender.forEach(({ report, trailResult, splineLatLngs, rawPointsUsed }, idx) => {
-    const baseColor = categoryColor(report.category);
-    let segments;
+  // Trace mode, few trails only: one more hour of REAL forward wind data past
+  // each report, for the yellow continuation past the orange report point.
+  // Larger sets fetch it on demand, just for the selected report.
+  if (tracerCoords && tier === 'full') {
+    const tails = await Promise.all(trailsToRender.map(({ report }) => computeForwardWindExtension(report, 5, 1).catch(() => [])));
+    if (mySeq !== trailGenSeq) return;
+    trailsToRender.forEach((it, idx) => { it.tail = tails[idx]; });
+  }
 
-    if (tracerCoords) {
-      // Backtrail + forward tail, smoothed together across the report
-      // point so the whole thing reads as one continuous curve instead of
-      // a smooth backtrail stuck to a straight little forward stub.
-      const tail = forwardTails[idx];
-      const { backSmoothed, forwardSmoothed } = smoothTraceJoin(splineLatLngs, tail);
+  let featured = trailsToRender;
+  if (tier === 'top' && !trailShowAll) {
+    featured = rankTrailsForDisplay(trailsToRender, tracerCoords).slice(0, TRAIL_TOP_N)
+      .sort((a, b) => new Date(a.report.created_at) - new Date(b.report.created_at)); // newest drawn last = on top
+  }
 
-      const backSpeeds = mapSpeedsOntoPoints(rawPointsUsed, backSmoothed);
-      segments = drawGradientSpline(backSmoothed, TRACE_SPLINE_BACK_STOPS, report, tracerCoords, 'trace-pulse-spline', { pointSpeeds: backSpeeds });
-
-      if (forwardSmoothed.length >= 2) {
-        const tailRawWithReport = [
-          { lat: splineLatLngs[0][0], lon: splineLatLngs[0][1], spd: tail?.[0]?.spd },
-          ...(tail || [])
-        ];
-        const forwardSpeeds = mapSpeedsOntoPoints(tailRawWithReport, forwardSmoothed);
-        segments = segments.concat(
-          drawGradientSpline(forwardSmoothed, TRACE_SPLINE_FORWARD_STOPS, report, tracerCoords, 'trace-pulse-spline-forward', { pointSpeeds: forwardSpeeds })
-        );
-      }
-    } else {
-      const speeds = mapSpeedsOntoPoints(rawPointsUsed, splineLatLngs);
-      segments = drawGradientSpline(splineLatLngs, null, report, tracerCoords, undefined, { fixedColor: baseColor, pointSpeeds: speeds, baseOpacity: 0.75 });
-    }
-
+  featured.forEach(it => {
+    const segments = tier === 'full'
+      ? drawFullTrail(it, tracerCoords)
+      : drawLiteTrail(it, tracerCoords, featured.length, tier);
     bgTrailLayers.push(...segments);
-    splineByReport[report.id] = segments;
+    splineByReport[it.report.id] = segments;
   });
+  trailInfo = trailsToRender.length > TRAIL_STATIC_MAX ? { shown: featured.length, total: trailsToRender.length } : null;
 
   // Splines default to hidden (Settings toggle, off by default) — apply
   // that state to whatever we just drew, same as toggling it live does.
@@ -5531,6 +5727,14 @@ async function generateAllBackgroundTrails(reports, tracerCoords = null) {
   // give it a moment to settle before checking which reports ended up
   // individually visible vs. clustered.
   setTimeout(updateConeVisibilityForClustering, 60);
+
+  // A popup that was already open keeps its solo focus + full wind history
+  // across a redraw (e.g. "Show all").
+  if (focusedTrailReportId != null) {
+    setTrailFocus(focusedTrailReportId);
+    const m = markerByReportId[focusedTrailReportId];
+    if (m && m._reportRef) showFocusTrail(m._reportRef);
+  }
 }
 
 /* ═══════════════════════════════════════════════════
@@ -7311,24 +7515,12 @@ function renderPin(report, index = 0){
   marker.bindPopup(buildReportPopupHtml(report, buildReportStationSectionHtml(undefined, report.created_at, report.id)), { maxWidth: 460, minWidth: 220 });
 
   marker.on('popupopen', () => {
-    // startBacktrack(...) used to be called here but its result was never
-    // used anywhere (dead code) — it just fired an extra Open-Meteo request
-    // on every popup open, competing with the real wind-trail fetch below
-    // and making it more likely to get rate-limited into a silent fallback.
-    const splines = splineByReport[report.id];
-    if (splines) {
-      splines.forEach(spline => {
-        const el = spline.getElement();
-        if (el) {
-          clearTimeout(el._animTimer);
-          el.classList.add('bg-trail-animated');
-        }
-      });
-    }
-
     // Solo mode: dim every other report's trail/marker while this one's
     // popup is open, so it's not lost in a tangle of overlapping trails.
     setTrailFocus(report.id);
+    // The selected report always shows its full wind history, animated,
+    // whatever the trail setting or the bulk-trail tier is.
+    showFocusTrail(report);
 
     // Refresh nearest-station data on every open, same pattern as the AQ
     // station markers themselves — the numbers shown are never older than
@@ -7341,15 +7533,7 @@ function renderPin(report, index = 0){
     });
   });
   marker.on('popupclose', () => {
-    const splines = splineByReport[report.id];
-    if (splines) {
-      splines.forEach(spline => {
-        const el = spline.getElement();
-        if (el) {
-          el._animTimer = setTimeout(() => el.classList.remove('bg-trail-animated'), 5000);
-        }
-      });
-    }
+    hideFocusTrail(report.id);
 
     // Only clear solo focus if this report is still the focused one --
     // if a different marker's popup already took over focus, its own
@@ -7544,7 +7728,7 @@ async function buildTraceHeatPoints(tracerCoords, matchedReports) {
   return points;
 }
 
-async function renderTraceHeatLayer(tracerCoords, matchedReports) {
+async function renderTraceHeatLayer(tracerCoords, matchedReports, force = false) {
   const points = await buildTraceHeatPoints(tracerCoords, matchedReports);
   if (traceHeatLayer) {
     safeSetHeatData(traceHeatLayer, points);
@@ -7566,7 +7750,7 @@ async function renderTraceHeatLayer(tracerCoords, matchedReports) {
       }
     });
   }
-  if (traceHeatmapEnabled && !map.hasLayer(traceHeatLayer)) {
+  if ((traceHeatmapEnabled || force) && !map.hasLayer(traceHeatLayer)) {
     traceHeatLayer.addTo(map);
   }
 }
@@ -7576,6 +7760,7 @@ async function filterPinsBySourceTrajectory(tracerCoords) {
   const BASE_RADIUS_KM = TRACER_BASE_RADIUS_KM;
   const DISPERSION_RATE_KM_H = TRACER_DISPERSION_RATE_KM_H;
   const currentRequestId = ++activeTraceRequestId;
+  trailShowAll = false;
 
   clearMarkers();
   clearBackgroundTrails();
@@ -7662,7 +7847,11 @@ async function filterPinsBySourceTrajectory(tracerCoords) {
   lastTraceTotalInRange = timeFilteredData.length;
   // Refresh anything on screen that shows trace numbers.
   if (hhState && hhState.status !== 'loading' && document.getElementById('hhSheet')?.style.display === 'block') hhRenderSheet();
-  if (traceHeatmapEnabled) renderTraceHeatLayer(tracerCoords, activeReportsToDrawTrails);
+  // With a big trace the individual lines are limited, so the heatmap
+  // becomes the overview -- shown automatically even if the setting is off.
+  const autoHeat = trailTier(activeReportsToDrawTrails.length) === 'top';
+  if (traceHeatmapEnabled || autoHeat) renderTraceHeatLayer(tracerCoords, activeReportsToDrawTrails, autoHeat);
+  else if (traceHeatLayer && map.hasLayer(traceHeatLayer)) map.removeLayer(traceHeatLayer);
 
   // Count the matched reports themselves -- reportMarkers is shared global
   // state and can hold pins from other renders, which is what produced
