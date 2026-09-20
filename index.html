@@ -1176,7 +1176,7 @@ span.flatpickr-weekday {
   <div id="pinMapBtn" class="pin-map-btn" style="display:none" title="Set location manually" onclick="togglePinMode()">
     <img class="icon-img" src="icons/pin.png" alt="Pin">
   </div>
-  <div id="traceSourceBtn" class="trace-source-btn" style="display:none" title="Trace Possible Source" onclick="toggleTraceMode()">
+  <div id="traceSourceBtn" class="trace-source-btn" style="display:flex" title="Trace Possible Source" onclick="toggleTraceMode()">
     <img class="icon-img" src="icons/search.png" alt="Trace">
   </div>
   <div id="sourceHeatBtn" class="source-heat-btn" style="display:none" title="Show probable source heatmap" onclick="toggleSourceHeat()">
@@ -1285,17 +1285,6 @@ span.flatpickr-weekday {
         </span>
       </label>
       <p class="detail-export-hint" id="wildfireToggleHint">Show active wildfires detected by NASA satellite data (FIRMS) near you. Off by default.</p>
-    </div>
-
-    <div class="detail-section" id="traceModeSettingsSection">
-      <label class="settings-toggle-row" for="traceModeToggle">
-        <span id="traceModeToggleLabel">Trace Possible Source</span>
-        <span class="toggle-switch">
-          <input type="checkbox" id="traceModeToggle" autocomplete="off" onchange="setTraceMode(this.checked)">
-          <span class="toggle-switch-track"><span class="toggle-switch-thumb"></span></span>
-        </span>
-      </label>
-      <p class="detail-export-hint" id="traceModeToggleHint">Turn this on, then tap the map (or a factory/power-plant/landfill marker) to see which reports' wind trails trace back to that point. Off by default.</p>
     </div>
 
     <div class="detail-section" id="splineVisibilitySettingsSection">
@@ -1933,7 +1922,6 @@ function syncSettingsToggles() {
   };
   set('factoryToggle', factoryVisible);
   set('wildfireToggle', wildfireVisible);
-  set('traceModeToggle', traceMode);
   set('splineVisibilityToggle', splinesVisible);
   set('traceHeatmapToggle', traceHeatmapEnabled);
   set('sourceHeatToggle', sourceHeatVisible);
@@ -2082,6 +2070,11 @@ let traceMode = false;
 // from this, so switching it on shows what the map shows -- not every
 // report ever submitted.
 let mapDisplayedReports = null;
+
+// True while the current trace was started by tapping a factory/power-plant/
+// landfill pin (rather than by tapping the map). The next tap elsewhere on
+// the map then ends Trace Possible Source instead of starting a new trace.
+let tracePoiActive = false;
 let tracerMarker = null;
 let tracerVisualCircles = []; 
 let globalActiveData = [];
@@ -2706,7 +2699,7 @@ function applyLang(){
   if (el('pullRefreshLabel'))      el('pullRefreshLabel').textContent = t('pullToRefresh');
 
   // Settings switches for map layers
-  ['factory', 'wildfire', 'traceMode', 'sourceHeat'].forEach(k => {
+  ['factory', 'wildfire', 'sourceHeat'].forEach(k => {
     if (el(k + 'ToggleLabel')) el(k + 'ToggleLabel').textContent = t(k + 'ToggleLabel');
     if (el(k + 'ToggleHint'))  el(k + 'ToggleHint').textContent  = t(k + 'ToggleHint');
   });
@@ -3281,11 +3274,23 @@ const PinControl = L.Control.extend({
 new PinControl().addTo(map);
 document.getElementById('pinMapBtn').style.display = 'flex';
 
-// Trace Possible Source, Source Heatmap and Wildfires no longer get their
+// Trace Possible Source is a map button (off until tapped), not a Settings switch.
+const TraceControl = L.Control.extend({
+  options:{ position:'bottomleft' },
+  onAdd(){
+    const btn = document.getElementById('traceSourceBtn');
+    L.DomEvent.disableClickPropagation(btn); // a tap on the button must not reach the map as a trace click
+    return btn;
+  }
+});
+new TraceControl().addTo(map);
+document.getElementById('traceSourceBtn').style.display = 'flex';
+
+// Source Heatmap and Wildfires no longer get their
 // own floating map buttons -- they default off and live as toggles in
 // Settings instead (see the settings modal), so the buttons/controls that
 // used to sit on the map for them have been removed. Their underlying
-// #traceSourceBtn/#sourceHeatBtn/#wildfireBtn elements stay in the DOM
+// #sourceHeatBtn/#wildfireBtn elements stay in the DOM
 // (still display:none) purely so the toggle functions' classList calls
 // keep working harmlessly.
 
@@ -3328,6 +3333,7 @@ function togglePinMode() {
 function enterTraceMode() {
   traceMode = true;
   mapDisplayedReports = [];   // nothing traced yet, so nothing on the map
+  tracePoiActive = false;
   syncSettingsToggles();      // also reached via a factory-pin tap, not just the switch
 
   const btn = document.getElementById('traceSourceBtn');
@@ -3362,6 +3368,7 @@ function setTraceMode(on, opts) {
     enterTraceMode();
   } else {
     traceMode = false;
+    tracePoiActive = false;
     const btn = document.getElementById('traceSourceBtn');
     if (btn) btn.classList.remove('active');
 
@@ -3409,13 +3416,14 @@ function placeTracerAndTrace(lat, lon) {
 }
 
 // Entry point for tracing a possible source from a factory/burner marker
-// click. Turns Trace Possible Source on if it wasn't already (same visual
-// mode as tapping the map by hand), then traces from that site's location --
-// so clicking a factory/power-plant/landfill pin works exactly like using
-// Trace Possible Source there yourself. Runs alongside the marker's popup
+// click while Trace Possible Source is on: traces from that site's location,
+// exactly like tapping the map there. Runs alongside the marker's popup
 // opening, not instead of it.
 function traceFromPoint(lat, lon) {
-  if (!traceMode) enterTraceMode();
+  // Only when the user has already switched Trace Possible Source on with
+  // the map button; tapping a pin never turns it on by itself.
+  if (!traceMode) return Promise.resolve();
+  tracePoiActive = true;
   checkFormReady();
   return placeTracerAndTrace(lat, lon);
 }
@@ -3448,6 +3456,8 @@ map.on('click', async function(e) {
   }
   
   if (traceMode) {
+    // A trace started from a factory pin ends on the next tap elsewhere.
+    if (tracePoiActive) { setTraceMode(false); return; }
     await placeTracerAndTrace(e.latlng.lat, e.latlng.lng);
   }
 });
