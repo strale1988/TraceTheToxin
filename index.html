@@ -2628,6 +2628,11 @@ const T = {
   nearbyReportsStat0: { en:'No nearby reports, {range}', sr:'Nema obližnjih prijava, {range}' },
   tracedReportsStat:  { en:'{n} of {total} reports traced to this site', sr:'{n} od {total} prijava povezano sa ovim objektom' },
   hhReportsInRange:   { en:'Nearby reports (map filter)', sr:'Obližnje prijave (filter mape)' },
+  hhPrevPeriod:       { en:'Previous period (same length)', sr:'Prethodni period (iste dužine)' },
+  hhPrevPeriodNone:   { en:'No earlier data (archive covers 2 years)', sr:'Nema ranijih podataka (arhiva pokriva 2 godine)' },
+  hhDetectionsByDay:  { en:'Detections, per day', sr:'Detekcije, po danima' },
+  hhDetectionsUnit:   { en:'detections', sr:'detekcija' },
+  hhReportsByDay:     { en:'Nearby community reports, per day', sr:'Obližnje prijave zajednice, po danima' },
   hhTracedByDay:      { en:'Traced reports, per day', sr:'Povezane prijave, po danima' },
   hhTracedByMonth:    { en:'Traced reports, per month', sr:'Povezane prijave, po mesecima' },
   hhTracedReports:    { en:'Traced to this site', sr:'Povezano sa ovim objektom' },
@@ -2642,8 +2647,8 @@ const T = {
   hhNightDays:        { en:'Of which at night', sr:'Od toga noću' },
   hhLast90:           { en:'Last 90 days', sr:'Poslednjih 90 dana' },
   hhBaseline:         { en:'Usual per 90 days before', sr:'Uobičajeno na 90 dana ranije' },
-  hhNewSpots:         { en:'New hot spots (last 90 days)', sr:'Nove tačke (poslednjih 90 dana)' },
-  hhNewTag:           { en:'First seen in last 90 days', sr:'Prvi put viđeno u poslednjih 90 dana' },
+  hhNewSpots:         { en:'New hot spots (this period)', sr:'Nove tačke (u ovom periodu)' },
+  hhNewTag:           { en:'First seen in this period', sr:'Prvi put viđeno u ovom periodu' },
   hhFirstLast:        { en:'First / last', sr:'Prvo / poslednje' },
   hhAvgFrp:           { en:'Avg power', sr:'Prosečna snaga' },
   hhMonthly:          { en:'Days with a detection, per month', sr:'Dani sa detekcijom, po mesecima' },
@@ -2900,6 +2905,8 @@ function initMapCalendarFilter(optionalDefaultDates) {
     onClose: async function(selectedDates) {
       if (selectedDates.length === 2) {
         await loadPinsByWindow();
+        // An open heat-history sheet follows the same period.
+        if (hhState && hhState.status === 'done') hhRecompute();
 
         if (traceMode && tracerMarker) {
           // getLatLng() returns {lat, lng} (Leaflet's own property name), but
@@ -3898,6 +3905,26 @@ function bucketReportsByRange(reports, rng) {
     if (i != null) buckets[i].n++;
   });
   return { buckets, daily };
+}
+
+// Buckets over [startMs, endMs]: one per day up to 62 days, else one per
+// month. indexOf(date) gives the bucket for a Date (or undefined if outside).
+function makeRangeBuckets(startMs, endMs) {
+  const pad = n => String(n).padStart(2, '0');
+  const daily = (endMs - startMs) / 86400000 <= 62;
+  const keyOf = d => daily
+    ? `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}`
+    : `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
+  const buckets = [], index = {};
+  const s0 = new Date(startMs);
+  const cur = daily ? new Date(s0.getFullYear(), s0.getMonth(), s0.getDate()) : new Date(s0.getFullYear(), s0.getMonth(), 1);
+  while (cur.getTime() <= endMs) {
+    const k = keyOf(cur);
+    index[k] = buckets.length;
+    buckets.push({ label: k, n: 0 });
+    if (daily) cur.setDate(cur.getDate() + 1); else cur.setMonth(cur.getMonth() + 1);
+  }
+  return { buckets, daily, indexOf: d => index[keyOf(d)] };
 }
 
 // Reports within radiusKm of a point (straight-line, NOT wind-trace matched --
@@ -6657,30 +6684,56 @@ function hhDedupe(rows) {
 }
 
 // Pure function: rows -> the numbers and cells shown in the sheet/map.
+function hhLocalDateStr(ms) {
+  const d = new Date(ms), pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+// Everything here follows the on-map filter's date range (mapFilterRange), so
+// heat, reports and traces can be compared over the same period. The archive
+// itself is still fetched for 2 years (that's what lets us also compare with
+// the previous period of equal length).
 function hhAnalyze(rows, o) {
   const { lat, lon, radiusKm, includeLow, todayStr, startStr } = o;
-  const used = rows.filter(r =>
+  const rng = mapFilterRange();
+  let fromStr = hhLocalDateStr(rng.start), toStr = hhLocalDateStr(rng.end);
+  if (fromStr < startStr) fromStr = startStr;
+  if (toStr > todayStr) toStr = todayStr;
+  const spanDays = Math.max(1, hhDaysBetween(fromStr, toStr) + 1);
+
+  const inRadius = rows.filter(r =>
     (includeLow || r.c !== 'l') &&
     getHaversineDistance(lat, lon, r.a, r.o) <= radiusKm);
+  const used = inRadius.filter(r => r.d >= fromStr && r.d <= toStr);
 
-  const recentStart = hhAddDays(todayStr, -89);
-  const days = new Set(), nightDays = new Set(), recentDays = new Set(), baseDays = new Set();
-  const monthSets = {};
+  // Previous period of the same length, right before the selected one.
+  const prevTo = hhAddDays(fromStr, -1);
+  const prevFromWanted = hhAddDays(fromStr, -spanDays);
+  const prevFrom = prevFromWanted < startStr ? startStr : prevFromWanted;
+  const prevSpan = prevTo >= prevFrom ? hhDaysBetween(prevFrom, prevTo) + 1 : 0;
+  const prevDaysSet = new Set();
+  inRadius.forEach(r => { if (r.d >= prevFrom && r.d <= prevTo) prevDaysSet.add(r.d); });
+
   const gl = HH_GRID_DEG, go = HH_GRID_DEG / Math.max(Math.cos(lat * Math.PI / 180), 0.01);
+  const cellKey = r => `${Math.round(r.a / gl)},${Math.round(r.o / go)}`;
+  // First time each grid cell ever lit up in the fetched history, so "new"
+  // means new relative to before the selected period.
+  const firstSeen = new Map();
+  inRadius.forEach(r => {
+    const ck = cellKey(r);
+    if (!firstSeen.has(ck) || r.d < firstSeen.get(ck)) firstSeen.set(ck, r.d);
+  });
+
+  const days = new Set(), nightDays = new Set();
   const cells = new Map();
   let frpSum = 0, frpN = 0;
-
   for (const r of used) {
     days.add(r.d);
     if (r.n === 'N') nightDays.add(r.d);
-    (r.d >= recentStart ? recentDays : baseDays).add(r.d);
-    const mk = r.d.slice(0, 7);
-    (monthSets[mk] = monthSets[mk] || new Set()).add(r.d);
     if (!isNaN(r.f)) { frpSum += r.f; frpN++; }
-
-    const ck = `${Math.round(r.a / gl)},${Math.round(r.o / go)}`;
+    const ck = cellKey(r);
     let c = cells.get(ck);
-    if (!c) { c = { sa: 0, so: 0, n: 0, dates: new Set(), nights: new Set(), frpSum: 0, frpN: 0, frpMax: 0, first: r.d, last: r.d }; cells.set(ck, c); }
+    if (!c) { c = { sa: 0, so: 0, n: 0, dates: new Set(), nights: new Set(), frpSum: 0, frpN: 0, frpMax: 0, first: r.d, last: r.d, ck }; cells.set(ck, c); }
     c.sa += r.a; c.so += r.o; c.n++;
     c.dates.add(r.d);
     if (r.n === 'N') c.nights.add(r.d);
@@ -6689,48 +6742,38 @@ function hhAnalyze(rows, o) {
     if (r.d > c.last) c.last = r.d;
   }
 
-  const months = [];
-  let m = startStr.slice(0, 7);
-  const endM = todayStr.slice(0, 7);
-  for (let guard = 0; guard < 40; guard++) {
-    months.push({ key: m, n: monthSets[m] ? monthSets[m].size : 0 });
-    if (m === endM) break;
-    const [y, mo] = m.split('-').map(Number);
-    m = mo === 12 ? `${y + 1}-01` : `${y}-${String(mo + 1).padStart(2, '0')}`;
-  }
+  // Chart buckets over the (archive-clamped) filter range. Detections: count
+  // per day for daily buckets, distinct days per month for monthly ones.
+  const archiveStartMs = new Date(startStr + 'T00:00:00').getTime();
+  const b0 = Math.max(rng.start, archiveStartMs), b1 = Math.min(rng.end, Date.now());
+  const { buckets, daily, indexOf } = makeRangeBuckets(b0, Math.max(b0, b1));
+  const dayHits = buckets.map(() => new Set());
+  used.forEach(r => {
+    const i = indexOf(new Date(r.d + 'T12:00:00'));
+    if (i == null) return;
+    if (daily) buckets[i].n++; else dayHits[i].add(r.d);
+  });
+  if (!daily) buckets.forEach((b, i) => { b.n = dayHits[i].size; });
 
-  // Community reports within the same radius, bucketed onto the same month
-  // keys as the heat bars above, so the two can be charted side by side.
-  // Straight-line proximity only (like nearbyReportsStatHtml), not
-  // wind-trace matched -- running the wind-trace check across a whole
-  // multi-year window would mean one historic-wind fetch per report ever
-  // filed near here, which isn't practical to do just for opening a panel.
-  const reportsByMonth = {};
-  months.forEach(mo => { reportsByMonth[mo.key] = 0; });
-  (globalActiveData || []).forEach(r => {
-    if (r.latitude == null || r.longitude == null) return;
-    const d = new Date(r.created_at);
-    if (isNaN(d.getTime())) return;
-    const key = d.toISOString().slice(0, 7);
-    if (!(key in reportsByMonth)) return;
-    if (getHaversineDistance(lat, lon, parseFloat(r.latitude), parseFloat(r.longitude)) <= radiusKm) reportsByMonth[key]++;
+  // Community reports near the site, on the very same buckets.
+  const reportBuckets = buckets.map(b => ({ label: b.label, n: 0 }));
+  reportsNearPoint(lat, lon, radiusKm).forEach(r => {
+    const i = indexOf(new Date(r.created_at));
+    if (i != null) reportBuckets[i].n++;
   });
 
-  const spanDays = hhDaysBetween(startStr, todayStr) + 1;
-  const baseSpan = Math.max(1, spanDays - 90);
   const cellList = [...cells.values()].map(c => ({
     lat: c.sa / c.n, lon: c.so / c.n, days: c.dates.size, nightDays: c.nights.size,
     frpAvg: c.frpN ? c.frpSum / c.frpN : NaN, frpMax: c.frpMax, first: c.first, last: c.last,
-    isNew: c.first >= recentStart
+    isNew: fromStr > startStr && firstSeen.get(c.ck) >= fromStr
   })).sort((a, b) => b.days - a.days);
 
   return {
-    used, spanDays,
+    used, spanDays, fromStr, toStr, daily,
     totalDays: days.size, nightDays: nightDays.size,
-    recentDays: recentDays.size,
-    baselinePer90: baseDays.size / baseSpan * 90,
+    prevDays: prevDaysSet.size, prevSpan,
     avgFrp: frpN ? frpSum / frpN : NaN,
-    months, reportsByMonth, cells: cellList,
+    buckets, reportBuckets, cells: cellList,
     newCells: cellList.filter(c => c.isNew).length
   };
 }
@@ -6799,17 +6842,21 @@ function hhRenderSheet() {
             <div class="hh-actions"><button type="button" class="hh-btn" onclick="hhRetry()">${t('hhRetry')}</button></div>`;
   } else if (s.analysis) {
     const a = s.analysis;
-    const trend = a.baselinePer90 > 0 ? a.recentDays / a.baselinePer90 : null;
-    const trendTxt = trend == null ? '' : `(×${trend.toFixed(1)})`;
-    const max = Math.max(1, ...a.months.map(m => m.n));
-    const bars = a.months.map(m =>
-      `<div class="hh-bar-col" title="${m.key}: ${m.n} ${t('hhDaysUnit')}"><div class="hh-bar" style="height:${Math.round(m.n / max * 100)}%;${m.n ? 'min-height:2px;' : ''}"></div></div>`).join('');
-    const reportMax = Math.max(1, ...a.months.map(m => a.reportsByMonth[m.key] || 0));
-    const reportBars = a.months.map(m => {
-      const rn = a.reportsByMonth[m.key] || 0;
-      return `<div class="hh-bar-col" title="${m.key}: ${rn} ${rn === 1 ? t('reportCount1') : t('reportCount')}"><div class="hh-bar-reports" style="height:${Math.round(rn / reportMax * 100)}%;${rn ? 'min-height:2px;' : ''}"></div></div>`;
-    }).join('');
-    const totalNearbyReports = a.months.reduce((sum, m) => sum + (a.reportsByMonth[m.key] || 0), 0);
+    // Rate comparison with the previous period of the same length.
+    let trendTxt = '';
+    if (a.prevSpan > 0 && a.prevDays > 0) {
+      const ratio = (a.totalDays / a.spanDays) / (a.prevDays / a.prevSpan);
+      trendTxt = `(×${ratio.toFixed(1)})`;
+    }
+    const max = Math.max(1, ...a.buckets.map(m => m.n));
+    const unitKey = a.daily ? 'hhDetectionsUnit' : 'hhDaysUnit';
+    const bars = a.buckets.map(m =>
+      `<div class="hh-bar-col" title="${m.label}: ${m.n} ${t(unitKey)}"><div class="hh-bar" style="height:${Math.round(m.n / max * 100)}%;${m.n ? 'min-height:2px;' : ''}"></div></div>`).join('');
+    const reportMax = Math.max(1, ...a.reportBuckets.map(m => m.n));
+    const reportBars = a.reportBuckets.map(m =>
+      `<div class="hh-bar-col" title="${m.label}: ${m.n} ${m.n === 1 ? t('reportCount1') : t('reportCount')}"><div class="hh-bar-reports" style="height:${Math.round(m.n / reportMax * 100)}%;${m.n ? 'min-height:2px;' : ''}"></div></div>`).join('');
+    const totalNearbyReports = a.reportBuckets.reduce((sum, m) => sum + m.n, 0);
+    const bucketLabels = `<div class="hh-bar-labels"><span>${a.buckets[0].label}</span><span>${a.buckets[a.buckets.length - 1].label}</span></div>`;
     // Report stats use the on-map filter's period; the traced count only
     // shows when Trace Possible Source was run from this very site.
     const rng = mapFilterRange();
@@ -6834,18 +6881,20 @@ function hhRenderSheet() {
       ${s.failed ? `<div class="hh-warn">${t('hhIncomplete')}</div>` : ''}
       ${a.totalDays === 0 ? `<div class="hh-muted" style="margin:8px 0;">${t('hhNoData')}</div>${reportStatsHtml}` : `
       <div class="hh-stats">
-        ${hhStat(t('hhDaysWith'), `${a.totalDays}<span class="hh-of"> / ${a.spanDays}</span>`, `${Math.round(a.totalDays / a.spanDays * 100)}%`)}
+        ${hhStat(t('hhDaysWith'), `${a.totalDays}<span class="hh-of"> / ${a.spanDays}</span>`, `${Math.round(a.totalDays / a.spanDays * 100)}% · ${rng.label}`)}
         ${hhStat(t('hhNightDays'), a.nightDays)}
-        ${hhStat(t('hhLast90'), a.recentDays, `${t('hhBaseline')}: ${a.baselinePer90.toFixed(1)} ${trendTxt}`)}
+        ${a.prevSpan > 0
+          ? hhStat(t('hhPrevPeriod'), `${a.prevDays}<span class="hh-of"> / ${a.prevSpan}</span>`, trendTxt)
+          : hhStat(t('hhPrevPeriod'), '–', t('hhPrevPeriodNone'))}
         ${hhStat(t('hhNewSpots'), a.newCells, a.newCells ? `<span style="color:#00acc1;">◯ ${t('hhNewTag')}</span>` : '')}
       </div>
-      <div class="hh-sect">${t('hhMonthly')}</div>
+      <div class="hh-sect">${t(a.daily ? 'hhDetectionsByDay' : 'hhMonthly')}</div>
       <div class="hh-bars">${bars}</div>
-      <div class="hh-bar-labels"><span>${a.months[0].key}</span><span>${a.months[a.months.length - 1].key}</span></div>
+      ${bucketLabels}
       ${reportStatsHtml}
-      <div class="hh-sect" style="margin-top:8px;">${t('hhReportsMonthly')} (${s.radiusKm} km) — ${totalNearbyReports}</div>
+      <div class="hh-sect" style="margin-top:8px;">${t(a.daily ? 'hhReportsByDay' : 'hhReportsMonthly')} (${s.radiusKm} km) — ${totalNearbyReports}</div>
       <div class="hh-bars">${reportBars}</div>
-      <div class="hh-bar-labels"><span>${a.months[0].key}</span><span>${a.months[a.months.length - 1].key}</span></div>`}
+      ${bucketLabels}`}
       <div class="hh-legend"><span><i style="background:#ffca28"></i>1–2</span><span><i style="background:#f57c00"></i>3–9</span><span><i style="background:#d84315"></i>10–29</span><span><i style="background:#7f0000"></i>30+ ${t('hhDaysUnit')}</span></div>
       <label class="hh-check"><input type="checkbox" ${s.includeLow ? 'checked' : ''} onchange="hhSetIncludeLow(this.checked)"> ${t('hhIncludeLow')}</label>
       <div class="hh-caveat">${t('hhCaveat')}</div>
@@ -6992,7 +7041,7 @@ function hhDownloadCsv() {
   const blob = new Blob([head + '\n' + lines.join('\n') + '\n' + sections.join('\n') + '\n'], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `heat-history_${hhState.lat.toFixed(4)}_${hhState.lon.toFixed(4)}_r${hhState.radiusKm}km.csv`;
+  a.download = `heat-history_${hhState.lat.toFixed(4)}_${hhState.lon.toFixed(4)}_r${hhState.radiusKm}km_${hhState.analysis.fromStr}_${hhState.analysis.toStr}.csv`;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
