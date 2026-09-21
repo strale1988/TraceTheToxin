@@ -1,0 +1,279 @@
+{
+  "experience": [
+    {
+      "company": "ALICETECH",
+      "website": "https://www.alice-tech.com/",
+      "positions": [
+        {
+          "role": "3D Artist & Animator",
+          "date": "Dec 2025 – Present",
+          "bullets": [
+            "Creating high-quality 3D assets, renderings and animations for commercial projects."
+          ],
+          "links": []
+        }
+      ]
+    },
+    {
+      "company": "FREELANCE / SELF-EMPLOYED",
+      "positions": [
+        {
+          "role": "3D Artist & Animator",
+          "date": "Apr 2013 – Present",
+          "bullets": [
+            "Worked with HKS Architects, Haskell Architects and Shine United for close to a decade, producing architectural visualization and animation for major U.S. hospital and healthcare campuses.",
+            "Delivered stills and animation for cancer centers, children's hospitals, neuroscience and musculoskeletal institutes, and academic medical systems, supporting design development, marketing and fundraising.",
+            "Taking on additional independent projects across residential, hospitality and commercial visualization."
+          ],
+          "links": [
+            {
+              "label": "Baptist MD Anderson Cancer Center",
+              "url": "https://www.hksinc.com/what-we-do/projects/baptist-md-anderson-cancer-center-outpatient-building/"
+            },
+            {
+              "label": "Wolfson Children's Hospital – Main Campus",
+              "url": "https://www.wolfsonchildrens.com/"
+            },
+            {
+              "label": "Orlando Health Neuroscience Institute",
+              "url": "https://www.orlandohealth.com/services/neuroscience-institute/about-us"
+            },
+            {
+              "label": "Florida Hospital for Women",
+              "url": "https://www.hksinc.com/our-news/articles/hks-designed-florida-hospital-for-women-offers-first-time-specialty-services/"
+            },
+            {
+              "label": "Emory Executive Park Musculoskeletal Institute",
+              "url": "https://www.hksinc.com/what-we-do/projects/emory-executive-park-musculoskeletal-institute/"
+            },
+            {
+              "label": "ProMedica Toledo Hospital",
+              "url": "https://www.promedica.org/newsroom/press-releases/promedica-toledo-hospital-ranked-best-hospital-in-the-toledo-area-2023-2024"
+            },
+            {
+              "label": "Restoring Light",
+              "url": "https://www.hksinc.com/our-news/articles/southeast-design-fellowship-an-opportunity-for-healing/"
+            },
+            {
+              "label": "UW Health – EastPark Medical Center",
+              "url": "https://www.hksinc.com/what-we-do/projects/uw-health-eastpark-medical-center/"
+            },
+            {
+              "label": "UHealth – University of Miami Health System"
+            },
+            {
+              "label": "Jackson Memorial Hospital"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "company": "BINYAN",
+      "website": "https://www.binyanstudios.com/",
+      "positions": [
+        {
+          "role": "3D Artist",
+          "date": "Nov 2024 – Nov 2025",
+          "bullets": [
+            "Focused on high-quality architectural visualization and rendering for global luxury developments.",
+            "Applied advanced modeling and lighting techniques to achieve photo-realistic results."
+          ],
+          "links": [
+            {
+              "label": "Armani Residences Diriyah",
+              "url": "https://www.binyanstudios.com/projects/armani-residences-diriyah/"
+            },
+            {
+              "label": "One Harbor Shore Drive",
+              "url": "https://www.oneharborshore.com/?gad_source=1&gad_campaignid=23144335652"
+            },
+            {
+              "label": "Hollywood Moon Miami",
+              "url": "https://www.bizjournals.com/southflorida/news/2025/05/01/hollywood-moon-condo-sales-launch-broward.html"
+            },
+            {
+              "label": "Vela Viento",
+              "url": "https://velaviento.ae/index.html"
+            },
+            {
+              "label": "The Standard Residences Brickell",
+              "url": "https://brickell.com/The-Standard-Residences-Brickell/"
+            },
+            {
+              "label": "Amancaya",
+              "url": "https://www.aman.com/amancaya"
+            },
+            {
+              "label": "Ponce Park",
+              "url": "https://poncepark.com/gallery/"
+            },
+            {
+              "label": "89 Dekalb Brooklyn"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "company": "ANTEVASIN",
+      "website": "https://www.antevasin.rs/",
+      "positions": [
+        {
+          "role": "3D Artist",
+          "date": "Feb 2024 – Sep 2024",
+          "bullets": [
+            "Created high-quality 3D assets and renderings for commercial projects."
+          ],
+          "links": [
+            {
+              "label": "Belgrade Waterfront",
+              "url": "https://www.belgradewaterfront.com/en/"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "company": "AR-TY",
+      "website": "https://ar-ty.com/",
+      "positions": [
+        {
+          "role": "Unity3D Developer / 3D Artist / R&D / Animator",
+          "date": "Apr 2019 – Jun 2023",
+          "bullets": [
+            "Executed tasks covering the full development cycle: 3D art, animation, rigging, and Unity3D app development.",
+            "Conducted Research and Development (R&D) to integrate new technologies and improve project quality."
+          ],
+          "links": [
+            {
+              "label": "Novi Dorćol",
+              "url": "https://www.novidorcol.rs/en/"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "company": "CASE3D",
+      "website": "https://www.case-3d.com/",
+      "positions": [
+        {
+          "role": "Technical Director / 3D Artist / Animator / R&D",
+          "date": "Oct 2017 – Oct 2018",
+          "bullets": [
+            "Provided technical direction for visualization projects.",
+            "Responsible for pipeline development and optimization of project organization."
+          ]
+        },
+        {
+          "role": "3D Artist",
+          "date": "Jan 2012 – Nov 2017",
+          "bullets": [
+            "Specialized in high-precision hard and organic surface modeling, texturing, lighting, and rendering."
+          ],
+          "links": [
+            {
+              "label": "Belgrade Waterfront",
+              "url": "https://www.belgradewaterfront.com/en/"
+            },
+            {
+              "label": "Porto Montenegro",
+              "url": "https://www.case-3d.com/projects/portomontenegro"
+            },
+            {
+              "label": "Dubai Creek Harbour",
+              "url": "https://www.case-3d.com/projects/project-0"
+            },
+            {
+              "label": "Portonovi",
+              "url": "https://www.case-3d.com/projects/portonovi"
+            },
+            {
+              "label": "Address Hotel & Residences",
+              "url": "https://www.case-3d.com/projects/address-hotel-residences"
+            },
+            {
+              "label": "Vida Palace",
+              "url": "https://www.case-3d.com/projects/vida-palace"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "skills": {
+    "software": [
+      "Autodesk 3ds Max (V-Ray, Corona Renderer, Forest Pack, RailClone, MultiScatter, PhoenixFD, etc.)",
+      "Adobe (Photoshop, After Effects, Premiere, Lightroom, Substance Painter, etc.)",
+      "Unity3D, AutoCAD, AXYZ Anima, Mudbox, ArchiCAD, Marvelous Designer, Vicon Boujou, Agisoft PhotoScan, SpeedTree, World Machine, SketchUp, Rhino, Revit, etc.",
+      "Programming (C#, Basic, MaxScript, HTML5, JS, CSS)",
+      "AI (Stable Diffusion, Gemini Nano Banana, Firefly, etc.)"
+    ],
+    "expertise": [
+      "High-precision hard and organic surface modeling",
+      "Texturing, lighting, animating, rigging, rendering",
+      "Photography, post-production, compositing, VFX",
+      "Camera tracking and matching, video and audio editing",
+      "2D and 3D matte painting, camera projection",
+      "Tools creation",
+      "Optimization, organization"
+    ],
+    "soft": [
+      "Technical direction",
+      "Project organization and optimization",
+      "Pipeline development"
+    ]
+  },
+  "achievements": [
+    {
+      "year": "2020",
+      "title": "Macintosh Rendering Challenge",
+      "result": "1st place"
+    },
+    {
+      "year": "2020",
+      "title": "Star Wars Rendering Challenge",
+      "result": "3rd place"
+    },
+    {
+      "year": "2018",
+      "title": "Evermotion Challenge",
+      "result": "Honorable mention (+anima 4 splash screen)"
+    },
+    {
+      "year": "2017",
+      "title": "CROWDED miniCHALLENGE#05",
+      "result": "1st place (+anima 3 splash screen)"
+    },
+    {
+      "year": "2016",
+      "title": "Evermotion Challenge",
+      "result": "3rd place"
+    }
+  ],
+  "education": [
+    {
+      "school": "Faculty of Technical Science",
+      "location": "Novi Sad, Serbia"
+    },
+    {
+      "school": "Gymnasium \"Nikola Tesla\"",
+      "location": "Apatin, Serbia"
+    }
+  ],
+  "languages": [
+    {
+      "lang": "English",
+      "level": "C1"
+    },
+    {
+      "lang": "Greek",
+      "level": "B1"
+    },
+    {
+      "lang": "Serbian",
+      "level": "Native"
+    }
+  ]
+}
