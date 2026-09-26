@@ -7386,7 +7386,7 @@ async function hhDownloadCsvInner() {
   const trAverages = tr ? await computeStationAveragesForReports(tr.reports, stationsForExport) : [];
 
   const repHead = 'created_at_utc,latitude,longitude,distance_km,category,intensity,duration_h,wind_direction,manual_wind_direction,wind_speed_kmh,comment,' +
-                  'StationsAveraged,StationNames,AvgPM10,AvgPM2.5,AvgSO2,AvgNO2,AvgO3';
+                  'StationsAveraged,StationNames,AvgPM10,AvgPM2.5,AvgSO2,AvgNO2,AvgO3,StationsNotReporting,SensorsNotReporting';
   const repLines = (list, averages) => list
     .map((r, i) => ({ r, sa: averages[i] }))
     .sort((x, y) => new Date(x.r.created_at) - new Date(y.r.created_at))
@@ -7395,7 +7395,8 @@ async function hhDownloadCsvInner() {
       getHaversineDistance(hhState.lat, hhState.lon, parseFloat(r.latitude), parseFloat(r.longitude)).toFixed(2),
       csvField(r.category), csvField(r.intensity), csvField(r.duration),
       csvField(r.wind_direction), csvField(r.manual_wind_direction), csvField(r.wind_speed), csvField(r.comment),
-      csvField(sa.count), csvField(sa.names), csvField(sa.pm10), csvField(sa.pm25), csvField(sa.so2), csvField(sa.no2), csvField(sa.o3)
+      csvField(sa.count), csvField(sa.names), csvField(sa.pm10), csvField(sa.pm25), csvField(sa.so2), csvField(sa.no2), csvField(sa.o3),
+      csvField(sa.notReporting), csvField(sa.missingSensors)
     ].join(','));
   const sections = ['', `# Community reports within ${hhState.radiusKm} km, ${rng.label} (${near.length})`, repHead, ...repLines(near, nearAverages)];
   if (tr) {
@@ -8260,14 +8261,33 @@ async function computeStationAveragesForReports(reports, stationsForExport) {
     return result;
   };
 
+  const POLLUTANT_LABELS = { pm10: 'PM10', pm25: 'PM2.5', so2: 'SO2', no2: 'NO2', o3: 'O3' };
+
   return perReport.map(({ matches }) => {
-    const withReadings = matches
-      .map(m => ({ ...m, reading: pickReadingAtOrBefore(readingsByStation[m.station.id], new Date(m.atTime)) }))
-      .filter(m => m.reading);
+    const withMatches = matches.map(m => ({ ...m, reading: pickReadingAtOrBefore(readingsByStation[m.station.id], new Date(m.atTime)) }));
+    const withReadings = withMatches.filter(m => m.reading);
+
+    // "The station itself" not working: it was matched (wind passed near it,
+    // or it's the plain-nearest fallback) but had no reading at all in range
+    // around the report time -- i.e. it wasn't reporting then, so it's left
+    // out of the average entirely rather than silently disappearing.
+    const notReporting = withMatches.filter(m => !m.reading).map(m => m.station.name);
 
     const weights = withReadings.map(m => 1 / (1 + (m.distanceKm ?? 0)));
     const avg = withReadings.length ? averagePollutantReadings(withReadings.map(m => m.reading), weights) : null;
     const stationNames = withReadings.map(m => m.station.name).join('; ');
+
+    // "What wasn't working" at a station that DID report: a sensor that came
+    // back null/NaN on every reading actually used in the average, i.e. that
+    // one pollutant wasn't being measured/reported even though the station
+    // itself was online. Only flagged when there was at least one reading to
+    // check -- an empty average (no stations at all) isn't a sensor issue.
+    const readingVals = withReadings.map(m => m.reading);
+    const missingSensors = withReadings.length
+      ? Object.entries(POLLUTANT_LABELS)
+          .filter(([key]) => readingVals.every(r => r[key] == null || isNaN(r[key])))
+          .map(([, label]) => label)
+      : [];
 
     return {
       count: withReadings.length,
@@ -8276,7 +8296,9 @@ async function computeStationAveragesForReports(reports, stationsForExport) {
       pm25: avg && avg.pm25 != null ? avg.pm25.toFixed(1) : '',
       so2:  avg && avg.so2  != null ? avg.so2.toFixed(1)  : '',
       no2:  avg && avg.no2  != null ? avg.no2.toFixed(1)  : '',
-      o3:   avg && avg.o3   != null ? avg.o3.toFixed(1)   : ''
+      o3:   avg && avg.o3   != null ? avg.o3.toFixed(1)   : '',
+      notReporting: notReporting.join('; '),
+      missingSensors: missingSensors.join('; ')
     };
   });
 }
@@ -8355,7 +8377,7 @@ async function downloadCSVInner() {
 
   let csv = `Report Generated/Downloaded On: ${new Date().toLocaleString()}\n\n`;
   csv += 'ID,Date,Location,Latitude,Longitude,Category,Intensity,WindSpeed,WindDirection,HistoryWindDirection,SeaLevelPressure,Comment,' +
-         'StationsAveraged,StationNames,AvgPM10,AvgPM2.5,AvgSO2,AvgNO2,AvgO3\n';
+         'StationsAveraged,StationNames,AvgPM10,AvgPM2.5,AvgSO2,AvgNO2,AvgO3,StationsNotReporting,SensorsNotReporting\n';
 
   visible.forEach((r, i) => {
     const sa = stationAverages[i];
@@ -8381,7 +8403,13 @@ async function downloadCSVInner() {
       csvField(sa.pm25),
       csvField(sa.so2),
       csvField(sa.no2),
-      csvField(sa.o3)
+      csvField(sa.o3),
+      // StationsNotReporting: matched stations with no data at all near the
+      // report time (the station itself was down). SensorsNotReporting:
+      // pollutants missing from every station that DID report (that one
+      // sensor was down even though the station was online).
+      csvField(sa.notReporting),
+      csvField(sa.missingSensors)
     ].join(',') + '\n';
   });
 
