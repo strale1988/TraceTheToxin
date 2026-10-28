@@ -1236,6 +1236,13 @@ html[data-theme="light"] #dateRangePicker {
   <button type="button" class="pwa-banner-x" onclick="dismissInstallBanner()" aria-label="Close">✕</button>
 </div>
 
+<div id="alertPromptBanner" class="pwa-banner" role="dialog">
+  <img src="image/TraceTheToxin.png" alt="">
+  <div class="pwa-banner-text"><b id="alertPromptTitle">Turn on wind alerts</b><span id="alertPromptBody">Get notified when bad air is reported nearby and the wind is carrying it toward you.</span></div>
+  <button type="button" class="pwa-banner-btn" id="alertPromptBtn" onclick="enableAlertsFromPrompt()">Turn on</button>
+  <button type="button" class="pwa-banner-x" onclick="dismissAlertPrompt()" aria-label="Close">✕</button>
+</div>
+
 <div id="alertToast" class="pwa-banner" role="alert">
   <div class="pwa-banner-text"><b id="alertToastTitle"></b><span id="alertToastBody"></span></div>
   <button type="button" class="pwa-banner-btn" id="alertToastBtn" onclick="alertToastShowOnMap()">Show on map</button>
@@ -2854,6 +2861,9 @@ const T = {
   alertTitleNear: { en:'Bad air reported near you', sr:'Prijavljen loš vazduh u tvojoj blizini' },
   alertBodyNear: { en:'Several reports within {km} km of you.', sr:'Više prijava u krugu od {km} km od tebe.' },
   alertShowMap: { en:'Show on map', sr:'Prikaži na mapi' },
+  alertPromptTitle: { en:'Turn on wind alerts', sr:'Uključi upozorenja o vetru' },
+  alertPromptBody: { en:'Get notified when bad air is reported nearby and the wind is carrying it toward you.', sr:'Dobij obaveštenje kada se u blizini prijavi loš vazduh, a vetar ga nosi ka tebi.' },
+  alertPromptBtn: { en:'Turn on', sr:'Uključi' },
 };
 
 function t(k){ return T[k]?.[lang] ?? k; }
@@ -8800,6 +8810,50 @@ function tryShowInstallBanner() {
   showInstallBanner(false);
 }
 
+/* ---------- Wind-alerts opt-in reminder (same pattern as the install banner) ---------- */
+let alertPromptTimer = null;
+
+function showAlertPrompt() {
+  const b = document.getElementById('alertPromptBanner');
+  if (!b) return;
+  placeBelowHeader(b);
+  b.style.display = 'flex';
+}
+function hideAlertPrompt() {
+  const b = document.getElementById('alertPromptBanner');
+  if (b) b.style.display = 'none';
+}
+function dismissAlertPrompt() {
+  hideAlertPrompt();
+  const n = (parseInt(lsGet('ttt_alert_prompt_dismissals', '0'), 10) || 0) + 1;
+  lsSet('ttt_alert_prompt_dismissals', n);
+  // First two dismissals: ask again in a week. After that: once a month.
+  lsSet('ttt_alert_prompt_snooze_until', Date.now() + (n >= 3 ? 30 : 7) * 86400000);
+}
+async function enableAlertsFromPrompt() {
+  hideAlertPrompt();
+  lsSet('ttt_alert_prompt_snooze_until', Date.now() + 7 * 86400000);   // don't nag again right after a failed attempt
+  await setAlertsEnabled(true);   // runs inside the tap, so the browser permission prompt is allowed
+  // If it didn't switch on (denied, no location...), open Settings so the reason is visible.
+  if (!getAlertPrefs().on) showSettingsModal();
+}
+function scheduleAlertPrompt() {
+  if (getAlertPrefs().on) return;
+  if (alertsBlockedReason()) return;   // unsupported, denied, or iOS tab not installed yet: nothing to offer
+  if (Date.now() < (parseInt(lsGet('ttt_alert_prompt_snooze_until', '0'), 10) || 0)) return;
+  if ((parseInt(lsGet('ttt_visit_count', '0'), 10) || 0) < 2) return;   // not on the very first visit
+  clearTimeout(alertPromptTimer);
+  alertPromptTimer = setTimeout(tryShowAlertPrompt, 12000);   // after the install banner's 7s
+}
+function tryShowAlertPrompt() {
+  if (getAlertPrefs().on || alertsBlockedReason()) return;
+  const inst = document.getElementById('installBanner');
+  const toast = document.getElementById('alertToast');
+  const otherBannerUp = (inst && inst.style.display === 'flex') || (toast && toast.style.display === 'flex');
+  if (anyModalOpen() || otherBannerUp) { alertPromptTimer = setTimeout(tryShowAlertPrompt, 8000); return; }
+  showAlertPrompt();
+}
+
 function refreshInstallUi() {
   const sec = document.getElementById('installSettingsSection');
   if (!sec) return;
@@ -8890,6 +8944,7 @@ function syncAlertUi() {
     const p = getAlertPrefs();
     const tg = document.getElementById('alertToggle');
     if (tg) tg.checked = !!p.on;
+    if (p.on) hideAlertPrompt();
     const opts = document.getElementById('alertOptions');
     if (opts) opts.style.display = p.on ? '' : 'none';
     updateAlertLocInfo();
@@ -9102,6 +9157,7 @@ function applyPwaLang() {
   set('installBannerTitle', 'installBannerTitle'); set('installBannerBtn', 'installBannerBtn');
   set('alertToggleLabel', 'alertToggleLabel'); set('alertToggleHint', 'alertToggleHint');
   set('alertRadiusTitle', 'alertRadiusTitle'); set('alertToastBtn', 'alertShowMap'); set('alertLocBtn', 'alertLocBtn');
+  set('alertPromptTitle', 'alertPromptTitle'); set('alertPromptBody', 'alertPromptBody'); set('alertPromptBtn', 'alertPromptBtn');
   const bb = document.getElementById('installBannerBody');
   if (bb && !(document.getElementById('installBannerBtn').style.display === 'none')) bb.textContent = t('installBannerBody');
   refreshInstallUi();
@@ -9115,6 +9171,7 @@ window.addEventListener('load', () => {
   if (p.on && !alertsBlockedReason()) { startLiveAlerts(); refreshAlertSubscription(); }
   else if (p.on) { p.on = false; saveAlertPrefs(p); }   // permission was revoked since last time
   syncAlertUi();
+  scheduleAlertPrompt();
 });
 
 /* ═══════════════════════════════════════════════════
