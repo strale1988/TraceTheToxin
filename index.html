@@ -523,79 +523,113 @@ button{
 
 /* ==========================================================================
    FLATPICKR CUSTOM THEME OVERRIDES
+   Every colour comes from the app's theme variables, so the calendar (and its
+   arrow icons) switches between dark and light with the rest of the app.
    ========================================================================== */
 .flatpickr-calendar {
-  background: #181818 !important;
-  border: 1px solid #333 !important;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6) !important;
+  background: var(--bg-surface) !important;
+  border: 1px solid var(--border-color-strong) !important;
+  box-shadow: 0 12px 32px var(--floating-shadow) !important;
   border-radius: 12px !important;
   font-family: inherit !important;
 }
+.flatpickr-calendar.arrowTop:before, .flatpickr-calendar.arrowTop:after { border-bottom-color: var(--bg-surface) !important; }
+.flatpickr-calendar.arrowBottom:before, .flatpickr-calendar.arrowBottom:after { border-top-color: var(--bg-surface) !important; }
 
 /* Header styling (Month & Year selectors) */
-.flatpickr-months .flatpickr-month,
-.flatpickr-months .flatpickr-prev-month, 
+.flatpickr-months .flatpickr-month {
+  background: transparent !important;
+  color: var(--text-primary) !important;
+  fill: var(--text-primary) !important;
+}
+.flatpickr-months .flatpickr-prev-month,
 .flatpickr-months .flatpickr-next-month {
-  color: #fff !important;
-  fill: #fff !important;
+  color: var(--text-primary) !important;
+  fill: var(--text-primary) !important;
 }
-.flatpickr-months .flatpickr-prev-month:hover, 
-.flatpickr-months .flatpickr-next-month:hover {
-  background: #262626 !important;
+/* The prev/next arrows are SVGs: tint them with the theme text colour */
+.flatpickr-months .flatpickr-prev-month svg,
+.flatpickr-months .flatpickr-next-month svg,
+.flatpickr-months .flatpickr-prev-month svg path,
+.flatpickr-months .flatpickr-next-month svg path { fill: var(--text-primary) !important; }
+.flatpickr-months .flatpickr-prev-month:hover,
+.flatpickr-months .flatpickr-next-month:hover { background: var(--bg-surface-alt) !important; }
+.flatpickr-months .flatpickr-prev-month:hover svg,
+.flatpickr-months .flatpickr-next-month:hover svg,
+.flatpickr-months .flatpickr-prev-month:hover svg path,
+.flatpickr-months .flatpickr-next-month:hover svg path { fill: var(--accent) !important; }
+.flatpickr-current-month .flatpickr-monthDropdown-months,
+.flatpickr-current-month .flatpickr-monthDropdown-months .flatpickr-monthDropdown-month {
+  background: var(--bg-surface) !important;
+  color: var(--text-primary) !important;
 }
-.flatpickr-current-month .numInputWrapper span.arrowUp:after { border-bottom-color: #fff !important; }
-.flatpickr-current-month .numInputWrapper span.arrowDown:after { border-top-color: #fff !important; }
+.flatpickr-current-month input.cur-year { color: var(--text-primary) !important; }
+.numInputWrapper span { border-color: var(--border-color-strong) !important; }
+.flatpickr-current-month .numInputWrapper span.arrowUp:after { border-bottom-color: var(--text-primary) !important; }
+.flatpickr-current-month .numInputWrapper span.arrowDown:after { border-top-color: var(--text-primary) !important; }
 
 /* Weekday column headers */
 span.flatpickr-weekday {
-  background: #181818 !important;
-  color: #888 !important;
+  background: transparent !important;
+  color: var(--text-muted) !important;
   font-weight: bold !important;
 }
 
-.flatpickr-day:hover, 
-.flatpickr-day.prevMonthDay:hover, 
+.flatpickr-day { color: var(--text-primary) !important; }
+.flatpickr-day.today { border-color: var(--text-muted) !important; }
+.flatpickr-day:hover,
+.flatpickr-day.prevMonthDay:hover,
 .flatpickr-day.nextMonthDay:hover {
-  background: #262626 !important;
-  border-color: #262626 !important;
-  color: #fff !important;
+  background: var(--bg-surface-alt) !important;
+  border-color: var(--bg-surface-alt) !important;
+  color: var(--text-primary) !important;
 }
 
 /* Days outside the current month scope */
-.flatpickr-day.prevMonthDay, 
+.flatpickr-day.prevMonthDay,
 .flatpickr-day.nextMonthDay {
-  color: #444 !important;
+  color: var(--text-muted) !important;
+  opacity: .55;
 }
+.flatpickr-day.flatpickr-disabled, .flatpickr-day.flatpickr-disabled:hover { color: var(--text-muted) !important; opacity: .4; }
 
-/* Selected active range styling (Matching your app's main Teal accent) */
-.flatpickr-day.selected, 
-.flatpickr-day.startRange, 
-.flatpickr-day.endRange, 
-.flatpickr-day.selected.inRange, 
-.flatpickr-day.startRange.inRange, 
-.flatpickr-day.endRange.inRange, 
-.flatpickr-day.selected:focus, 
-.flatpickr-day.startRange:focus, 
-.flatpickr-day.endRange:focus, 
-.flatpickr-day.selected:hover, 
-.flatpickr-day.startRange:hover, 
+/* Selected active range styling (matches the app's accent) */
+.flatpickr-day.selected,
+.flatpickr-day.startRange,
+.flatpickr-day.endRange,
+.flatpickr-day.selected.inRange,
+.flatpickr-day.startRange.inRange,
+.flatpickr-day.endRange.inRange,
+.flatpickr-day.selected:focus,
+.flatpickr-day.startRange:focus,
+.flatpickr-day.endRange:focus,
+.flatpickr-day.selected:hover,
+.flatpickr-day.startRange:hover,
 .flatpickr-day.endRange:hover {
-  background: #00a7b5 !important;
-  border-color: #00a7b5 !important;
-  color: white !important;
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+  color: var(--accent-contrast) !important;
+  opacity: 1;
 }
 
 /* Between-dates range highlighting */
 .flatpickr-day.inRange,
-.flatpickr-day.prevMonthDay.inRange, 
-.flatpickr-day.nextMonthDay.inRange, 
-.flatpickr-day.today.inRange, 
-.flatpickr-day.prevMonthDay.today.inRange, 
+.flatpickr-day.prevMonthDay.inRange,
+.flatpickr-day.nextMonthDay.inRange,
+.flatpickr-day.today.inRange,
+.flatpickr-day.prevMonthDay.today.inRange,
 .flatpickr-day.nextMonthDay.today.inRange {
-  background: #00a7b5 !important;
+  background: var(--accent) !important;
   border-color: transparent !important;
   border-radius: 0 !important;
+  color: var(--accent-contrast) !important;
+  opacity: 1;
 }
+/* flatpickr paints the gaps between range days with a hard-coded blue-grey shadow */
+.flatpickr-day.inRange { box-shadow: -5px 0 0 var(--accent), 5px 0 0 var(--accent) !important; }
+.flatpickr-day.selected.startRange + .endRange:not(:nth-child(7n+1)),
+.flatpickr-day.startRange.startRange + .endRange:not(:nth-child(7n+1)),
+.flatpickr-day.endRange.startRange + .endRange:not(:nth-child(7n+1)) { box-shadow: -10px 0 0 var(--accent) !important; }
 
 
 /* ═══════════════════════════════════════════════════
@@ -897,6 +931,8 @@ span.flatpickr-weekday {
 .wiz-tile-icon{ width:34px; height:34px; }
 .wiz-tile span{ font-size:var(--fs-12-5); line-height:1.25; }
 .wiz-details-row{ margin:0 0 16px; }
+.wiz-anon-note{ display:flex; gap:8px; align-items:flex-start; font-size:var(--fs-12); line-height:1.4; color:var(--text-secondary); margin:0 0 14px; }
+.wiz-anon-note svg{ width:14px; height:14px; flex-shrink:0; margin-top:1px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
 .wiz-details-row label{ display:block; font-size:var(--fs-13); color:var(--text-secondary); margin:0 0 6px; }
 .wiz-details-two-col{ display:flex; gap:8px; }
 .wiz-details-two-col .wiz-details-row{ flex:1; }
@@ -996,6 +1032,8 @@ span.flatpickr-weekday {
 .detail-section-title{ font-size:var(--fs-10); font-weight:var(--fw-bold); letter-spacing:.4px; text-transform:uppercase; color:var(--text-muted); margin-bottom:10px; }
 .detail-export-hint{ font-size:var(--fs-12); color:var(--text-secondary); margin:8px 0 0; line-height:1.4; }
 .icon-img{ width:20px; height:20px; object-fit:contain; vertical-align:middle; }
+.icon-tint{ filter:var(--icon-tint-filter); }
+.ui-ico{ width:11px; height:11px; vertical-align:-1px; margin-right:4px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
 .icon-img-inline{ width:16px; height:16px; margin:0 4px -3px 0; filter:var(--icon-tint-filter); }
 
 .settings-btn{
@@ -1032,10 +1070,13 @@ span.flatpickr-weekday {
 /* Flatpickr input theme modification override */
 #dateRangePicker {
   cursor: pointer;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='18' rx='2' ry='2'%3E%3C/rect%3E%3Cline x1='16' y1='2' x2='16' y2='6'%3E%3C/line%3E%3Cline x1='8' y1='2' x2='8' y2='6'%3E%3C/line%3E%3Cline x1='3' y1='10' x2='21' y2='10'%3E%3C/line%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23bbb' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='18' rx='2' ry='2'%3E%3C/rect%3E%3Cline x1='16' y1='2' x2='16' y2='6'%3E%3C/line%3E%3Cline x1='8' y1='2' x2='8' y2='6'%3E%3C/line%3E%3Cline x1='3' y1='10' x2='21' y2='10'%3E%3C/line%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 12px center;
   padding-right: 32px !important;
+}
+html[data-theme="light"] #dateRangePicker {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23555' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='18' rx='2' ry='2'%3E%3C/rect%3E%3Cline x1='16' y1='2' x2='16' y2='6'%3E%3C/line%3E%3Cline x1='8' y1='2' x2='8' y2='6'%3E%3C/line%3E%3Cline x1='3' y1='10' x2='21' y2='10'%3E%3C/line%3E%3C/svg%3E");
 }
 
 /* ── Factories layer + satellite heat history ── */
@@ -1334,6 +1375,8 @@ span.flatpickr-weekday {
           <button type="button" class="theme-segment-btn" data-km="25" onclick="setAlertRadius(25)">25 km</button>
           <button type="button" class="theme-segment-btn" data-km="50" onclick="setAlertRadius(50)">50 km</button>
         </div>
+        <p class="detail-export-hint" id="alertLocInfo" style="margin-top:12px;"></p>
+        <button type="button" class="export-btn" style="width:100%;" id="alertLocBtn" onclick="refreshAlertLocationNow()">Update my location now</button>
       </div>
       <p class="detail-export-hint" id="alertStatus"></p>
     </div>
@@ -1467,10 +1510,10 @@ span.flatpickr-weekday {
 <!-- GPS/Error Alert Modal -->
 <div id="gpsModal" class="generic-modal-overlay" style="display:none">
   <div class="generic-modal">
-    <div class="generic-modal-icon"><img src="icons/pin.png" alt="Pin" style="width:18px;height:18px;vertical-align:middle;"></div>
+    <div class="generic-modal-icon"><img class="icon-tint" src="icons/pin.png" alt="Pin" style="width:18px;height:18px;vertical-align:middle;"></div>
     <h2 id="gpsModalTitle">GPS Not Enabled</h2>
     <p id="gpsModalBody">Location access is turned off. To report bad air at your location, enable it in your settings.</p>
-    <p id="gpsModalAlt" style="font-size:12px;color:var(--text-secondary);margin-bottom:16px;">Or use the <img src="icons/pin.png" alt="Pin" style="width:18px;height:18px;vertical-align:middle;"> button on the map to drop a pin manually.</p>
+    <p id="gpsModalAlt" style="font-size:12px;color:var(--text-secondary);margin-bottom:16px;">Or use the <img class="icon-tint" src="icons/pin.png" alt="Pin" style="width:18px;height:18px;vertical-align:middle;"> button on the map to drop a pin manually.</p>
     <button class="generic-modal-close" onclick="hideGpsModal()" id="gpsModalBtn">Got it</button>
   </div>
 </div>
@@ -1774,6 +1817,10 @@ function renderWizDetailsStep() {
       <input type="text" id="comment" placeholder="${t('commentPH')}">
     </div>
     <div class="wiz-details-row" id="wizLocationHint" style="font-size:12px;color:var(--text-secondary);"></div>
+    <div class="wiz-anon-note">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      <span>${t('anonNote')}</span>
+    </div>
     <button type="button" class="wiz-submit-btn" id="wizSubmitBtn"
             style="background:${wizState.category === 'Clean Air' ? categoryColor('Clean Air') : ''}"
             onclick="reportBadAir()" disabled>
@@ -2557,8 +2604,8 @@ const T = {
   gpsTitle:     { en:'GPS Not Enabled',                  sr:'GPS nije uključen' },
   gpsBody:      { en:'Location access is turned off. To report bad air at your location, enable it in your settings.', sr:'Pristup lokaciji je isključen. Da biste prijavili loš vazduh, omogućite ga u podešavanjima.' },
   gpsAlt:       { 
-    en:'Or use the <img src="icons/pin.png" alt="Pin" style="width:18px;height:18px;vertical-align:middle;"> button on the map to drop a pin manually.', 
-    sr:'Ili koristite dugme <img src="icons/pin.png" alt="Pin" style="width:18px;height:18px;vertical-align:middle;"> na karti da ručno postavite pin.' },
+    en:'Or use the <img class="icon-tint" src="icons/pin.png" alt="Pin" style="width:18px;height:18px;vertical-align:middle;"> button on the map to drop a pin manually.', 
+    sr:'Ili koristite dugme <img class="icon-tint" src="icons/pin.png" alt="Pin" style="width:18px;height:18px;vertical-align:middle;"> na karti da ručno postavite pin.' },
   gpsBtn:       { en:'Got it',                           sr:'Razumem' },
   noReports:    { en:'No reports in current map view.',  sr:'Nema prijava u vidljivoj oblasti.' },
   calendarPH:   { en:'Select date range...',            sr:'Izaberi vremenski opseg...' },
@@ -2566,8 +2613,8 @@ const T = {
   helpClose:    { en:'Close',                            sr:'Zatvori' },
   helpStep1:    { en:'1. Enable GPS or Add a Pin:',      sr:'1. Uključite GPS ili dodajte pin:' },
   helpStep1Body:{ 
-    en:'Turn on your device GPS so the app can find you, or tap the pin button <img src="icons/pin.png" alt="Pin" style="width:18px;height:18px;vertical-align:middle;"> on the map to manually drop your location. A location is required before you can submit a report.', 
-    sr:'Uključite GPS na uređaju kako bi aplikacija mogla da vas pronađe, ili pritisnite dugme <img src="icons/pin.png" alt="Pin" style="width:18px;height:18px;vertical-align:middle;"> na mapi da ručno postavite vašu lokaciju. Lokacija je obavezna pre nego što možete da pošaljete prijavu.' },
+    en:'Turn on your device GPS so the app can find you, or tap the pin button <img class="icon-tint" src="icons/pin.png" alt="Pin" style="width:18px;height:18px;vertical-align:middle;"> on the map to manually drop your location. A location is required before you can submit a report.', 
+    sr:'Uključite GPS na uređaju kako bi aplikacija mogla da vas pronađe, ili pritisnite dugme <img class="icon-tint" src="icons/pin.png" alt="Pin" style="width:18px;height:18px;vertical-align:middle;"> na mapi da ručno postavite vašu lokaciju. Lokacija je obavezna pre nego što možete da pošaljete prijavu.' },
   helpStep2:    { en:'2. Check the Wind Direction:',     sr:'2. Proverite smer vetra:' },
   helpStep2Body:{ en:'Wind direction is now filled in automatically for you using live wind data. If it looks wrong, you can drag the compass, type a value directly, or tap the Windfinder link to check it yourself.', sr:'Smer vetra se sada automatski popunjava na osnovu podataka uživo. Ako izgleda netačno, možete prevući kompas, uneti vrednost ručno, ili kliknuti na Windfinder link da proverite sami.' },
   windfinderCheckTitle:{ en:'Open Windfinder in a new tab to check wind direction yourself', sr:'Otvori Windfinder u novom tabu da sami proverite smer vetra' },
@@ -2583,6 +2630,7 @@ const T = {
   wizStepLabel:      { en:'Step',                        sr:'Korak' },
   wizCategoryTitle:  { en:"What's the smell?",           sr:'Kakav je miris?' },
   wizIntensityTitle: { en:'How intense is it?',          sr:'Koliko je intenzivno?' },
+  anonNote:          { en:'Reports are anonymous. No name, email or account is saved with them, only the location, time and details you enter, which are shown publicly on the map. Please do not write personal information in the comment.', sr:'Prijave su anonimne. Uz njih se ne čuva ime, e-pošta ni nalog, samo lokacija, vreme i detalji koje unesete, a oni su javno vidljivi na mapi. Molimo vas da u komentar ne upisujete lične podatke.' },
   wizDetailsTitle:   { en:'Add the details',             sr:'Dodajte detalje' },
   wizContinue:       { en:'Continue',                    sr:'Nastavi' },
   wizTimeLabel:      { en:'Time noticed',                sr:'Vreme zapažanja' },
@@ -2787,7 +2835,16 @@ const T = {
   alertToggleHint: { en:'Get a notification when several people report bad air nearby and the wind is carrying it toward you. For this, your approximate location (about 250 m accuracy) is stored.', sr:'Dobij obaveštenje kada više ljudi prijavi loš vazduh u blizini, a vetar ga nosi ka tebi. Za to se čuva tvoja približna lokacija (tačnost oko 250 m).' },
   alertRadiusTitle: { en:'Alert distance', sr:'Udaljenost upozorenja' },
   alertsOn: { en:'Alerts are on.', sr:'Upozorenja su uključena.' },
-  alertsInAppOnly: { en:'Alerts work while the app is open. Background notifications are not set up yet.', sr:'Upozorenja rade dok je aplikacija otvorena. Obaveštenja u pozadini još nisu podešena.' },
+  alertsInAppOnly: { en:'Background notifications could not be set up. Alerts will still show while the app is open. Try again in a moment.', sr:'Obaveštenja u pozadini nisu mogla da se podese. Upozorenja će se i dalje prikazivati dok je aplikacija otvorena. Pokušaj ponovo za koji trenutak.' },
+  alertLocLabel: { en:'Location last updated: {when}', sr:'Lokacija poslednji put osvežena: {when}' },
+  alertLocBtn: { en:'Update my location now', sr:'Osveži moju lokaciju' },
+  alertLocDone: { en:'Location updated.', sr:'Lokacija je osvežena.' },
+  alertLocFail: { en:'Could not update your location. Check that location access is allowed.', sr:'Lokacija nije mogla da se osveži. Proveri da li je pristup lokaciji dozvoljen.' },
+  alertLocJustNow: { en:'just now', sr:'upravo sada' },
+  alertLocMin: { en:'{n} min ago', sr:'pre {n} min' },
+  alertLocHour: { en:'{n} h ago', sr:'pre {n} h' },
+  alertLocDay: { en:'{n} d ago', sr:'pre {n} d' },
+  alertLocNever: { en:'never', sr:'nikad' },
   alertsNeedInstall: { en:'On iPhone/iPad, add the app to your home screen first, then turn alerts on.', sr:'Na iPhone/iPad uređaju prvo dodaj aplikaciju na početni ekran, pa uključi upozorenja.' },
   alertsUnsupported: { en:'This browser does not support notifications.', sr:'Ovaj pregledač ne podržava obaveštenja.' },
   alertsDenied: { en:'Notifications are blocked. Allow them in your browser or device settings.', sr:'Obaveštenja su blokirana. Dozvoli ih u podešavanjima pregledača ili uređaja.' },
@@ -4115,15 +4172,17 @@ function tracedReportsForPoint(lat, lon) {
 
 // Shared popup lines for the factory and burner popups: nearby reports in the
 // on-map filter's period, plus the traced count when a trace ran from here.
+const UI_ICO_LIST = '<svg class="ui-ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>';
+const UI_ICO_SEARCH = '<svg class="ui-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>';
 function nearbyReportsStatHtml(lat, lon) {
   const n = countNearbyReports(lat, lon);
   const key = n === 0 ? 'nearbyReportsStat0' : n === 1 ? 'nearbyReportsStat1' : 'nearbyReportsStat';
   const label = t(key).replace('{n}', n).replace('{range}', mapFilterRange().label);
-  let html = `<div style="font-size:10px;color:var(--text-secondary);">📋 ${label}</div>`;
+  let html = `<div style="font-size:10px;color:var(--text-secondary);">${UI_ICO_LIST}${label}</div>`;
   const tr = tracedReportsForPoint(lat, lon);
   if (tr) {
     const tl = t('tracedReportsStat').replace('{n}', tr.reports.length).replace('{total}', tr.total);
-    html += `<div style="font-size:10px;color:var(--text-secondary);">🔎 ${tl}</div>`;
+    html += `<div style="font-size:10px;color:var(--text-secondary);">${UI_ICO_SEARCH}${tl}</div>`;
   }
   return html;
 }
@@ -8833,6 +8892,7 @@ function syncAlertUi() {
     if (tg) tg.checked = !!p.on;
     const opts = document.getElementById('alertOptions');
     if (opts) opts.style.display = p.on ? '' : 'none';
+    updateAlertLocInfo();
     document.querySelectorAll('#alertRadiusSegment .theme-segment-btn').forEach(b => {
       b.classList.toggle('active', b.getAttribute('data-km') === String(p.radius));
     });
@@ -8851,14 +8911,14 @@ function alertsBlockedReason() {
 }
 
 // Position used for alerts: the app's own (already fuzzed to ~250 m) location.
-function getAlertLocation() {
+function getAlertLocation(fresh) {
   return new Promise((resolve, reject) => {
-    if (userCoords) return resolve({ lat: userCoords.lat, lon: userCoords.lon });
+    if (!fresh && userCoords) return resolve({ lat: userCoords.lat, lon: userCoords.lon });
     if (!navigator.geolocation) return reject(new Error('no geolocation'));
     navigator.geolocation.getCurrentPosition(
       p => { const c = fuzzCoords(p.coords.latitude, p.coords.longitude, 250); resolve({ lat: c.lat, lon: c.lon }); },
       () => reject(new Error('location denied')),
-      { timeout: 10000, maximumAge: 600000 }
+      { timeout: 10000, maximumAge: fresh ? 0 : 600000 }
     );
   });
 }
@@ -8871,15 +8931,25 @@ function urlB64ToUint8Array(b64) {
 
 // Creates/refreshes the push subscription and stores it with the approximate
 // location + chosen distance. Returns false when background push isn't set up.
-async function syncAlertSubscription(allowCreate) {
+async function syncAlertSubscription(allowCreate, freshLocation) {
   try {
     const reg = await navigator.serviceWorker.ready;
     let sub = await reg.pushManager.getSubscription();
     if (!sub && allowCreate) {
-      sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToUint8Array(await getVapidPublicKey()) });
+      const key = urlB64ToUint8Array(await getVapidPublicKey());
+      try {
+        sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
+      } catch (e) {
+        // A subscription made with a different server key blocks re-subscribing: drop it and retry once.
+        if (e && e.name === 'InvalidStateError') {
+          const old = await reg.pushManager.getSubscription();
+          if (old) await old.unsubscribe();
+          sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
+        } else throw e;
+      }
     }
     if (!sub) return false;
-    const loc = await getAlertLocation();
+    const loc = await getAlertLocation(freshLocation);
     const j = sub.toJSON();
     const p = getAlertPrefs();
     const { error } = await sb.rpc('upsert_alert_subscription', {
@@ -8888,6 +8958,7 @@ async function syncAlertSubscription(allowCreate) {
     });
     if (error) throw error;
     p.synced = Date.now(); p.lang = lang; saveAlertPrefs(p);
+    updateAlertLocInfo();
     return true;
   } catch (e) {
     console.warn('Alert subscription sync failed:', e);
@@ -8921,6 +8992,27 @@ async function setAlertsEnabled(on) {
   setAlertStatus(pushOk ? 'alertsOn' : 'alertsInAppOnly');
 }
 
+function alertAgo(ms) {
+  if (!ms) return t('alertLocNever');
+  const min = Math.floor((Date.now() - ms) / 60000);
+  if (min < 1) return t('alertLocJustNow');
+  if (min < 60) return alertFmt(t('alertLocMin'), { n: min });
+  if (min < 1440) return alertFmt(t('alertLocHour'), { n: Math.floor(min / 60) });
+  return alertFmt(t('alertLocDay'), { n: Math.floor(min / 1440) });
+}
+function updateAlertLocInfo() {
+  const el = document.getElementById('alertLocInfo');
+  if (el) el.textContent = alertFmt(t('alertLocLabel'), { when: alertAgo(getAlertPrefs().synced) });
+}
+async function refreshAlertLocationNow() {
+  const btn = document.getElementById('alertLocBtn');
+  if (btn) btn.disabled = true;
+  const ok = await syncAlertSubscription(Notification.permission === 'granted', true);
+  setAlertStatus(ok ? 'alertLocDone' : 'alertLocFail');
+  updateAlertLocInfo();
+  if (btn) btn.disabled = false;
+}
+
 function setAlertRadius(km) {
   const p = getAlertPrefs();
   p.radius = km; saveAlertPrefs(p);
@@ -8932,7 +9024,7 @@ function setAlertRadius(km) {
 function refreshAlertSubscription() {
   const p = getAlertPrefs();
   if (!p.on || alertsBlockedReason()) return;
-  if (Date.now() - p.synced > 15 * 60000 || p.lang !== lang) syncAlertSubscription(false);
+  if (Date.now() - p.synced > 15 * 60000 || p.lang !== lang) syncAlertSubscription(Notification.permission === 'granted');
 }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') refreshAlertSubscription(); });
 
@@ -9009,7 +9101,7 @@ function applyPwaLang() {
   set('installSectionTitle', 'installSectionTitle'); set('installAppBtn', 'installBtn');
   set('installBannerTitle', 'installBannerTitle'); set('installBannerBtn', 'installBannerBtn');
   set('alertToggleLabel', 'alertToggleLabel'); set('alertToggleHint', 'alertToggleHint');
-  set('alertRadiusTitle', 'alertRadiusTitle'); set('alertToastBtn', 'alertShowMap');
+  set('alertRadiusTitle', 'alertRadiusTitle'); set('alertToastBtn', 'alertShowMap'); set('alertLocBtn', 'alertLocBtn');
   const bb = document.getElementById('installBannerBody');
   if (bb && !(document.getElementById('installBannerBtn').style.display === 'none')) bb.textContent = t('installBannerBody');
   refreshInstallUi();
