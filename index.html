@@ -10,6 +10,13 @@
   <meta http-equiv="Expires" content="0">
   
   <link rel="icon" type="image/png" href="image/TraceTheToxin.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="image/TraceTheToxin.png">
+  <meta name="theme-color" content="#111111">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="TraceTheToxin">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta property="og:image" content="https://github.io"/>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"/>
@@ -1128,6 +1135,29 @@ span.flatpickr-weekday {
 .hh-warn{ font-size:11px; color:#ffb300; margin:6px 0; }
 .hh-actions{ display:flex; gap:8px; }
 .hh-btn{ flex:1; padding:8px; border:1px solid var(--border-color-strong); background:var(--bg-surface-alt); color:var(--text-primary); border-radius:8px; font-size:12px; font-weight:600; cursor:pointer; }
+
+/* ═══════════════════════════════════════════════════
+   INSTALL REMINDER + WIND ALERT TOAST
+═══════════════════════════════════════════════════ */
+.pwa-banner{
+  position:fixed; left:0; right:0; margin:0 auto; z-index:1100;
+  width:calc(100% - 20px); max-width:460px;
+  display:none; align-items:center; gap:10px; padding:10px 12px;
+  background:var(--floating-bg); border:1px solid var(--floating-border);
+  border-radius:var(--radius-xl); box-shadow:0 6px 22px var(--floating-shadow);
+  backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
+}
+.pwa-banner img{ width:36px; height:36px; border-radius:8px; flex-shrink:0; }
+.pwa-banner-text{ flex:1; min-width:0; font-size:var(--fs-12); color:var(--text-secondary); line-height:1.35; }
+.pwa-banner-text b{ display:block; font-size:var(--fs-13); color:var(--text-primary); margin-bottom:1px; }
+.pwa-banner-btn{
+  background:var(--accent); color:var(--accent-contrast); border:none; flex-shrink:0;
+  border-radius:var(--radius-md); padding:8px 12px; font-size:var(--fs-12); font-weight:var(--fw-semibold); cursor:pointer;
+}
+.pwa-banner-x{ background:none; border:none; color:var(--text-muted); font-size:var(--fs-16); padding:4px 2px; cursor:pointer; flex-shrink:0; }
+#alertToast{ border-color:var(--danger); z-index:1110; }
+#alertToast .pwa-banner-text b{ color:var(--danger); }
+.alert-radius-title{ margin-top:14px; }
 </style>
 </head>
 <body>
@@ -1157,6 +1187,19 @@ span.flatpickr-weekday {
     </div>
   </div>
 </header>
+
+<div id="installBanner" class="pwa-banner" role="dialog">
+  <img src="image/TraceTheToxin.png" alt="">
+  <div class="pwa-banner-text"><b id="installBannerTitle">Install TraceTheToxin</b><span id="installBannerBody">Add it to your home screen for quick access.</span></div>
+  <button type="button" class="pwa-banner-btn" id="installBannerBtn" onclick="installApp()">Install</button>
+  <button type="button" class="pwa-banner-x" onclick="dismissInstallBanner()" aria-label="Close">✕</button>
+</div>
+
+<div id="alertToast" class="pwa-banner" role="alert">
+  <div class="pwa-banner-text"><b id="alertToastTitle"></b><span id="alertToastBody"></span></div>
+  <button type="button" class="pwa-banner-btn" id="alertToastBtn" onclick="alertToastShowOnMap()">Show on map</button>
+  <button type="button" class="pwa-banner-x" onclick="hideAlertToast()" aria-label="Close">✕</button>
+</div>
 
 <div id="map"></div>
 
@@ -1267,6 +1310,32 @@ span.flatpickr-weekday {
           </svg> Map key
         </button>
       </div>
+    </div>
+
+    <div class="detail-section" id="installSettingsSection">
+      <div class="detail-section-title" id="installSectionTitle">Install app</div>
+      <button type="button" class="export-btn" style="width:100%;" id="installAppBtn" onclick="installApp()">Add to home screen</button>
+      <p class="detail-export-hint" id="installHint"></p>
+    </div>
+
+    <div class="detail-section" id="alertSettingsSection">
+      <label class="settings-toggle-row" for="alertToggle">
+        <span id="alertToggleLabel">Wind alerts</span>
+        <span class="toggle-switch">
+          <input type="checkbox" id="alertToggle" autocomplete="off" onchange="setAlertsEnabled(this.checked)">
+          <span class="toggle-switch-track"><span class="toggle-switch-thumb"></span></span>
+        </span>
+      </label>
+      <p class="detail-export-hint" id="alertToggleHint"></p>
+      <div id="alertOptions" style="display:none;">
+        <div class="detail-section-title alert-radius-title" id="alertRadiusTitle">Alert distance</div>
+        <div class="theme-segment" id="alertRadiusSegment">
+          <button type="button" class="theme-segment-btn" data-km="10" onclick="setAlertRadius(10)">10 km</button>
+          <button type="button" class="theme-segment-btn" data-km="25" onclick="setAlertRadius(25)">25 km</button>
+          <button type="button" class="theme-segment-btn" data-km="50" onclick="setAlertRadius(50)">50 km</button>
+        </div>
+      </div>
+      <p class="detail-export-hint" id="alertStatus"></p>
     </div>
 
     <div class="detail-section" id="languageSettingsSection">
@@ -1974,6 +2043,7 @@ function syncSettingsToggles() {
   set('splineVisibilityToggle', splinesVisible);
   set('traceHeatmapToggle', traceHeatmapEnabled);
   set('sourceHeatToggle', sourceHeatVisible);
+  try { syncAlertUi(); refreshInstallUi(); } catch (e) { /* PWA block not initialised yet */ }
   saveSettings();
 }
 
@@ -2705,6 +2775,28 @@ const T = {
   hhNoData:          { en:'No heat detections in this area over the period.', sr:'Nema toplotnih detekcija u ovoj oblasti u posmatranom periodu.' },
   hhIncomplete:       { en:'Some archive requests failed, so counts may be too low. Try again later.', sr:'Neki zahtevi ka arhivi nisu uspeli, pa su brojevi možda premali. Pokušajte ponovo kasnije.' },
   hhCaveat:           { en:'A satellite pixel is about 375 m. A recurring detection at an industrial site is often a normal heat source (kiln, furnace, stack). What matters is change over time and whether it lines up with air-quality readings. Clouds hide detections, so counts are minimums.', sr:'Satelitski piksel je oko 375 m. Ponavljana detekcija na industrijskom objektu je često uobičajen izvor toplote (peć, dimnjak). Bitna je promena kroz vreme i da li se poklapa sa merenjima kvaliteta vazduha. Oblaci skrivaju detekcije, pa su brojevi minimalni.' },
+  installSectionTitle: { en:'Install app', sr:'Instaliraj aplikaciju' },
+  installBtn: { en:'Add to home screen', sr:'Dodaj na početni ekran' },
+  installHintPrompt: { en:'Install TraceTheToxin as an app: it opens full-screen and starts from your home screen like a shortcut.', sr:'Instaliraj TraceTheToxin kao aplikaciju: otvara se preko celog ekrana i pokreće se sa početnog ekrana kao prečica.' },
+  installIos: { en:'On iPhone/iPad: tap the Share button, then “Add to Home Screen”.', sr:'Na iPhone/iPad uređaju: dodirni dugme za deljenje, pa „Add to Home Screen“ (Dodaj na početni ekran).' },
+  installManual: { en:'Open your browser menu and choose “Install app” or “Add to Home Screen”.', sr:'Otvori meni pregledača i izaberi „Install app“ ili „Dodaj na početni ekran“.' },
+  installBannerTitle: { en:'Install TraceTheToxin', sr:'Instaliraj TraceTheToxin' },
+  installBannerBody: { en:'Add it to your home screen for quick access.', sr:'Dodaj je na početni ekran za brz pristup.' },
+  installBannerBtn: { en:'Install', sr:'Instaliraj' },
+  alertToggleLabel: { en:'Wind alerts', sr:'Upozorenja o vetru' },
+  alertToggleHint: { en:'Get a notification when several people report bad air nearby and the wind is carrying it toward you. For this, your approximate location (about 250 m accuracy) is stored.', sr:'Dobij obaveštenje kada više ljudi prijavi loš vazduh u blizini, a vetar ga nosi ka tebi. Za to se čuva tvoja približna lokacija (tačnost oko 250 m).' },
+  alertRadiusTitle: { en:'Alert distance', sr:'Udaljenost upozorenja' },
+  alertsOn: { en:'Alerts are on.', sr:'Upozorenja su uključena.' },
+  alertsInAppOnly: { en:'Alerts work while the app is open. Background notifications are not set up yet.', sr:'Upozorenja rade dok je aplikacija otvorena. Obaveštenja u pozadini još nisu podešena.' },
+  alertsNeedInstall: { en:'On iPhone/iPad, add the app to your home screen first, then turn alerts on.', sr:'Na iPhone/iPad uređaju prvo dodaj aplikaciju na početni ekran, pa uključi upozorenja.' },
+  alertsUnsupported: { en:'This browser does not support notifications.', sr:'Ovaj pregledač ne podržava obaveštenja.' },
+  alertsDenied: { en:'Notifications are blocked. Allow them in your browser or device settings.', sr:'Obaveštenja su blokirana. Dozvoli ih u podešavanjima pregledača ili uređaja.' },
+  alertsNoGps: { en:'Location is needed to know when the wind is heading your way.', sr:'Lokacija je potrebna da bismo znali kada vetar ide ka tebi.' },
+  alertTitleDown: { en:'Bad air may be heading your way', sr:'Loš vazduh bi mogao stići do tebe' },
+  alertBodyDown: { en:'Smell reports {km} km away. Wind from {dir}: it could reach you in ~{min} min.', sr:'Prijave mirisa na {km} km od tebe. Vetar duva iz pravca {dir}, mogao bi stići za ~{min} min.' },
+  alertTitleNear: { en:'Bad air reported near you', sr:'Prijavljen loš vazduh u tvojoj blizini' },
+  alertBodyNear: { en:'Several reports within {km} km of you.', sr:'Više prijava u krugu od {km} km od tebe.' },
+  alertShowMap: { en:'Show on map', sr:'Prikaži na mapi' },
 };
 
 function t(k){ return T[k]?.[lang] ?? k; }
@@ -2781,6 +2873,7 @@ function setLang(l){
 
 function applyLang(){
   const el = id => document.getElementById(id);
+  try { applyPwaLang(); } catch (e) { /* PWA block not initialised yet */ }
 
   if (el('subtitle'))         el('subtitle').textContent = t('subtitle');
   if (el('csvLabel'))         el('csvLabel').textContent = t('csvLabel');
@@ -8519,6 +8612,418 @@ async function downloadStationCSVInner() {
 
   triggerCsvDownload(csv, 'TraceTheToxin_Stations', fp.selectedDates);
 }
+
+/* ═══════════════════════════════════════════════════
+   PWA (install + reminder) AND WIND ALERTS
+   - sw.js / manifest.webmanifest live next to index.html
+   - Alerts: when >= ALERT_MIN_REPORTS people report bad air within
+     ALERT_CLUSTER_KM of each other, the wind direction at those reports
+     decides who is downwind. Subscribers inside that cone get a push
+     (server: the send-air-alerts edge function). While the app is open,
+     the same check also runs here off a realtime feed.
+═══════════════════════════════════════════════════ */
+// The VAPID public key is served by the send-air-alerts edge function (GET), so the
+// app never hard-codes it and can't drift out of sync with the server's private key.
+let vapidPublicKeyCache = null;
+async function getVapidPublicKey() {
+  if (vapidPublicKeyCache) return vapidPublicKeyCache;
+  const res = await fetch(SUPABASE_URL + '/functions/v1/send-air-alerts', { method: 'GET' });
+  if (!res.ok) throw new Error('VAPID key request failed: ' + res.status);
+  const { publicKey } = await res.json();
+  if (!publicKey) throw new Error('Server returned no VAPID public key');
+  return (vapidPublicKeyCache = publicKey);
+}
+const ALERTS_KEY         = 'ttt_alerts_v1';
+const ALERT_MIN_REPORTS  = 2;    // keep in sync with MIN_REPORTS in the edge function
+const ALERT_CLUSTER_KM   = 5;
+const ALERT_MAX_AGE_MIN  = 90;
+const ALERT_COOLDOWN_MIN = 60;
+
+const isStandalone = () => window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+/* ---------- Service worker ---------- */
+let swReg = null;
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').then(r => { swReg = r; }).catch(e => console.warn('SW registration failed:', e));
+  });
+  navigator.serviceWorker.addEventListener('message', e => {
+    if (e.data && e.data.type === 'focus') focusMapOn(e.data.lat, e.data.lon);
+  });
+}
+function focusMapOn(lat, lon) {
+  lat = parseFloat(lat); lon = parseFloat(lon);
+  if (isFinite(lat) && isFinite(lon)) map.setView([lat, lon], 12);
+}
+// Opened from a notification: ?focus=lat,lon
+try {
+  const f = new URLSearchParams(location.search).get('focus');
+  if (f) { const p = f.split(',').map(parseFloat); setTimeout(() => focusMapOn(p[0], p[1]), 2500); }
+} catch (e) {}
+
+/* ---------- Install (button in Settings + periodic reminder banner) ---------- */
+let deferredInstallPrompt = null;
+let installBannerTimer = null;
+
+function lsGet(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : v; } catch (e) { return d; } }
+function lsSet(k, v) { try { localStorage.setItem(k, String(v)); } catch (e) {} }
+
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  refreshInstallUi();
+  scheduleInstallBanner();
+});
+window.addEventListener('appinstalled', () => {
+  deferredInstallPrompt = null;
+  lsSet('ttt_installed', '1');
+  hideInstallBanner();
+  refreshInstallUi();
+});
+
+async function installApp() {
+  if (deferredInstallPrompt) {
+    deferredInstallPrompt.prompt();
+    let outcome = null;
+    try { outcome = (await deferredInstallPrompt.userChoice).outcome; } catch (e) {}
+    deferredInstallPrompt = null;
+    if (outcome === 'accepted') hideInstallBanner();
+    refreshInstallUi();
+    return;
+  }
+  showInstallBanner(true); // no native prompt available: show the manual steps
+}
+
+function installHelpText() {
+  return isIOS() ? t('installIos') : t('installManual');
+}
+
+function placeBelowHeader(el) {
+  const h = document.querySelector('header');
+  el.style.top = ((h ? h.offsetHeight : 60) + 10) + 'px';
+}
+function showInstallBanner(manual) {
+  const b = document.getElementById('installBanner');
+  if (!b) return;
+  document.getElementById('installBannerBody').textContent = manual ? installHelpText() : t('installBannerBody');
+  document.getElementById('installBannerBtn').style.display = manual ? 'none' : '';
+  placeBelowHeader(b);
+  b.style.display = 'flex';
+}
+function hideInstallBanner() {
+  const b = document.getElementById('installBanner');
+  if (b) b.style.display = 'none';
+}
+function dismissInstallBanner() {
+  hideInstallBanner();
+  const n = (parseInt(lsGet('ttt_install_dismissals', '0'), 10) || 0) + 1;
+  lsSet('ttt_install_dismissals', n);
+  // First two dismissals: ask again in a week. After that: once a month.
+  lsSet('ttt_install_snooze_until', Date.now() + (n >= 3 ? 30 : 7) * 86400000);
+}
+
+function anyModalOpen() {
+  return Array.from(document.querySelectorAll('.fullscreen-modal-overlay, .generic-modal-overlay, .wiz-overlay'))
+    .some(el => getComputedStyle(el).display !== 'none');
+}
+function scheduleInstallBanner() {
+  if (isStandalone() || lsGet('ttt_installed', '') === '1') return;
+  if (Date.now() < (parseInt(lsGet('ttt_install_snooze_until', '0'), 10) || 0)) return;
+  if ((parseInt(lsGet('ttt_visit_count', '0'), 10) || 0) < 2) return;   // not on the very first visit
+  clearTimeout(installBannerTimer);
+  installBannerTimer = setTimeout(tryShowInstallBanner, 7000);
+}
+function tryShowInstallBanner() {
+  if (isStandalone()) return;
+  if (!deferredInstallPrompt && !isIOS()) return;   // nothing we can actually offer
+  if (anyModalOpen()) { installBannerTimer = setTimeout(tryShowInstallBanner, 8000); return; }
+  showInstallBanner(false);
+}
+
+function refreshInstallUi() {
+  const sec = document.getElementById('installSettingsSection');
+  if (!sec) return;
+  sec.style.display = isStandalone() ? 'none' : '';
+  const hint = document.getElementById('installHint');
+  if (hint) hint.textContent = deferredInstallPrompt ? t('installHintPrompt') : installHelpText();
+}
+
+// Count one visit per browser session.
+try {
+  if (!sessionStorage.getItem('ttt_visit_counted')) {
+    sessionStorage.setItem('ttt_visit_counted', '1');
+    lsSet('ttt_visit_count', (parseInt(lsGet('ttt_visit_count', '0'), 10) || 0) + 1);
+  }
+} catch (e) {}
+window.addEventListener('load', () => { refreshInstallUi(); scheduleInstallBanner(); });
+
+/* ---------- Wind-alert geometry (mirrored in the edge function) ---------- */
+function alertBearing(lat1, lon1, lat2, lon2) {
+  const r = Math.PI / 180;
+  const y = Math.sin((lon2 - lon1) * r) * Math.cos(lat2 * r);
+  const x = Math.cos(lat1 * r) * Math.sin(lat2 * r) - Math.sin(lat1 * r) * Math.cos(lat2 * r) * Math.cos((lon2 - lon1) * r);
+  return (Math.atan2(y, x) / r + 360) % 360;
+}
+function alertAngleDiff(a, b) { const d = Math.abs(a - b) % 360; return d > 180 ? 360 - d : d; }
+function alertCircMean(degs) {
+  if (!degs.length) return null;
+  let s = 0, c = 0;
+  degs.forEach(d => { s += Math.sin(d * Math.PI / 180); c += Math.cos(d * Math.PI / 180); });
+  return (Math.atan2(s, c) * 180 / Math.PI + 360) % 360;
+}
+
+// Wind direction is meteorological (where it blows FROM), so the plume travels
+// toward fromDeg + 180. `me` is downwind if the bearing report -> me sits inside
+// a cone around that heading. Light wind (<3 km/h) has no reliable direction, so
+// then only people right next to the reports are alerted.
+function assessDownwind(c, me, radiusKm) {
+  const dist = getHaversineDistance(c.lat, c.lon, me.lat, me.lon);
+  if (dist > radiusKm) return null;
+  if (dist <= 1.5) return { kind: 'near', distKm: dist, etaMin: 0, fromDeg: c.windFromDeg };
+  if (c.windFromDeg == null || (c.speedKmh != null && c.speedKmh < 3)) return null;
+  const sp = c.speedKmh ?? 10;
+  if (dist > Math.max(10, sp * 3)) return null;                       // ~3h of travel, at least 10 km
+  const toDeg = (c.windFromDeg + 180) % 360;
+  const off = alertAngleDiff(alertBearing(c.lat, c.lon, me.lat, me.lon), toDeg);
+  if (off > (dist < 5 ? 45 : 30)) return null;                        // wider cone close to the source
+  return { kind: 'downwind', distKm: dist, etaMin: Math.max(1, Math.round(dist / sp * 60)), fromDeg: c.windFromDeg };
+}
+
+// Group the new report with other recent, nearby, non-"Clean Air" reports.
+function buildAlertCluster(rep) {
+  const now = Date.now();
+  const created = new Date(rep.created_at).getTime();
+  if (isNaN(created) || now - created > ALERT_MAX_AGE_MIN * 60000 || created - now > 5 * 60000) return null;
+  if (rep.category === 'Clean Air') return null;
+  const pool = (globalActiveData || []).filter(r => r.id !== rep.id).concat([rep]);
+  const members = pool.filter(r => {
+    if (r.category === 'Clean Air') return false;
+    const ts = new Date(r.created_at).getTime();
+    if (isNaN(ts) || now - ts > ALERT_MAX_AGE_MIN * 60000) return false;
+    return getHaversineDistance(rep.latitude, rep.longitude, r.latitude, r.longitude) <= ALERT_CLUSTER_KM;
+  });
+  if (members.length < ALERT_MIN_REPORTS) return null;
+  const avg = arr => arr.reduce((a, b) => a + b, 0) / arr.length;
+  const dirs = members.map(r => parseFloat(r.manual_wind_direction ?? r.wind_direction)).filter(isFinite);
+  const speeds = members.map(r => parseFloat(r.wind_speed)).filter(isFinite);
+  return {
+    id: rep.id, count: members.length,
+    lat: avg(members.map(r => parseFloat(r.latitude))), lon: avg(members.map(r => parseFloat(r.longitude))),
+    windFromDeg: alertCircMean(dirs), speedKmh: speeds.length ? avg(speeds) : null
+  };
+}
+
+/* ---------- Alert prefs + UI ---------- */
+function getAlertPrefs() {
+  let p = {};
+  try { p = JSON.parse(localStorage.getItem(ALERTS_KEY) || '{}') || {}; } catch (e) {}
+  return Object.assign({ on: false, radius: 25, synced: 0, lang: null, lastLocalAlert: 0 }, p);
+}
+function saveAlertPrefs(p) { try { localStorage.setItem(ALERTS_KEY, JSON.stringify(p)); } catch (e) {} }
+
+function setAlertStatus(key) {
+  const el = document.getElementById('alertStatus');
+  if (el) el.textContent = key ? t(key) : '';
+}
+function syncAlertUi() {
+  try {
+    const p = getAlertPrefs();
+    const tg = document.getElementById('alertToggle');
+    if (tg) tg.checked = !!p.on;
+    const opts = document.getElementById('alertOptions');
+    if (opts) opts.style.display = p.on ? '' : 'none';
+    document.querySelectorAll('#alertRadiusSegment .theme-segment-btn').forEach(b => {
+      b.classList.toggle('active', b.getAttribute('data-km') === String(p.radius));
+    });
+    if (!p.on) { const r = alertsBlockedReason(); setAlertStatus(r === 'alertsDenied' || r === 'alertsNeedInstall' ? r : ''); }
+  } catch (e) {}
+}
+
+function alertsBlockedReason() {
+  const iosBrowserTab = isIOS() && !isStandalone();
+  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+    return iosBrowserTab ? 'alertsNeedInstall' : 'alertsUnsupported';
+  }
+  if (iosBrowserTab) return 'alertsNeedInstall';
+  if (Notification.permission === 'denied') return 'alertsDenied';
+  return '';
+}
+
+// Position used for alerts: the app's own (already fuzzed to ~250 m) location.
+function getAlertLocation() {
+  return new Promise((resolve, reject) => {
+    if (userCoords) return resolve({ lat: userCoords.lat, lon: userCoords.lon });
+    if (!navigator.geolocation) return reject(new Error('no geolocation'));
+    navigator.geolocation.getCurrentPosition(
+      p => { const c = fuzzCoords(p.coords.latitude, p.coords.longitude, 250); resolve({ lat: c.lat, lon: c.lon }); },
+      () => reject(new Error('location denied')),
+      { timeout: 10000, maximumAge: 600000 }
+    );
+  });
+}
+
+function urlB64ToUint8Array(b64) {
+  const pad = '='.repeat((4 - b64.length % 4) % 4);
+  const raw = atob((b64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
+  return Uint8Array.from(raw, ch => ch.charCodeAt(0));
+}
+
+// Creates/refreshes the push subscription and stores it with the approximate
+// location + chosen distance. Returns false when background push isn't set up.
+async function syncAlertSubscription(allowCreate) {
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub && allowCreate) {
+      sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToUint8Array(await getVapidPublicKey()) });
+    }
+    if (!sub) return false;
+    const loc = await getAlertLocation();
+    const j = sub.toJSON();
+    const p = getAlertPrefs();
+    const { error } = await sb.rpc('upsert_alert_subscription', {
+      p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth,
+      p_lat: loc.lat, p_lon: loc.lon, p_radius_km: p.radius, p_lang: lang
+    });
+    if (error) throw error;
+    p.synced = Date.now(); p.lang = lang; saveAlertPrefs(p);
+    return true;
+  } catch (e) {
+    console.warn('Alert subscription sync failed:', e);
+    return false;
+  }
+}
+
+async function setAlertsEnabled(on) {
+  const tg = document.getElementById('alertToggle');
+  const p = getAlertPrefs();
+  if (!on) {
+    p.on = false; saveAlertPrefs(p);
+    stopLiveAlerts();
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) { const ep = sub.endpoint; await sub.unsubscribe(); await sb.rpc('delete_alert_subscription', { p_endpoint: ep }); }
+    } catch (e) { console.warn('Alert unsubscribe failed:', e); }
+    syncAlertUi(); setAlertStatus('');
+    return;
+  }
+  const blocked = alertsBlockedReason();
+  if (blocked) { if (tg) tg.checked = false; setAlertStatus(blocked); return; }
+  const perm = await Notification.requestPermission();
+  if (perm !== 'granted') { if (tg) tg.checked = false; setAlertStatus('alertsDenied'); return; }
+  try { await getAlertLocation(); } catch (e) { if (tg) tg.checked = false; setAlertStatus('alertsNoGps'); return; }
+  p.on = true; saveAlertPrefs(p);
+  const pushOk = await syncAlertSubscription(true);
+  startLiveAlerts();
+  syncAlertUi();
+  setAlertStatus(pushOk ? 'alertsOn' : 'alertsInAppOnly');
+}
+
+function setAlertRadius(km) {
+  const p = getAlertPrefs();
+  p.radius = km; saveAlertPrefs(p);
+  syncAlertUi();
+  if (p.on) syncAlertSubscription(false);
+}
+
+// Keep the stored location/language fresh when the app comes back to the front.
+function refreshAlertSubscription() {
+  const p = getAlertPrefs();
+  if (!p.on || alertsBlockedReason()) return;
+  if (Date.now() - p.synced > 15 * 60000 || p.lang !== lang) syncAlertSubscription(false);
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') refreshAlertSubscription(); });
+
+/* ---------- Foreground alerts (realtime feed while the app is open) ---------- */
+let liveAlertChannel = null;
+function startLiveAlerts() {
+  if (liveAlertChannel || !getAlertPrefs().on) return;
+  try {
+    liveAlertChannel = sb.channel('ttt-live-reports')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'air_reports' }, p => onLiveReport(p.new))
+      .subscribe();
+  } catch (e) { console.warn('Live alerts unavailable:', e); }
+}
+function stopLiveAlerts() {
+  if (liveAlertChannel) { try { sb.removeChannel(liveAlertChannel); } catch (e) {} liveAlertChannel = null; }
+}
+
+async function onLiveReport(rep) {
+  const p = getAlertPrefs();
+  if (!p.on || !rep) return;
+  const c = buildAlertCluster(rep);
+  if (!c) return;
+  let me; try { me = await getAlertLocation(); } catch (e) { return; }
+  if (getHaversineDistance(rep.latitude, rep.longitude, me.lat, me.lon) < 0.4) return;   // that's probably you
+  const hit = assessDownwind(c, me, p.radius);
+  if (!hit) return;
+  if (Date.now() - (p.lastLocalAlert || 0) < ALERT_COOLDOWN_MIN * 60000) return;
+  p.lastLocalAlert = Date.now(); saveAlertPrefs(p);
+  showWindAlert(c, hit);
+}
+
+const ALERT_COMPASS = { en: ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'], sr: ['S', 'SI', 'I', 'JI', 'J', 'JZ', 'Z', 'SZ'] };
+function alertCompass(deg) { return ALERT_COMPASS[lang][Math.round(deg / 45) % 8]; }
+function alertFmt(s, v) { return s.replace(/\{(\w+)\}/g, (m, k) => (v[k] ?? m)); }
+
+function alertMessage(hit) {
+  const v = { km: hit.distKm.toFixed(1), min: hit.etaMin, dir: hit.fromDeg != null ? alertCompass(hit.fromDeg) : '' };
+  return hit.kind === 'near'
+    ? { title: t('alertTitleNear'), body: alertFmt(t('alertBodyNear'), v) }
+    : { title: t('alertTitleDown'), body: alertFmt(t('alertBodyDown'), v) };
+}
+
+let alertToastTimer = null;
+function showWindAlert(c, hit) {
+  const msg = alertMessage(hit);
+  const box = document.getElementById('alertToast');
+  if (box) {
+    document.getElementById('alertToastTitle').textContent = msg.title;
+    document.getElementById('alertToastBody').textContent = msg.body;
+    box.dataset.lat = c.lat; box.dataset.lon = c.lon;
+    placeBelowHeader(box);
+    box.style.display = 'flex';
+    clearTimeout(alertToastTimer);
+    alertToastTimer = setTimeout(hideAlertToast, 30000);
+  }
+  try {
+    if (swReg && Notification.permission === 'granted') {
+      swReg.showNotification(msg.title, {
+        body: msg.body, icon: 'image/TraceTheToxin.png', badge: 'image/TraceTheToxin.png',
+        tag: 'ttt-wind-alert', renotify: true, vibrate: [200, 100, 200, 100, 400], data: { lat: c.lat, lon: c.lon }
+      });
+    }
+  } catch (e) {}
+}
+function hideAlertToast() { const b = document.getElementById('alertToast'); if (b) b.style.display = 'none'; }
+function alertToastShowOnMap() {
+  const b = document.getElementById('alertToast');
+  if (b) focusMapOn(b.dataset.lat, b.dataset.lon);
+  hideAlertToast();
+}
+
+function applyPwaLang() {
+  const set = (id, k) => { const el = document.getElementById(id); if (el) el.textContent = t(k); };
+  set('installSectionTitle', 'installSectionTitle'); set('installAppBtn', 'installBtn');
+  set('installBannerTitle', 'installBannerTitle'); set('installBannerBtn', 'installBannerBtn');
+  set('alertToggleLabel', 'alertToggleLabel'); set('alertToggleHint', 'alertToggleHint');
+  set('alertRadiusTitle', 'alertRadiusTitle'); set('alertToastBtn', 'alertShowMap');
+  const bb = document.getElementById('installBannerBody');
+  if (bb && !(document.getElementById('installBannerBtn').style.display === 'none')) bb.textContent = t('installBannerBody');
+  refreshInstallUi();
+  const st = document.getElementById('alertStatus');
+  if (st) st.textContent = '';
+  syncAlertUi();
+}
+
+window.addEventListener('load', () => {
+  const p = getAlertPrefs();
+  if (p.on && !alertsBlockedReason()) { startLiveAlerts(); refreshAlertSubscription(); }
+  else if (p.on) { p.on = false; saveAlertPrefs(p); }   // permission was revoked since last time
+  syncAlertUi();
+});
 
 /* ═══════════════════════════════════════════════════
    ORCHESTRATION ARCHITECTURE

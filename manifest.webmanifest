@@ -1,0 +1,17 @@
+{
+  "id": "./",
+  "name": "TraceTheToxin",
+  "short_name": "TraceTheToxin",
+  "description": "Community air reporting network",
+  "lang": "sr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#111111",
+  "theme_color": "#111111",
+  "icons": [
+    { "src": "image/TraceTheToxin.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "image/TraceTheToxin.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}
