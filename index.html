@@ -1202,7 +1202,7 @@ html[data-theme="light"] #dateRangePicker {
 
 /* Persistent location reminder: small pill beside the pin button */
 .loc-chip{
-  position:fixed; right:64px; bottom:calc(var(--legend-bar-h) + 170px); transform:translateY(50%); z-index:950; cursor:pointer;
+  position:fixed; right:64px; bottom:calc(var(--legend-bar-h) + 170px); transform:translateY(50%); z-index:1050; cursor:pointer; pointer-events:auto;
   -webkit-tap-highlight-color:transparent; touch-action:manipulation; user-select:none;
   display:none; align-items:center; gap:6px; padding:5px 6px 5px 6px;
   background:var(--floating-bg); border:1px solid #f5a623; border-radius:999px;
@@ -1210,6 +1210,16 @@ html[data-theme="light"] #dateRangePicker {
   backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
   font-size:var(--fs-12); color:var(--text-primary); max-width:calc(100vw - 80px);
 }
+.map-act-stack{ display:flex; flex-direction:column; gap:8px; margin-top:8px !important; }
+.map-act-btn{
+  width:40px; height:40px; border-radius:50%; padding:0; cursor:pointer;
+  display:flex; align-items:center; justify-content:center;
+  background:var(--floating-bg); color:var(--text-primary);
+  border:2px solid #f5a623; box-shadow:0 2px 8px var(--floating-shadow);
+  -webkit-tap-highlight-color:transparent; touch-action:manipulation;
+}
+.map-act-btn:active{ transform:scale(.92); }
+.map-act-btn svg{ width:20px; height:20px; display:block; }
 .loc-chip-btn{
   background:var(--accent); color:var(--accent-contrast); border:none; border-radius:999px;
   padding:5px 10px; font-size:var(--fs-12); font-weight:var(--fw-semibold); cursor:pointer; white-space:nowrap;
@@ -1275,6 +1285,12 @@ html[data-theme="light"] #dateRangePicker {
   <div class="pwa-banner-text"><b id="alertToastTitle"></b><span id="alertToastBody"></span></div>
   <button type="button" class="pwa-banner-btn" id="alertToastBtn" onclick="alertToastShowOnMap()">Show on map</button>
   <button type="button" class="pwa-banner-x" onclick="hideAlertToast()" aria-label="Close">✕</button>
+</div>
+
+<div id="updateBanner" class="pwa-banner" role="alert">
+  <div class="pwa-banner-text"><b id="updateBannerTitle">New version available</b></div>
+  <button type="button" class="pwa-banner-btn" id="updateBannerBtn" onclick="location.reload()">Refresh</button>
+  <button type="button" class="pwa-banner-x" onclick="document.getElementById('updateBanner').style.display='none'" aria-label="Close">✕</button>
 </div>
 
 <div id="locChip" class="loc-chip" role="button" tabindex="0" onclick="locChipEnableGps()">
@@ -2909,6 +2925,8 @@ const T = {
   alertPromptTitle: { en:'Turn on wind alerts', sr:'Uključi upozorenja o vetru' },
   alertPromptBody: { en:'Get notified when bad air is reported nearby and the wind is carrying it toward you.', sr:'Dobij obaveštenje kada se u blizini prijavi loš vazduh, a vetar ga nosi ka tebi.' },
   alertPromptBtn: { en:'Turn on', sr:'Uključi' },
+  updateBannerTitle: { en:'New version available', sr:'Dostupna je nova verzija' },
+  updateBannerBtn: { en:'Refresh', sr:'Osveži' },
   locChipGps: { en:'Enable GPS', sr:'Uključi GPS' },
   locChipOr: { en:'or drop a pin', sr:'ili postavi pin' },
   remindersToggleLabel: { en:'Reminders', sr:'Podsetnici' },
@@ -3683,6 +3701,25 @@ const PinControl = L.Control.extend({
 });
 new PinControl().addTo(map);
 document.getElementById('pinMapBtn').style.display = 'flex';
+
+// Install-app and wind-alert shortcut buttons, stacked under the zoom +/-.
+// Shown/hidden by updateMapActionButtons() (PWA block) and the Reminders switch.
+const MapActionControl = L.Control.extend({
+  options:{ position:'topleft' },
+  onAdd(){
+    const c = L.DomUtil.create('div', 'map-act-stack');
+    c.innerHTML =
+      '<button type="button" class="map-act-btn" id="installMapBtn" style="display:none" onclick="installApp()">' +
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 11l5 5 5-5"/><path d="M5 21h14"/></svg>' +
+      '</button>' +
+      '<button type="button" class="map-act-btn" id="alertMapBtn" style="display:none" onclick="enableAlertsFromPrompt()">' +
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>' +
+      '</button>';
+    L.DomEvent.disableClickPropagation(c);
+    return c;
+  }
+});
+new MapActionControl().addTo(map);
 
 // Trace Possible Source map button; shown/hidden by a Settings switch (hidden by default).
 const TraceControl = L.Control.extend({
@@ -8812,7 +8849,14 @@ const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.
 let swReg = null;
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').then(r => { swReg = r; }).catch(e => console.warn('SW registration failed:', e));
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(r => { swReg = r; r.update().catch(() => {}); }).catch(e => console.warn('SW registration failed:', e));
+  });
+  // A new service worker took over: reload once so the page matches it
+  // (not on the very first install, when there was no controller yet).
+  let swHadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!swHadController) { swHadController = true; return; }
+    reloadForUpdate(true);
   });
   navigator.serviceWorker.addEventListener('message', e => {
     if (e.data && e.data.type === 'focus') focusMapOn(e.data.lat, e.data.lon);
@@ -8827,6 +8871,54 @@ try {
   const f = new URLSearchParams(location.search).get('focus');
   if (f) { const p = f.split(',').map(parseFloat); setTimeout(() => focusMapOn(p[0], p[1]), 2500); }
 } catch (e) {}
+
+/* ---------- Always load the newest version ----------
+   On load, when the app is reopened, and every 10 min, the network copy of
+   this page is compared with the one last seen. If it changed, the offline
+   caches are cleared and the page reloads (or, if a form/modal is open,
+   a "New version available" bar is shown instead). */
+function hashStr(str) {
+  let h = 5381;
+  for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0;
+  return h + ':' + str.length;
+}
+function showUpdateBanner() {
+  const b = document.getElementById('updateBanner');
+  if (!b) return;
+  document.getElementById('updateBannerTitle').textContent = t('updateBannerTitle');
+  document.getElementById('updateBannerBtn').textContent = t('updateBannerBtn');
+  placeBelowHeader(b);
+  b.style.display = 'flex';
+}
+function reloadForUpdate(auto) {
+  // Loop guard: never auto-reload more than once every 5 minutes.
+  const last = parseInt(lsGet('ttt_update_reload_at', '0'), 10) || 0;
+  if (auto && Date.now() - last < 300000) return;
+  if (auto && anyModalOpen()) { showUpdateBanner(); return; }
+  lsSet('ttt_update_reload_at', Date.now());
+  window.location.reload();
+}
+async function checkForNewVersion(initial) {
+  if (location.protocol === 'file:') return;
+  try { if (swReg) swReg.update().catch(() => {}); } catch (e) {}
+  const lastCheck = parseInt(lsGet('ttt_build_checked', '0'), 10) || 0;
+  if (Date.now() - lastCheck < 60000) return;
+  lsSet('ttt_build_checked', Date.now());
+  try {
+    const res = await fetch(location.pathname + '?_v=' + Date.now(), { cache: 'no-store' });
+    if (!res.ok) return;
+    const h = hashStr(await res.text());
+    const prev = lsGet('ttt_build_hash', '');
+    lsSet('ttt_build_hash', h);
+    if (prev && prev !== h) {
+      try { if (window.caches) { const ks = await caches.keys(); await Promise.all(ks.map(k => caches.delete(k))); } } catch (e) {}
+      if (initial) reloadForUpdate(true); else showUpdateBanner();
+    }
+  } catch (e) { /* offline: keep what we have */ }
+}
+window.addEventListener('load', () => setTimeout(() => checkForNewVersion(true), 1500));
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkForNewVersion(false); });
+setInterval(() => checkForNewVersion(false), 600000);
 
 /* ---------- Install (button in Settings + periodic reminder banner) ---------- */
 let deferredInstallPrompt = null;
@@ -8868,7 +8960,24 @@ function locChipEnableGps() {
 // Runs every second: shows the chip (and pulses the pin button) once 10s
 // have passed with no GPS fix and no pin in use. Hides as soon as either
 // exists, while a modal is open, or if Reminders is switched off.
+function updateMapActionButtons() {
+  const inst = document.getElementById('installMapBtn');
+  const al = document.getElementById('alertMapBtn');
+  if (!inst || !al) return;
+  let showInst = false, showAlert = false;
+  try {
+    const on = remindersEnabled();
+    showInst = on && !isStandalone() && lsGet('ttt_installed', '') !== '1' && (!!deferredInstallPrompt || isIOS());
+    showAlert = on && !getAlertPrefs().on && !alertsBlockedReason();
+  } catch (e) {}
+  inst.style.display = showInst ? 'flex' : 'none';
+  al.style.display = showAlert ? 'flex' : 'none';
+  inst.title = t('installBannerTitle'); inst.setAttribute('aria-label', inst.title);
+  al.title = t('alertPromptTitle');     al.setAttribute('aria-label', al.title);
+}
+
 function updateLocChip() {
+  updateMapActionButtons();
   const chip = document.getElementById('locChip');
   const pinBtn = document.getElementById('pinMapBtn');
   if (!chip) return;
@@ -8877,9 +8986,18 @@ function updateLocChip() {
   const blocked = typeof anyModalOpen === 'function' && anyModalOpen();
   if (pinBtn) pinBtn.classList.toggle('pin-attn', due);
   if (due && !blocked) {
-    document.getElementById('locChipGpsBtn').textContent = t('locChipGps');
-    document.getElementById('locChipText').textContent = t('locChipOr');
+    const gb = document.getElementById('locChipGpsBtn'), tx = document.getElementById('locChipText');
+    if (gb.textContent !== t('locChipGps')) gb.textContent = t('locChipGps');
+    if (tx.textContent !== t('locChipOr')) tx.textContent = t('locChipOr');
     chip.style.display = 'flex';
+    // Anchor to the pin button's real on-screen position so it is always centred on it.
+    const r = pinBtn ? pinBtn.getBoundingClientRect() : null;
+    if (r && r.width) {
+      chip.style.bottom = 'auto';
+      chip.style.top = Math.round(r.top + r.height / 2) + 'px';
+      chip.style.right = Math.round(document.documentElement.clientWidth - r.left + 8) + 'px';
+      chip.style.transform = 'translateY(-50%)';
+    }
   } else {
     chip.style.display = 'none';
   }
