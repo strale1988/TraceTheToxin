@@ -637,14 +637,15 @@ span.flatpickr-weekday {
 ═══════════════════════════════════════════════════ */
 #splashScreen{
   position:fixed; inset:0; z-index:10001;
-  display:flex; flex-direction:column; align-items:center;
   background:var(--bg-app);
   opacity:1;
   transition:opacity .25s ease;
 }
 #splashScreen.splash-hidden{ opacity:0; pointer-events:none; }
+/* Logo is pinned to the exact centre of the screen; slogan + quote hang below it */
 .splash-spinner-wrap{
-  position:relative; flex:1; width:100%;
+  position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+  width:86px; height:86px;
   display:flex; align-items:center; justify-content:center;
 }
 .splash-logo{
@@ -666,11 +667,21 @@ span.flatpickr-weekday {
   70%{ transform:translate(-50%,-50%) scale(1.55); opacity:0; }
   100%{ opacity:0; }
 }
-.splash-text{
-  flex:0 0 auto;
-  padding-bottom:calc(env(safe-area-inset-bottom, 0px) + 36px);
-  color:var(--text-primary); font-size:var(--fs-13); font-weight:var(--fw-semibold); opacity:.75;
+.splash-below{
+  position:absolute; left:0; right:0; top:calc(50% + 43px + 46px);
+  padding:0 28px calc(env(safe-area-inset-bottom, 0px) + 16px);
+  display:flex; flex-direction:column; align-items:center; text-align:center;
 }
+.splash-slogan{
+  color:var(--text-primary); font-size:19px; font-weight:700; letter-spacing:.2px;
+}
+.splash-quote{
+  margin-top:16px; max-width:320px;
+  color:var(--text-primary); font-size:13px; font-style:italic; line-height:1.5; opacity:.7;
+  animation:splash-fade 1s ease both .25s;
+}
+.splash-quote-by{ display:block; margin-top:4px; font-style:normal; font-size:12px; opacity:.8; }
+@keyframes splash-fade{ from{ opacity:0; } to{ opacity:.7; } }
 
 /* ═══════════════════════════════════════════════════
    BOTTOM LEGEND BAR (rounded top corners, docked bottom)
@@ -1319,7 +1330,10 @@ html[data-theme="light"] #dateRangePicker {
     <span class="splash-halo splash-halo-2"></span>
     <img src="image/TraceTheToxin.png" alt="TraceTheToxin" class="splash-logo">
   </div>
-  <div class="splash-text" id="splashText">Loading map…</div>
+  <div class="splash-below">
+    <div class="splash-slogan" id="splashSlogan">Expose the invisible.</div>
+    <div class="splash-quote" id="splashQuote"></div>
+  </div>
 </div>
 
 <div id="legendBar">
@@ -1447,6 +1461,17 @@ html[data-theme="light"] #dateRangePicker {
         </span>
       </label>
       <p class="detail-export-hint" id="remindersToggleHint"></p>
+    </div>
+
+    <div class="detail-section" id="splashQuotesSettingsSection">
+      <label class="settings-toggle-row" for="splashQuotesToggle">
+        <span id="splashQuotesToggleLabel">Loading screen quotes</span>
+        <span class="toggle-switch">
+          <input type="checkbox" id="splashQuotesToggle" autocomplete="off" onchange="setSplashQuotesEnabled(this.checked)">
+          <span class="toggle-switch-track"><span class="toggle-switch-thumb"></span></span>
+        </span>
+      </label>
+      <p class="detail-export-hint" id="splashQuotesToggleHint"></p>
     </div>
 
     <div class="detail-section" id="languageSettingsSection">
@@ -2158,7 +2183,7 @@ function syncSettingsToggles() {
   set('splineVisibilityToggle', splinesVisible);
   set('traceHeatmapToggle', traceHeatmapEnabled);
   set('sourceHeatToggle', sourceHeatVisible);
-  try { syncAlertUi(); refreshInstallUi(); set('remindersToggle', remindersEnabled()); } catch (e) { /* PWA block not initialised yet */ }
+  try { syncAlertUi(); refreshInstallUi(); set('remindersToggle', remindersEnabled()); set('splashQuotesToggle', splashQuotesEnabled()); } catch (e) { /* PWA block not initialised yet */ }
   saveSettings();
 }
 
@@ -2745,6 +2770,7 @@ const T = {
   reportFabTitle:       { en:'Report bad air', sr:'Prijavi loš vazduh' },
   windCompassTitle:     { en:'Live wind direction', sr:'Smer vetra uživo' },
   splashLoading:        { en:'Loading map…', sr:'Učitavanje mape…' },
+  splashSlogan:         { en:'Expose the invisible.', sr:'Otkrij nevidljivo.' },
   backLabel:            { en:'Back', sr:'Nazad' },
   cancelLabel:          { en:'Cancel', sr:'Otkaži' },
 
@@ -2929,6 +2955,8 @@ const T = {
   updateBannerBtn: { en:'Refresh', sr:'Osveži' },
   locChipGps: { en:'Enable GPS', sr:'Uključi GPS' },
   locChipOr: { en:'or drop a pin', sr:'ili postavi pin' },
+  splashQuotesToggleLabel: { en:'Loading screen quotes', sr:'Citati na ekranu učitavanja' },
+  splashQuotesToggleHint: { en:'Show a random air quote while the app loads. Turn off for a faster start. Applies next time you open the app.', sr:'Prikaži nasumičan citat o vazduhu dok se aplikacija učitava. Isključi za brže pokretanje. Važi od sledećeg otvaranja aplikacije.' },
   remindersToggleLabel: { en:'Reminders', sr:'Podsetnici' },
   remindersToggleHint: { en:'Show reminders to install the app, turn on wind alerts, and enable GPS or drop a pin.', sr:'Prikaži podsetnike za instalaciju aplikacije, uključivanje upozorenja o vetru i omogućavanje GPS-a ili postavljanje pina.' },
 };
@@ -3051,6 +3079,46 @@ function setLang(l){
   }
 }
 
+// Random air quote shown under the slogan on the splash screen.
+const SPLASH_QUOTES = [
+  { en:"Every breath is a vote for clean air.", sr:"Svaki dah je glas za čist vazduh." },
+  { en:"You can't see it, but you breathe it.", sr:"Ne vidiš ga, ali ga udišeš." },
+  { en:"Clean air is not a luxury. It's a right.", sr:"Čist vazduh nije luksuz. To je pravo." },
+  { en:"What we can't see can still hurt us. What we measure, we can change.", sr:"Ono što ne vidimo i dalje može da nas povredi. Ono što merimo, možemo da promenimo." },
+  { en:"The sky belongs to everyone. So does the responsibility.", sr:"Nebo pripada svima. Tako i odgovornost." },
+  { en:"Data turns smoke into evidence.", sr:"Podaci pretvaraju dim u dokaz." },
+  { en:"Clear-air days are made by people who pay attention.", sr:"Dane sa čistim vazduhom prave ljudi koji obraćaju pažnju." },
+  { en:"Breathe easy — someone is watching the air.", sr:"Diši slobodno — neko motri na vazduh." },
+  { en:"Behind every reading is someone's next breath.", sr:"Iza svakog merenja je nečiji sledeći dah." },
+  { en:"Small sensors, big truths.", sr:"Mali senzori, velike istine." },
+  { en:"Smoke has no borders.", sr:"Dim nema granice." },
+  { en:"The wind carries everything. Know what's in it.", sr:"Vetar nosi sve. Znaj šta je u njemu." },
+  { en:"Unless someone like you cares a whole awful lot, nothing is going to get better. It's not.", sr:"Ako nekome poput tebe nije silno stalo, ništa neće postati bolje. Neće.", by:"Dr. Seuss, The Lorax" },
+  { en:"Forget not that the earth delights to feel your bare feet and the winds long to play with your hair.", sr:"Ne zaboravi da zemlja voli da oseti tvoja bosa stopala, a vetrovi žele da se poigraju tvojom kosom.", by:"Kahlil Gibran" },
+  { en:"Breathing in, I calm body and mind. Breathing out, I smile.", sr:"Udišući, smirujem telo i um. Izdišući, osmehujem se.", by:"Thich Nhat Hanh" }
+];
+const splashQuoteIdx = Math.floor(Math.random() * SPLASH_QUOTES.length);
+function splashQuotesEnabled(){
+  try { return localStorage.getItem('ttt_splash_quotes') !== '0'; } catch (e) { return true; }
+}
+function setSplashQuotesEnabled(on){
+  try { localStorage.setItem('ttt_splash_quotes', on ? '1' : '0'); } catch (e) {}
+}
+function renderSplashQuote(){
+  const box = document.getElementById('splashQuote');
+  if (!box) return;
+  if (!splashQuotesEnabled()) { box.style.display = 'none'; return; }
+  box.style.display = '';
+  const q = SPLASH_QUOTES[splashQuoteIdx];
+  box.textContent = q[lang] || q.en;
+  if (q.by) {
+    const by = document.createElement('span');
+    by.className = 'splash-quote-by';
+    by.textContent = '— ' + q.by;
+    box.appendChild(by);
+  }
+}
+
 function applyLang(){
   const el = id => document.getElementById(id);
   try { applyPwaLang(); } catch (e) { /* PWA block not initialised yet */ }
@@ -3069,6 +3137,8 @@ function applyLang(){
   if (el('langAutoHint'))       el('langAutoHint').textContent = t('langAutoHint');
   if (el('langBtnAutoLabel'))   el('langBtnAutoLabel').textContent = t('langBtnAutoLabel');
   if (el('remindersToggleLabel')) el('remindersToggleLabel').textContent = t('remindersToggleLabel');
+  if (el('splashQuotesToggleLabel')) el('splashQuotesToggleLabel').textContent = t('splashQuotesToggleLabel');
+  if (el('splashQuotesToggleHint'))  el('splashQuotesToggleHint').textContent = t('splashQuotesToggleHint');
   if (el('remindersToggleHint'))  el('remindersToggleHint').textContent = t('remindersToggleHint');
   if (el('themeSectionTitle'))  el('themeSectionTitle').textContent = t('themeSectionTitle');
   if (el('themeAutoHint'))      el('themeAutoHint').textContent = t('themeAutoHint');
@@ -3113,7 +3183,8 @@ function applyLang(){
   if (wizClose) wizClose.setAttribute('aria-label', t('cancelLabel'));
   const setClose = document.querySelector('.fullscreen-modal-close');
   if (setClose) setClose.setAttribute('aria-label', t('helpClose'));
-  if (el('splashText')) el('splashText').textContent = t('splashLoading');
+  if (el('splashSlogan')) el('splashSlogan').textContent = t('splashSlogan');
+  renderSplashQuote();
   if (el('windCompassDir') && currentWindDegForMarker != null) el('windCompassDir').textContent = degToCardinal(currentWindDegForMarker);
   updateSourceHeatBadge(mapDisplayedReports || globalActiveData);
   if (lastKnownReportCount !== null) updateReportCountUI(lastKnownReportCount, lastKnownReportTotal);
@@ -9498,7 +9569,24 @@ applyLang();
   }
 })();
 
+// With quotes on, the splash stays up long enough to read the quote
+// (about 280 ms per word, 2.5-8 s). With quotes off it hides as soon as
+// the data is ready.
+let splashHidden = false, splashHideTimer = null;
+function splashMinMs() {
+  if (!splashQuotesEnabled()) return 0;
+  const q = SPLASH_QUOTES[splashQuoteIdx];
+  const words = String(q[lang] || q.en).trim().split(/\s+/).length;
+  return Math.min(8000, Math.max(2500, 1000 + words * 280));
+}
 function hideSplashScreen() {
+  if (splashHidden) return;
+  const wait = splashMinMs() - performance.now();
+  if (wait > 0) {
+    if (!splashHideTimer) splashHideTimer = setTimeout(() => { splashHideTimer = null; hideSplashScreen(); }, wait);
+    return;
+  }
+  splashHidden = true;
   const el = document.getElementById('splashScreen');
   if (el) el.classList.add('splash-hidden');
 }
