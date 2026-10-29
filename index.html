@@ -1199,6 +1199,32 @@ html[data-theme="light"] #dateRangePicker {
 #alertToast{ border-color:var(--danger); z-index:1110; }
 #alertToast .pwa-banner-text b{ color:var(--danger); }
 .alert-radius-title{ margin-top:14px; }
+
+/* Persistent location reminder: small pill beside the pin button */
+.loc-chip{
+  position:fixed; right:64px; bottom:calc(var(--legend-bar-h) + 154px); z-index:950;
+  display:none; align-items:center; gap:6px; padding:5px 6px 5px 6px;
+  background:var(--floating-bg); border:1px solid #f5a623; border-radius:999px;
+  box-shadow:0 2px 10px var(--floating-shadow);
+  backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
+  font-size:var(--fs-12); color:var(--text-primary); max-width:calc(100vw - 80px);
+}
+.loc-chip-btn{
+  background:var(--accent); color:var(--accent-contrast); border:none; border-radius:999px;
+  padding:5px 10px; font-size:var(--fs-12); font-weight:var(--fw-semibold); cursor:pointer; white-space:nowrap;
+}
+.loc-chip-text{ white-space:nowrap; color:var(--text-secondary); }
+.loc-chip-arrow{ color:#f5a623; font-weight:700; padding-right:4px; animation:locNudge 1.4s ease-in-out infinite; }
+@keyframes locNudge{ 0%,100%{ transform:translateX(0); } 50%{ transform:translateX(4px); } }
+.pin-map-btn.pin-attn{ border-color:#f5a623; animation:pinPulse 1.8s ease-out infinite; }
+@keyframes pinPulse{
+  0%{ box-shadow:0 2px 8px var(--floating-shadow), 0 0 0 0 rgba(245,166,35,.65); }
+  70%{ box-shadow:0 2px 8px var(--floating-shadow), 0 0 0 14px rgba(245,166,35,0); }
+  100%{ box-shadow:0 2px 8px var(--floating-shadow), 0 0 0 0 rgba(245,166,35,0); }
+}
+@media (prefers-reduced-motion: reduce){
+  .pin-map-btn.pin-attn, .loc-chip-arrow{ animation:none; }
+}
 </style>
 </head>
 <body>
@@ -1247,6 +1273,12 @@ html[data-theme="light"] #dateRangePicker {
   <div class="pwa-banner-text"><b id="alertToastTitle"></b><span id="alertToastBody"></span></div>
   <button type="button" class="pwa-banner-btn" id="alertToastBtn" onclick="alertToastShowOnMap()">Show on map</button>
   <button type="button" class="pwa-banner-x" onclick="hideAlertToast()" aria-label="Close">✕</button>
+</div>
+
+<div id="locChip" class="loc-chip" role="status">
+  <button type="button" class="loc-chip-btn" id="locChipGpsBtn" onclick="locChipEnableGps()">Enable GPS</button>
+  <span class="loc-chip-text" id="locChipText">or drop a pin</span>
+  <span class="loc-chip-arrow" aria-hidden="true">➜</span>
 </div>
 
 <div id="map"></div>
@@ -1386,6 +1418,17 @@ html[data-theme="light"] #dateRangePicker {
         <button type="button" class="export-btn" style="width:100%;" id="alertLocBtn" onclick="refreshAlertLocationNow()">Update my location now</button>
       </div>
       <p class="detail-export-hint" id="alertStatus"></p>
+    </div>
+
+    <div class="detail-section" id="remindersSettingsSection">
+      <label class="settings-toggle-row" for="remindersToggle">
+        <span id="remindersToggleLabel">Reminders</span>
+        <span class="toggle-switch">
+          <input type="checkbox" id="remindersToggle" autocomplete="off" onchange="setRemindersEnabled(this.checked)">
+          <span class="toggle-switch-track"><span class="toggle-switch-thumb"></span></span>
+        </span>
+      </label>
+      <p class="detail-export-hint" id="remindersToggleHint"></p>
     </div>
 
     <div class="detail-section" id="languageSettingsSection">
@@ -2097,7 +2140,7 @@ function syncSettingsToggles() {
   set('splineVisibilityToggle', splinesVisible);
   set('traceHeatmapToggle', traceHeatmapEnabled);
   set('sourceHeatToggle', sourceHeatVisible);
-  try { syncAlertUi(); refreshInstallUi(); } catch (e) { /* PWA block not initialised yet */ }
+  try { syncAlertUi(); refreshInstallUi(); set('remindersToggle', remindersEnabled()); } catch (e) { /* PWA block not initialised yet */ }
   saveSettings();
 }
 
@@ -2864,6 +2907,10 @@ const T = {
   alertPromptTitle: { en:'Turn on wind alerts', sr:'Uključi upozorenja o vetru' },
   alertPromptBody: { en:'Get notified when bad air is reported nearby and the wind is carrying it toward you.', sr:'Dobij obaveštenje kada se u blizini prijavi loš vazduh, a vetar ga nosi ka tebi.' },
   alertPromptBtn: { en:'Turn on', sr:'Uključi' },
+  locChipGps: { en:'Enable GPS', sr:'Uključi GPS' },
+  locChipOr: { en:'or drop a pin', sr:'ili postavi pin' },
+  remindersToggleLabel: { en:'Reminders', sr:'Podsetnici' },
+  remindersToggleHint: { en:'Show reminders to install the app, turn on wind alerts, and enable GPS or drop a pin.', sr:'Prikaži podsetnike za instalaciju aplikacije, uključivanje upozorenja o vetru i omogućavanje GPS-a ili postavljanje pina.' },
 };
 
 function t(k){ return T[k]?.[lang] ?? k; }
@@ -3001,6 +3048,8 @@ function applyLang(){
   if (el('languageSectionTitle')) el('languageSectionTitle').textContent = t('languageSectionTitle');
   if (el('langAutoHint'))       el('langAutoHint').textContent = t('langAutoHint');
   if (el('langBtnAutoLabel'))   el('langBtnAutoLabel').textContent = t('langBtnAutoLabel');
+  if (el('remindersToggleLabel')) el('remindersToggleLabel').textContent = t('remindersToggleLabel');
+  if (el('remindersToggleHint'))  el('remindersToggleHint').textContent = t('remindersToggleHint');
   if (el('themeSectionTitle'))  el('themeSectionTitle').textContent = t('themeSectionTitle');
   if (el('themeAutoHint'))      el('themeAutoHint').textContent = t('themeAutoHint');
   if (el('themeBtnLight'))      el('themeBtnLight').textContent = t('themeBtnLight');
@@ -8784,6 +8833,57 @@ let installBannerTimer = null;
 function lsGet(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : v; } catch (e) { return d; } }
 function lsSet(k, v) { try { localStorage.setItem(k, String(v)); } catch (e) {} }
 
+/* ---------- Reminders master switch (Settings) + persistent location chip ---------- */
+function remindersEnabled() { return lsGet('ttt_reminders', '1') !== '0'; }
+function setRemindersEnabled(on) {
+  lsSet('ttt_reminders', on ? '1' : '0');
+  if (!on) {
+    clearTimeout(installBannerTimer); clearTimeout(alertPromptTimer);
+    hideInstallBanner(); hideAlertPrompt();
+  } else {
+    scheduleInstallBanner(); scheduleAlertPrompt();
+  }
+  updateLocChip();
+}
+
+const LOC_CHIP_DELAY_MS = 10000;
+const locChipLoadedAt = Date.now();
+
+// Tap "Enable GPS": ask the browser if it can; if permission was already
+// denied the browser won't prompt again, so show the explainer instead.
+function locChipEnableGps() {
+  const explain = () => { gpsModalShownThisLoad = false; showGpsModal(); };
+  if (!navigator.geolocation) { explain(); return; }
+  if (navigator.permissions && navigator.permissions.query) {
+    navigator.permissions.query({ name: 'geolocation' }).then(r => {
+      if (r.state === 'denied') explain(); else startWatching();
+    }).catch(() => startWatching());
+  } else {
+    startWatching();
+  }
+}
+
+// Runs every second: shows the chip (and pulses the pin button) once 10s
+// have passed with no GPS fix and no pin in use. Hides as soon as either
+// exists, while a modal is open, or if Reminders is switched off.
+function updateLocChip() {
+  const chip = document.getElementById('locChip');
+  const pinBtn = document.getElementById('pinMapBtn');
+  if (!chip) return;
+  const noLocation = !userCoords && !manualCoords && !pinMode;
+  const due = remindersEnabled() && noLocation && (Date.now() - locChipLoadedAt >= LOC_CHIP_DELAY_MS);
+  const blocked = typeof anyModalOpen === 'function' && anyModalOpen();
+  if (pinBtn) pinBtn.classList.toggle('pin-attn', due);
+  if (due && !blocked) {
+    document.getElementById('locChipGpsBtn').textContent = t('locChipGps');
+    document.getElementById('locChipText').textContent = t('locChipOr');
+    chip.style.display = 'flex';
+  } else {
+    chip.style.display = 'none';
+  }
+}
+setInterval(updateLocChip, 1000);
+
 window.addEventListener('beforeinstallprompt', e => {
   e.preventDefault();
   deferredInstallPrompt = e;
@@ -8843,6 +8943,7 @@ function anyModalOpen() {
     .some(el => getComputedStyle(el).display !== 'none');
 }
 function scheduleInstallBanner() {
+  if (!remindersEnabled()) return;
   if (isStandalone() || lsGet('ttt_installed', '') === '1') return;
   if (Date.now() < (parseInt(lsGet('ttt_install_snooze_until', '0'), 10) || 0)) return;
   if ((parseInt(lsGet('ttt_visit_count', '0'), 10) || 0) < 2) return;   // not on the very first visit
@@ -8850,6 +8951,7 @@ function scheduleInstallBanner() {
   installBannerTimer = setTimeout(tryShowInstallBanner, 7000);
 }
 function tryShowInstallBanner() {
+  if (!remindersEnabled()) return;
   if (isStandalone()) return;
   if (!deferredInstallPrompt && !isIOS()) return;   // nothing we can actually offer
   if (anyModalOpen()) { installBannerTimer = setTimeout(tryShowInstallBanner, 8000); return; }
@@ -8884,6 +8986,7 @@ async function enableAlertsFromPrompt() {
   if (!getAlertPrefs().on) showSettingsModal();
 }
 function scheduleAlertPrompt() {
+  if (!remindersEnabled()) return;
   if (getAlertPrefs().on) return;
   if (alertsBlockedReason()) return;   // unsupported, denied, or iOS tab not installed yet: nothing to offer
   if (Date.now() < (parseInt(lsGet('ttt_alert_prompt_snooze_until', '0'), 10) || 0)) return;
@@ -8892,6 +8995,7 @@ function scheduleAlertPrompt() {
   alertPromptTimer = setTimeout(tryShowAlertPrompt, 12000);   // after the install banner's 7s
 }
 function tryShowAlertPrompt() {
+  if (!remindersEnabled()) return;
   if (getAlertPrefs().on || alertsBlockedReason()) return;
   const inst = document.getElementById('installBanner');
   const toast = document.getElementById('alertToast');
