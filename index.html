@@ -154,8 +154,6 @@ header{
   z-index:500;
   padding:calc(10px + env(safe-area-inset-top, 0px)) 14px 10px;
   background:var(--floating-bg);
-  backdrop-filter:blur(8px);
-  -webkit-backdrop-filter:blur(8px);
   border-bottom:1px solid var(--floating-border);
   border-radius:0 0 20px 20px;
   box-shadow:0 4px 18px var(--floating-shadow);
@@ -334,8 +332,6 @@ button{
   min-width:200px;
   background: var(--floating-bg) !important;
   box-shadow: 0 3px 14px var(--floating-shadow);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
 }
 .leaflet-popup-content{
   margin:0 !important;
@@ -370,6 +366,13 @@ button{
   pointer-events: none;
 }
 
+/* Paused while the map is moving (see 'map-moving' in the map setup) and for
+   people who ask for reduced motion. */
+.map-moving .leaflet-pane *{ animation-play-state:paused !important; }
+@media (prefers-reduced-motion: reduce){
+  .bg-trail-animated, .trace-pulse-spline, .trace-pulse-spline-forward, .trace-pulse-circle path,
+  .drift-puff, .drift-ring, .wildfire-pulse-ring{ animation:none !important; }
+}
 @keyframes marchDots {
   from { stroke-dashoffset: 0; }
   to   { stroke-dashoffset: 22; }
@@ -1164,7 +1167,6 @@ html[data-theme="light"] #dateRangePicker {
   display:none; align-items:center; gap:10px; padding:10px 12px;
   background:var(--floating-bg); border:1px solid var(--floating-border);
   border-radius:var(--radius-xl); box-shadow:0 6px 22px var(--floating-shadow);
-  backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
 }
 .pwa-banner img{ width:36px; height:36px; border-radius:8px; flex-shrink:0; }
 .pwa-banner-text{ flex:1; min-width:0; font-size:var(--fs-12); color:var(--text-secondary); line-height:1.35; }
@@ -1185,7 +1187,6 @@ html[data-theme="light"] #dateRangePicker {
   display:none; align-items:center; gap:6px; padding:7px 8px; min-height:44px; box-sizing:border-box;
   background:var(--floating-bg); border:1px solid #f5a623; border-radius:999px;
   box-shadow:0 2px 10px var(--floating-shadow);
-  backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
   font-size:var(--fs-12); color:var(--text-primary); max-width:calc(100vw - 80px);
 }
 .map-act-stack{ display:flex; flex-direction:column; gap:8px; margin-top:8px !important; }
@@ -1282,7 +1283,6 @@ button:focus-visible, [role="button"]:focus-visible, a:focus-visible, input:focu
   width:calc(100% - 48px); max-width:300px; padding:16px 18px;
   background:var(--floating-bg); border:1px solid var(--floating-border); border-radius:var(--radius-xl);
   box-shadow:0 4px 18px var(--floating-shadow);
-  backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
   pointer-events:none;
 }
 #mapEmptyState.visible{ display:flex; }
@@ -1682,25 +1682,6 @@ button:focus-visible, [role="button"]:focus-visible, a:focus-visible, input:focu
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
-<script>
-// leaflet-heat.js repeatedly reads pixel data back off its canvas
-// (getImageData) without this hint, which is fine functionally but spams
-// the console with a perf warning on every redraw. Patching getContext
-// here -- before the library's own canvas gets created -- opts every 2D
-// context on the page into willReadFrequently silently.
-(function () {
-  const origGetContext = HTMLCanvasElement.prototype.getContext;
-  HTMLCanvasElement.prototype.getContext = function (type, options) {
-    // (leaflet-heat reads pixels back; the trail canvas only draws, so it opts
-    // out via __tttPlainCanvas and keeps GPU acceleration.)
-    if (type === '2d' && !window.__tttPlainCanvas) {
-      options = Object.assign({ willReadFrequently: true }, options || {});
-    }
-    return origGetContext.call(this, type, options);
-  };
-})();
-</script>
-<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 <!-- Flatpickr Calendar Engine -->
 <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
@@ -3458,6 +3439,17 @@ map.getPane('driftPane').style.pointerEvents = 'none';
 map.createPane('lastLocPane');
 map.getPane('lastLocPane').style.zIndex = 615;
 const freshDriftLayer = L.layerGroup().addTo(map);
+
+// Pause every infinite CSS animation (dash flow, pulses, drift puffs) while
+// the map is being panned/zoomed so the browser only has to move tiles.
+(function () {
+  const el = map.getContainer();
+  let t = null;
+  const stop = () => { clearTimeout(t); el.classList.add('map-moving'); };
+  const go = () => { clearTimeout(t); t = setTimeout(() => el.classList.remove('map-moving'), 120); };
+  map.on('movestart zoomstart', stop);
+  map.on('moveend zoomend', go);
+})();
 
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
   attribution:'© OpenStreetMap'
@@ -5891,9 +5883,14 @@ function traceGradientColor(stops, t) {
 // or wind-speed-varying thickness -- means many small ones). `stops` is
 // optional (omit for a single fixedColor); `speedProfile` is optional
 // (omit to keep a flat default weight). Returns the array of layers added.
+const ANIMATED_TRAIL_SEGMENT_BUDGET = 150;
 function drawGradientSpline(points, stops, report, tracerCoords, animationClass = 'trace-pulse-spline', opts = {}) {
   const { fixedColor, pointSpeeds, baseOpacity = 0.85, pane = 'splinePane', animate = false } = opts;
   const layers = [];
+  // Every animated dashed SVG segment repaints the whole SVG layer on every
+  // frame. Past a budget, draw the trail static (same dashes, no flow).
+  const animatedNow = document.querySelectorAll('.trace-pulse-spline, .trace-pulse-spline-forward, .bg-trail-animated').length;
+  const allowAnim = animatedNow + points.length <= ANIMATED_TRAIL_SEGMENT_BUDGET;
   for (let i = 0; i < points.length - 1; i++) {
     const t = points.length > 2 ? (i + 0.5) / (points.length - 1) : 0.5;
     const color = stops ? traceGradientColor(stops, t) : fixedColor;
@@ -5909,7 +5906,7 @@ function drawGradientSpline(points, stops, report, tracerCoords, animationClass 
       dashArray: '4, 7',
       lineCap: 'round',
       lineJoin: 'round',
-      className: `spline-report-${report.id}${(tracerCoords || animate) ? ' ' + animationClass : ''}`,
+      className: `spline-report-${report.id}${((tracerCoords || animate) && allowAnim) ? ' ' + animationClass : ''}`,
       interactive: false,
       pane
     }).addTo(map);
@@ -8026,7 +8023,10 @@ function addFreshDrift(report) {
   if (!freshDriftEnabled() || !isFreshDriftReport(report)) return;
   const lat = parseFloat(report.latitude), lon = parseFloat(report.longitude);
   if (!isFinite(lat) || !isFinite(lon)) return;
-  const puffs = freshDriftLayer.getLayers().length > 25 ? 3 : 6;   // keep it light with many fresh reports
+  // Each puff is an animated, composited layer -- keep the total small.
+  const nDrift = freshDriftLayer.getLayers().length;
+  if (nDrift >= 40) return;
+  const puffs = nDrift > 25 ? 2 : nDrift > 10 ? 3 : 4;
   const m = L.marker([lat, lon], { icon: makeDriftIcon(report, puffs), pane: 'driftPane', interactive: false, keyboard: false });
   m._report = report;
   freshDriftLayer.addLayer(m);
@@ -8253,7 +8253,7 @@ let traceHeatLayer = null;
    soft radial gradient with no size limit. Same surface the code below uses
    (_latlngs, redraw(), options). Points are [lat, lon, weight]. */
 L.GroundHeatLayer = L.Layer.extend({
-  options: { radiusKm: 5, max: 1, minOpacity: 0.05, gradient: { 0.4: 'blue', 0.6: 'cyan', 0.7: 'lime', 0.8: 'yellow', 1: 'red' } },
+  options: { radiusKm: 5, resolution: 0.25, max: 1, minOpacity: 0.05, gradient: { 0.4: 'blue', 0.6: 'cyan', 0.7: 'lime', 0.8: 'yellow', 1: 'red' } },
   initialize: function (latlngs, options) {
     this._latlngs = latlngs || [];
     L.setOptions(this, options);
@@ -8295,9 +8295,14 @@ L.GroundHeatLayer = L.Layer.extend({
   _reset: function () {
     if (!this._map) return;
     L.DomUtil.setPosition(this._canvas, this._map.containerPointToLayerPoint([0, 0]));
-    const size = this._map.getSize();
-    if (this._canvas.width !== size.x) this._canvas.width = size.x;
-    if (this._canvas.height !== size.y) this._canvas.height = size.y;
+    // The heat is a soft blur, so it is rendered at a fraction of the screen
+    // resolution and scaled up by CSS: ~16x fewer pixels to fill and colour.
+    const size = this._map.getSize(), S = this.options.resolution;
+    const cw = Math.max(1, Math.round(size.x * S)), ch = Math.max(1, Math.round(size.y * S));
+    if (this._canvas.width !== cw) this._canvas.width = cw;
+    if (this._canvas.height !== ch) this._canvas.height = ch;
+    this._canvas.style.width = size.x + 'px';
+    this._canvas.style.height = size.y + 'px';
     this._redraw();
   },
   _animateZoom: function (e) {
@@ -8316,33 +8321,53 @@ L.GroundHeatLayer = L.Layer.extend({
     gctx.fillRect(0, 0, 1, 256);
     this._grad = gctx.getImageData(0, 0, 1, 256).data;
   },
+  // One soft dot, drawn once per radius and stamped for every point with
+  // drawImage + globalAlpha (instead of building a gradient per point).
+  _getSprite: function (rs) {
+    const key = Math.round(rs * 2) / 2;
+    if (this._sprite && this._spriteKey === key) return this._sprite;
+    const size = Math.max(2, Math.ceil(key * 2));
+    const c = document.createElement('canvas');
+    c.width = c.height = size;
+    const x = c.getContext('2d'), m = size / 2;
+    const g = x.createRadialGradient(m, m, 0, m, m, m);
+    g.addColorStop(0, 'rgba(0,0,0,1)');
+    g.addColorStop(0.5, 'rgba(0,0,0,0.5)');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    x.fillStyle = g;
+    x.fillRect(0, 0, size, size);
+    this._spriteKey = key;
+    return (this._sprite = c);
+  },
   _redraw: function () {
     this._frame = null;
     const map = this._map;
     if (!map || !this._canvas) return;
     if (!this._grad) this._buildGradient();
+    const S = this.options.resolution;
     const canvas = this._canvas, w = canvas.width, h = canvas.height;
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const ctx = this._ctx || (this._ctx = canvas.getContext('2d', { willReadFrequently: true }));
     ctx.clearRect(0, 0, w, h);
 
-    // km -> px at the map centre's latitude and the current zoom.
+    // km -> px (at the reduced resolution) at the map centre's latitude and zoom.
     const lat = map.getCenter().lat;
     const metersPerPx = 40075016.686 * Math.cos(lat * Math.PI / 180) / (256 * Math.pow(2, map.getZoom()));
-    const r = Math.max(2, (this.options.radiusKm * 1000) / metersPerPx);
+    const r = Math.max(1, ((this.options.radiusKm * 1000) / metersPerPx) * S);
+    const sprite = this._getSprite(r), half = sprite.width / 2;
     const max = this.options.max || 1, minA = this.options.minOpacity || 0;
 
+    let drawn = 0;
     for (let i = 0; i < this._latlngs.length; i++) {
       const p = this._latlngs[i];
       const pt = map.latLngToContainerPoint([p[0], p[1]]);
-      if (pt.x < -r || pt.y < -r || pt.x > w + r || pt.y > h + r) continue;
-      const a = Math.min(1, Math.max((p[2] === undefined ? 1 : p[2]) / max, minA));
-      const g = ctx.createRadialGradient(pt.x, pt.y, 0, pt.x, pt.y, r);
-      g.addColorStop(0, 'rgba(0,0,0,' + a + ')');
-      g.addColorStop(0.5, 'rgba(0,0,0,' + (a * 0.5) + ')');
-      g.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.fillStyle = g;
-      ctx.fillRect(pt.x - r, pt.y - r, 2 * r, 2 * r);
+      const x = pt.x * S, y = pt.y * S;
+      if (x < -half || y < -half || x > w + half || y > h + half) continue;
+      ctx.globalAlpha = Math.min(1, Math.max((p[2] === undefined ? 1 : p[2]) / max, minA));
+      ctx.drawImage(sprite, x - half, y - half);
+      drawn++;
     }
+    ctx.globalAlpha = 1;
+    if (!drawn) return;
 
     const img = ctx.getImageData(0, 0, w, h), d = img.data, lut = this._grad;
     for (let i = 3; i < d.length; i += 4) {
