@@ -127,20 +127,20 @@ body{
 ═══════════════════════════════════════════════════ */
 #pullRefreshIndicator{
   position:fixed; top:0; left:50%;
-  transform:translate(-50%, -60px);
-  z-index:499; /* just behind the header, which slides down to reveal it */
+  transform:translate(-50%, -100%);
+  opacity:0;
+  z-index:499; /* behind the header; it drops out from underneath while the header stays put */
   background:var(--floating-bg);
   border:1px solid var(--floating-border);
-  border-top:none;
-  border-radius:0 0 var(--radius-lg) var(--radius-lg);
-  padding:calc(8px + env(safe-area-inset-top, 0px)) 16px 8px;
+  border-radius:999px;
+  padding:7px 14px;
   display:flex; align-items:center; gap:6px;
   font-size:var(--fs-11); color:var(--text-secondary);
   box-shadow:0 2px 8px var(--floating-shadow);
   pointer-events:none;
   white-space:nowrap;
 }
-#pullRefreshIndicator.animate{ transition:transform .2s ease; }
+#pullRefreshIndicator.animate{ transition:transform .2s ease, opacity .2s ease; }
 #pullRefreshIndicator svg{ width:14px; height:14px; transition:transform .1s ease; }
 #pullRefreshIndicator.ready svg{ transform:rotate(180deg); }
 #pullRefreshIndicator.refreshing svg{ animation:pullRefreshSpin .7s linear infinite; }
@@ -638,10 +638,12 @@ span.flatpickr-weekday {
 #splashScreen{
   position:fixed; inset:0; z-index:10001;
   background:var(--bg-app);
-  opacity:1;
-  transition:opacity .25s ease;
+  opacity:1; visibility:visible;
+  transition:opacity .5s ease, visibility 0s linear 0s;
 }
-#splashScreen.splash-hidden{ opacity:0; pointer-events:none; }
+/* Fade out, then drop out of rendering entirely and stop the pulsing rings */
+#splashScreen.splash-hidden{ opacity:0; visibility:hidden; pointer-events:none; transition:opacity .5s ease, visibility 0s linear .5s; }
+#splashScreen.splash-hidden *{ animation-play-state:paused !important; }
 /* Logo is pinned to the exact centre of the screen; slogan + quote hang below it */
 .splash-spinner-wrap{
   position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
@@ -674,11 +676,13 @@ span.flatpickr-weekday {
 }
 .splash-slogan{
   color:var(--text-primary); font-size:19px; font-weight:700; letter-spacing:.2px;
+  animation:splash-rise .7s ease both .1s;
 }
+@keyframes splash-rise{ from{ opacity:0; transform:translateY(8px); } to{ opacity:1; transform:translateY(0); } }
 .splash-quote{
   margin-top:16px; max-width:320px;
   color:var(--text-primary); font-size:13px; font-style:italic; line-height:1.5; opacity:.7;
-  animation:splash-fade 1s ease both .25s;
+  animation:splash-fade 1s ease both .6s;
 }
 .splash-quote-by{ display:block; margin-top:4px; font-style:normal; font-size:12px; opacity:.8; }
 @keyframes splash-fade{ from{ opacity:0; } to{ opacity:.7; } }
@@ -1231,6 +1235,8 @@ html[data-theme="light"] #dateRangePicker {
 }
 .map-act-btn:active{ transform:scale(.92); }
 .map-act-btn svg{ width:20px; height:20px; display:block; }
+.loc-chip{ animation:locChipIn .35s ease both; }
+@keyframes locChipIn{ from{ opacity:0; } to{ opacity:1; } }
 .loc-chip-btn{
   background:var(--accent); color:var(--accent-contrast); border:none; border-radius:999px;
   padding:5px 10px; font-size:var(--fs-12); font-weight:var(--fw-semibold); cursor:pointer; white-space:nowrap;
@@ -1245,8 +1251,42 @@ html[data-theme="light"] #dateRangePicker {
   70%{ box-shadow:0 2px 8px var(--floating-shadow), 0 0 0 14px rgba(245,166,35,0); }
   100%{ box-shadow:0 2px 8px var(--floating-shadow), 0 0 0 0 rgba(245,166,35,0); }
 }
+/* Wind drift: soft puffs travelling downwind from fresh reports */
+.drift-icon{ background:none; border:none; pointer-events:none; }
+.drift-wrap{ position:relative; width:100%; height:100%; transform:scale(var(--drift-scale,1)); }
+.drift-puff{
+  position:absolute; left:50%; top:50%; width:28px; height:28px; margin:-14px 0 0 -14px; border-radius:50%;
+  background:radial-gradient(circle, var(--pc) 0%, transparent 70%);
+  opacity:0; will-change:transform,opacity;
+  animation:driftPuff 4s linear infinite;
+}
+@keyframes driftPuff{
+  0%{ opacity:0; transform:translate(0,0) scale(.5); }
+  15%{ opacity:.65; }
+  100%{ opacity:0; transform:translate(var(--dx),var(--dy)) scale(2.8); }
+}
+.drift-ring{
+  position:absolute; left:50%; top:50%; width:30px; height:30px; margin:-15px 0 0 -15px; border-radius:50%;
+  border:2px solid var(--pc); opacity:0; animation:driftRing 3.4s ease-out infinite;
+}
+@keyframes driftRing{ 0%{ opacity:.55; transform:scale(.6); } 100%{ opacity:0; transform:scale(3); } }
+
+/* Last known location (shown while GPS is off) */
+.lastloc-icon{ background:none; border:none; }
+.lastloc-wrap{ position:relative; width:44px; height:44px; }
+.lastloc-wrap svg{ display:block; overflow:visible; }
+.lastloc-label{
+  position:absolute; top:48px; left:50%; transform:translateX(-50%); white-space:nowrap;
+  font-size:10px; font-weight:600; padding:2px 7px; border-radius:999px;
+  background:var(--floating-bg); color:var(--text-secondary); border:1px solid var(--floating-border);
+  box-shadow:0 1px 4px var(--floating-shadow);
+}
 @media (prefers-reduced-motion: reduce){
-  .pin-map-btn.pin-attn, .loc-chip-arrow{ animation:none; }
+  .drift-icon{ display:none; }
+}
+@media (prefers-reduced-motion: reduce){
+  .pin-map-btn.pin-attn, .loc-chip-arrow, .splash-slogan, .splash-quote, .loc-chip{ animation:none; }
+  .splash-quote{ opacity:.7; }
 }
 </style>
 </head>
@@ -1450,6 +1490,17 @@ html[data-theme="light"] #dateRangePicker {
         <button type="button" class="export-btn" style="width:100%;" id="alertLocBtn" onclick="refreshAlertLocationNow()">Update my location now</button>
       </div>
       <p class="detail-export-hint" id="alertStatus"></p>
+    </div>
+
+    <div class="detail-section" id="freshDriftSettingsSection">
+      <label class="settings-toggle-row" for="freshDriftToggle">
+        <span id="freshDriftToggleLabel">Wind drift on fresh reports</span>
+        <span class="toggle-switch">
+          <input type="checkbox" id="freshDriftToggle" autocomplete="off" onchange="setFreshDriftEnabled(this.checked)">
+          <span class="toggle-switch-track"><span class="toggle-switch-thumb"></span></span>
+        </span>
+      </label>
+      <p class="detail-export-hint" id="freshDriftToggleHint"></p>
     </div>
 
     <div class="detail-section" id="remindersSettingsSection">
@@ -2183,7 +2234,7 @@ function syncSettingsToggles() {
   set('splineVisibilityToggle', splinesVisible);
   set('traceHeatmapToggle', traceHeatmapEnabled);
   set('sourceHeatToggle', sourceHeatVisible);
-  try { syncAlertUi(); refreshInstallUi(); set('remindersToggle', remindersEnabled()); set('splashQuotesToggle', splashQuotesEnabled()); } catch (e) { /* PWA block not initialised yet */ }
+  try { syncAlertUi(); refreshInstallUi(); set('remindersToggle', remindersEnabled()); set('splashQuotesToggle', splashQuotesEnabled()); set('freshDriftToggle', freshDriftEnabled()); } catch (e) { /* PWA block not initialised yet */ }
   saveSettings();
 }
 
@@ -2312,6 +2363,24 @@ function buildMapKeyModalContent() {
     </svg>
     <p style="color:var(--text-secondary); margin:0 0 10px;">${t('mapKeyTrailsBody1')}</p>
     <p style="color:var(--text-secondary); margin:0;">${t('mapKeyTrailsBody2')}</p>
+
+    <div style="height:1px;background:var(--border-color);margin:12px 0;"></div>
+
+    <div style="font-weight:600; margin-bottom:6px;">${t('mapKeyDriftTitle')}</div>
+    <svg width="100%" height="34" viewBox="0 0 300 34" preserveAspectRatio="none" style="display:block; margin-bottom:4px;">
+      <circle cx="14" cy="17" r="7" fill="#c41e27" stroke="#fff" stroke-width="2"/>
+      <circle cy="17" r="6" fill="#c41e27">
+        <animate attributeName="cx" values="22;280" dur="2.6s" repeatCount="indefinite"/>
+        <animate attributeName="r" values="4;15" dur="2.6s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0;.6;0" dur="2.6s" repeatCount="indefinite"/>
+      </circle>
+      <circle cy="17" r="6" fill="#c41e27">
+        <animate attributeName="cx" values="22;280" dur="2.6s" begin="1.3s" repeatCount="indefinite"/>
+        <animate attributeName="r" values="4;15" dur="2.6s" begin="1.3s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0;.6;0" dur="2.6s" begin="1.3s" repeatCount="indefinite"/>
+      </circle>
+    </svg>
+    <p style="color:var(--text-secondary); margin:0;">${t('mapKeyDriftBody')}</p>
 
     <div style="height:1px;background:var(--border-color);margin:12px 0;"></div>
 
@@ -2955,6 +3024,14 @@ const T = {
   updateBannerBtn: { en:'Refresh', sr:'Osveži' },
   locChipGps: { en:'Enable GPS', sr:'Uključi GPS' },
   locChipOr: { en:'or drop a pin', sr:'ili postavi pin' },
+  freshDriftToggleLabel: { en:'Wind drift on fresh reports', sr:'Nošenje mirisa vetrom na novim prijavama' },
+  freshDriftToggleHint: { en:'Animate soft puffs drifting downwind from reports made in the last 3 hours, showing where the smell is being carried. Turn off to keep the map calmer.', sr:'Animirani oblačići koji putuju niz vetar od prijava iz poslednja 3 sata i pokazuju kuda vetar nosi miris. Isključi da mapa bude mirnija.' },
+  mapKeyDriftTitle: { en:'Smell drift', sr:'Širenje mirisa' },
+  mapKeyDriftBody: { en:'Soft puffs drifting away from a pin show where the wind is carrying the smell right now. Shown for reports from the last 3 hours; <strong>stronger wind = longer, faster drift</strong>. Calm air shows slow rings instead.', sr:'Meki oblačići koji se udaljavaju od oznake pokazuju kuda vetar trenutno nosi miris. Prikazuju se za prijave iz poslednja 3 sata; <strong>jači vetar = duže i brže pomeranje</strong>. Pri bezvetrici se vide spori krugovi.' },
+  lastLocTitle: { en:'Last known location', sr:'Poslednja poznata lokacija' },
+  lastLocGpsOff: { en:'GPS off', sr:'GPS isključen' },
+  lastLocSeen: { en:'Last seen', sr:'Viđeno' },
+  lastLocBody: { en:'GPS is off, so this is where the device was last located.', sr:'GPS je isključen, pa je ovo mesto gde je uređaj poslednji put viđen.' },
   splashQuotesToggleLabel: { en:'Loading screen quotes', sr:'Citati na ekranu učitavanja' },
   splashQuotesToggleHint: { en:'Show a random air quote while the app loads. Turn off for a faster start. Applies next time you open the app.', sr:'Prikaži nasumičan citat o vazduhu dok se aplikacija učitava. Isključi za brže pokretanje. Važi od sledećeg otvaranja aplikacije.' },
   remindersToggleLabel: { en:'Reminders', sr:'Podsetnici' },
@@ -3096,6 +3173,23 @@ const SPLASH_QUOTES = [
   { en:"Unless someone like you cares a whole awful lot, nothing is going to get better. It's not.", sr:"Ako nekome poput tebe nije silno stalo, ništa neće postati bolje. Neće.", by:"Dr. Seuss, The Lorax" },
   { en:"Forget not that the earth delights to feel your bare feet and the winds long to play with your hair.", sr:"Ne zaboravi da zemlja voli da oseti tvoja bosa stopala, a vetrovi žele da se poigraju tvojom kosom.", by:"Kahlil Gibran" },
   { en:"Breathing in, I calm body and mind. Breathing out, I smile.", sr:"Udišući, smirujem telo i um. Izdišući, osmehujem se.", by:"Thich Nhat Hanh" }
+  ,
+  { en:"The air remembers what we put in it.", sr:"Vazduh pamti šta smo mu dali." },
+  { en:"Knowing is the first step to breathing easier.", sr:"Znati je prvi korak ka lakšem disanju." },
+  { en:"Every station tells a piece of the story.", sr:"Svaka stanica priča deo priče." },
+  { en:"Look up. Then look closer.", sr:"Pogledaj gore. Pa pogledaj bolje." },
+  { en:"Dust, smoke, pollen — if it's in the air, we're watching.", sr:"Prašina, dim, polen — ako je u vazduhu, pratimo ga." },
+  { en:"Clean air starts with someone asking questions.", sr:"Čist vazduh počinje tako što neko postavi pitanje." },
+  { en:"A clear sky can still hide a lot.", sr:"Vedro nebo može mnogo toga da sakrije." },
+  { en:"Your lungs are the oldest air sensor.", sr:"Tvoja pluća su najstariji senzor vazduha." },
+  { en:"Better data. Easier breathing.", sr:"Bolji podaci. Lakši dah." },
+  { en:"Not every danger announces itself.", sr:"Nije svaka opasnost najavljena." },
+  { en:"Together we can see what no one could alone.", sr:"Zajedno vidimo ono što niko ne bi mogao sam." },
+  { en:"The invisible stays unseen only until someone looks.", sr:"Nevidljivo ostaje neviđeno samo dok neko ne pogleda." },
+  { en:"Wind doesn't ask permission to cross a border.", sr:"Vetar ne traži dozvolu da pređe granicu." },
+  { en:"Today's air is tomorrow's story.", sr:"Današnji vazduh je sutrašnja priča." },
+  { en:"Take a deep breath. Then check the map.", sr:"Udahni duboko. Pa pogledaj mapu." },
+  { en:"The sky is the daily bread of the eyes.", sr:"Nebo je svakodnevni hleb za oči.", by:"Ralph Waldo Emerson" }
 ];
 const splashQuoteIdx = Math.floor(Math.random() * SPLASH_QUOTES.length);
 function splashQuotesEnabled(){
@@ -3110,7 +3204,10 @@ function renderSplashQuote(){
   if (!splashQuotesEnabled()) { box.style.display = 'none'; return; }
   box.style.display = '';
   const q = SPLASH_QUOTES[splashQuoteIdx];
-  box.textContent = q[lang] || q.en;
+  const txt = q[lang] || q.en;
+  const hadText = !!box.firstChild;
+  box.textContent = txt;
+  if (hadText) { box.style.animation = 'none'; void box.offsetWidth; box.style.animation = 'splash-fade .6s ease both'; }
   if (q.by) {
     const by = document.createElement('span');
     by.className = 'splash-quote-by';
@@ -3137,6 +3234,8 @@ function applyLang(){
   if (el('langAutoHint'))       el('langAutoHint').textContent = t('langAutoHint');
   if (el('langBtnAutoLabel'))   el('langBtnAutoLabel').textContent = t('langBtnAutoLabel');
   if (el('remindersToggleLabel')) el('remindersToggleLabel').textContent = t('remindersToggleLabel');
+  if (el('freshDriftToggleLabel')) el('freshDriftToggleLabel').textContent = t('freshDriftToggleLabel');
+  if (el('freshDriftToggleHint'))  el('freshDriftToggleHint').textContent = t('freshDriftToggleHint');
   if (el('splashQuotesToggleLabel')) el('splashQuotesToggleLabel').textContent = t('splashQuotesToggleLabel');
   if (el('splashQuotesToggleHint'))  el('splashQuotesToggleHint').textContent = t('splashQuotesToggleHint');
   if (el('remindersToggleHint'))  el('remindersToggleHint').textContent = t('remindersToggleHint');
@@ -3434,6 +3533,14 @@ const trailCanvas = L.canvas({ pane: 'splinePane', padding: 0.3 });
 map.createPane('userLocationPane');
 map.getPane('userLocationPane').style.zIndex = 620;
 map.getPane('userLocationPane').style.pointerEvents = 'none';
+// Wind-drift puffs from fresh reports: under the trails, never interactive.
+map.createPane('driftPane');
+map.getPane('driftPane').style.zIndex = 445;
+map.getPane('driftPane').style.pointerEvents = 'none';
+// Ghost marker for the last known GPS position; tappable (opens a popup).
+map.createPane('lastLocPane');
+map.getPane('lastLocPane').style.zIndex = 615;
+const freshDriftLayer = L.layerGroup().addTo(map);
 
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
   attribution:'© OpenStreetMap'
@@ -3677,6 +3784,7 @@ function startWatching() {
   navigator.geolocation.getCurrentPosition(
     pos => {
       userCoords = fuzzCoords(pos.coords.latitude, pos.coords.longitude, 250);
+      saveLastGps(userCoords);
       hideGpsModal();
 
       // Create the blue dot the first time we get a fix, then just move
@@ -3746,6 +3854,75 @@ function initGps() {
 }
 
 initGps();
+
+/* ═══════════════════════════════════════════════════
+   LAST KNOWN LOCATION (shown while GPS is off)
+   The last (already fuzzed) GPS fix is kept on this device only and shown
+   as a grey ghost marker with a "GPS off" label until a live fix arrives.
+═══════════════════════════════════════════════════ */
+const LAST_GPS_KEY = 'ttt_last_gps';
+let lastGpsSavedAt = 0;
+let lastLocMarker = null;
+function saveLastGps(c) {
+  if (!c || Date.now() - lastGpsSavedAt < 30000) return;
+  lastGpsSavedAt = Date.now();
+  try { localStorage.setItem(LAST_GPS_KEY, JSON.stringify({ lat: c.lat, lon: c.lon, ts: Date.now() })); } catch (e) {}
+}
+function readLastGps() {
+  try {
+    const o = JSON.parse(localStorage.getItem(LAST_GPS_KEY) || 'null');
+    return (o && isFinite(o.lat) && isFinite(o.lon) && isFinite(o.ts)) ? o : null;
+  } catch (e) { return null; }
+}
+function lastLocAgo(ts) {
+  const m = Math.max(0, Math.round((Date.now() - ts) / 60000));
+  const sr = lang === 'sr';
+  if (m < 1)  return sr ? 'upravo sada' : 'just now';
+  if (m < 60) return sr ? `pre ${m} min` : `${m} min ago`;
+  const h = Math.round(m / 60);
+  if (h < 48) return sr ? `pre ${h} h` : `${h} h ago`;
+  const d = Math.round(h / 24);
+  return sr ? `pre ${d} d` : `${d} d ago`;
+}
+function makeLastLocIcon() {
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 44 44">
+      <circle cx="22" cy="22" r="18" fill="rgba(138,143,152,.14)" stroke="#8a8f98" stroke-width="1.5" stroke-dasharray="3 4"/>
+      <circle cx="22" cy="22" r="8" fill="#9aa0a8" stroke="#ffffff" stroke-width="2"/>
+      <line x1="14" y1="30" x2="30" y2="14" stroke="#d93025" stroke-width="2.6" stroke-linecap="round"/>
+    </svg>`;
+  return L.divIcon({
+    className: 'lastloc-icon',
+    html: `<div class="lastloc-wrap">${svg}<span class="lastloc-label">${t('lastLocGpsOff')}</span></div>`,
+    iconSize: [44, 44], iconAnchor: [22, 22]
+  });
+}
+function buildLastLocPopup(saved) {
+  return `<div style="min-width:170px;">
+    <div style="font-weight:600; margin-bottom:4px;">${t('lastLocTitle')}</div>
+    <div style="color:var(--text-secondary); font-size:12px; margin-bottom:8px;">${t('lastLocBody')}<br>${t('lastLocSeen')}: ${lastLocAgo(saved.ts)}</div>
+    <button type="button" class="loc-chip-btn" onclick="map.closePopup(); locChipEnableGps();">${t('locChipGps')}</button>
+  </div>`;
+}
+// Called every second from the location tick: show the ghost marker while
+// there is no live fix, remove it the moment GPS delivers one.
+function updateLastLocMarker() {
+  const saved = (!userCoords && performance.now() > 2500) ? readLastGps() : null;
+  if (!saved) {
+    if (lastLocMarker && map.hasLayer(lastLocMarker)) map.removeLayer(lastLocMarker);
+    return;
+  }
+  if (!lastLocMarker) {
+    lastLocMarker = L.marker([saved.lat, saved.lon], { icon: makeLastLocIcon(), pane: 'lastLocPane', keyboard: false });
+    lastLocMarker.bindPopup(buildLastLocPopup(saved));
+    lastLocMarker.on('popupopen', () => { const sv = readLastGps(); if (sv) lastLocMarker.setPopupContent(buildLastLocPopup(sv)); });
+  } else {
+    lastLocMarker.setLatLng([saved.lat, saved.lon]);
+  }
+  if (!map.hasLayer(lastLocMarker)) lastLocMarker.addTo(map);
+  const lab = lastLocMarker.getElement() && lastLocMarker.getElement().querySelector('.lastloc-label');
+  if (lab && lab.textContent !== t('lastLocGpsOff')) lab.textContent = t('lastLocGpsOff');
+}
 
 /* ═══════════════════════════════════════════════════
    CONTROLS (Manual Pin & Tracer)
@@ -6169,6 +6346,7 @@ function evaluateActiveNearbyClusters() {
    PINS RENDER ENGINE
 ═══════════════════════════════════════════════════ */
 function clearMarkers(){
+  freshDriftLayer.clearLayers();
   reportClusterGroup.clearLayers();
   reportMarkers=[];
   markerByReportId = {};
@@ -7983,6 +8161,68 @@ function buildReportPopupHtml(report, stationSectionHtml) {
 </div>`;
 }
 
+/* ═══════════════════════════════════════════════════
+   WIND DRIFT ON FRESH REPORTS
+   Puffs travel downwind from every non-"Clean Air" report from the last
+   few hours. Direction = report's wind (manual override first), length
+   and speed scale with wind speed; calm air shows slow expanding rings.
+═══════════════════════════════════════════════════ */
+const FRESH_DRIFT_MAX_AGE_H = 3;
+function freshDriftEnabled() { try { return localStorage.getItem('ttt_fresh_drift') !== '0'; } catch (e) { return true; } }
+function setFreshDriftEnabled(on) {
+  try { localStorage.setItem('ttt_fresh_drift', on ? '1' : '0'); } catch (e) {}
+  freshDriftLayer.clearLayers();
+  if (on) reportMarkers.forEach(m => { if (m._reportRef) addFreshDrift(m._reportRef); });
+}
+function isFreshDriftReport(r) {
+  if (!r || r.category === 'Clean Air') return false;
+  const ageH = (Date.now() - new Date(r.created_at).getTime()) / 3600000;
+  return ageH >= 0 && ageH <= FRESH_DRIFT_MAX_AGE_H;
+}
+function makeDriftIcon(report, puffCount) {
+  const fromDeg = parseFloat(report.manual_wind_direction ?? report.wind_direction);
+  const spd = parseFloat(report.wind_speed);
+  const col = categoryColor(report.category) || '#c41e27';
+  const SIZE = 260;
+  let html = '';
+  if (isFinite(fromDeg) && isFinite(spd) && spd >= 2) {
+    const toRad = ((fromDeg + 180) % 360) * Math.PI / 180;   // wind blows FROM fromDeg, smell travels the other way
+    const ux = Math.sin(toRad), uy = -Math.cos(toRad);        // screen-space unit vector (north = up)
+    const len = Math.min(110, 50 + spd * 2.2);                // px travelled
+    const dur = Math.max(2.6, Math.min(6.5, 9 - spd * 0.18)); // seconds per puff; faster wind = quicker
+    for (let i = 0; i < puffCount; i++) {
+      const jitter = ((i * 37) % 11 - 5) * 1.3;               // small sideways spread
+      const dx = (ux * len - uy * jitter).toFixed(1);
+      const dy = (uy * len + ux * jitter).toFixed(1);
+      const delay = (-(i * dur) / puffCount).toFixed(2);      // negative: already mid-flight on arrival
+      html += `<span class="drift-puff" style="--pc:${col};--dx:${dx}px;--dy:${dy}px;animation-duration:${dur}s;animation-delay:${delay}s"></span>`;
+    }
+  } else {
+    html = `<span class="drift-ring" style="--pc:${col}"></span><span class="drift-ring" style="--pc:${col};animation-delay:-1.7s"></span>`;
+  }
+  return L.divIcon({ className: 'drift-icon', html: `<div class="drift-wrap">${html}</div>`, iconSize: [SIZE, SIZE], iconAnchor: [SIZE / 2, SIZE / 2] });
+}
+function addFreshDrift(report) {
+  if (!freshDriftEnabled() || !isFreshDriftReport(report)) return;
+  const lat = parseFloat(report.latitude), lon = parseFloat(report.longitude);
+  if (!isFinite(lat) || !isFinite(lon)) return;
+  const puffs = freshDriftLayer.getLayers().length > 25 ? 3 : 6;   // keep it light with many fresh reports
+  const m = L.marker([lat, lon], { icon: makeDriftIcon(report, puffs), pane: 'driftPane', interactive: false, keyboard: false });
+  m._report = report;
+  freshDriftLayer.addLayer(m);
+}
+// Smaller plumes when zoomed out; drop reports once they age out.
+function applyDriftScale() {
+  const z = map.getZoom();
+  const k = z >= 14 ? 1 : z >= 12 ? 0.75 : 0.55;
+  map.getPane('driftPane').style.setProperty('--drift-scale', k);
+}
+map.on('zoomend', applyDriftScale);
+applyDriftScale();
+setInterval(() => {
+  freshDriftLayer.eachLayer(m => { if (!isFreshDriftReport(m._report)) freshDriftLayer.removeLayer(m); });
+}, 60000);
+
 function renderPin(report, index = 0){
   const zIndexPriority = 10000 - index;
   const marker=L.marker([report.latitude,report.longitude],{
@@ -8025,6 +8265,7 @@ function renderPin(report, index = 0){
     if (focusedTrailReportId === report.id) clearTrailFocus();
   });
   reportMarkers.push(marker);
+  addFreshDrift(report);
 }
 
 /* ═══════════════════════════════════════════════════
@@ -9049,6 +9290,7 @@ function updateMapActionButtons() {
 
 function updateLocChip() {
   updateMapActionButtons();
+  try { updateLastLocMarker(); } catch (e) {}
   const chip = document.getElementById('locChip');
   const pinBtn = document.getElementById('pinMapBtn');
   if (!chip) return;
@@ -9628,12 +9870,14 @@ setTimeout(hideSplashScreen, 6000);
 
   if (label) label.textContent = t('pullToRefresh');
 
+  // The header itself never moves: only the indicator drops out from under it.
   function setPull(dist, animate) {
     indicator.classList.toggle('animate', !!animate);
-    headerEl.classList.toggle('animate', !!animate);
-    const eased = Math.min(dist, MAX_PULL);
-    headerEl.style.transform = `translateY(${eased}px)`;
-    indicator.style.transform = `translate(-50%, ${eased - 60}px)`;
+    indicator.style.top = Math.round(headerEl.getBoundingClientRect().bottom) + 'px';
+    const progress = Math.min(Math.max(dist, 0), MAX_PULL) / MAX_PULL; // 0..1
+    const h = indicator.offsetHeight || 30;
+    indicator.style.opacity = dist > 0 ? '1' : '0';
+    indicator.style.transform = `translate(-50%, ${Math.round(-h + progress * (h + 12))}px)`;
   }
 
   headerEl.addEventListener('touchstart', (e) => {
@@ -9668,7 +9912,7 @@ setTimeout(hideSplashScreen, 6000);
       indicator.classList.add('refreshing');
       indicator.classList.remove('ready');
       if (label) label.textContent = t('refreshing');
-      setPull(60, true); // settle at a spot that keeps the spinner visible
+      setPull(MAX_PULL, true); // settle with the spinner fully visible under the header
       setTimeout(() => location.reload(), 300);
     } else {
       setPull(0, true);
