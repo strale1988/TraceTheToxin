@@ -1219,7 +1219,7 @@ html[data-theme="light"] #dateRangePicker {
 .loc-chip{
   position:fixed; right:64px; bottom:calc(var(--legend-bar-h) + 170px); transform:translateY(50%); z-index:1050; cursor:pointer; pointer-events:auto;
   -webkit-tap-highlight-color:transparent; touch-action:manipulation; user-select:none;
-  display:none; align-items:center; gap:6px; padding:5px 6px 5px 6px;
+  display:none; align-items:center; gap:6px; padding:7px 8px; min-height:44px; box-sizing:border-box;
   background:var(--floating-bg); border:1px solid #f5a623; border-radius:999px;
   box-shadow:0 2px 10px var(--floating-shadow);
   backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
@@ -1227,7 +1227,7 @@ html[data-theme="light"] #dateRangePicker {
 }
 .map-act-stack{ display:flex; flex-direction:column; gap:8px; margin-top:8px !important; }
 .map-act-btn{
-  width:40px; height:40px; border-radius:50%; padding:0; cursor:pointer;
+  width:44px; height:44px; border-radius:50%; padding:0; cursor:pointer;
   display:flex; align-items:center; justify-content:center;
   background:var(--floating-bg); color:var(--text-primary);
   border:2px solid #f5a623; box-shadow:0 2px 8px var(--floating-shadow);
@@ -1271,6 +1271,26 @@ html[data-theme="light"] #dateRangePicker {
 }
 @keyframes driftRing{ 0%{ opacity:.55; transform:scale(.6); } 100%{ opacity:0; transform:scale(3); } }
 
+/* Location pulses: live blue dot and grey last-known ghost */
+.user-location-icon{ overflow:visible; }
+.loc-pulse{
+  position:absolute; left:50%; top:50%; width:26px; height:26px; margin:-13px 0 0 -13px; border-radius:50%;
+  background:rgba(0,208,255,.4); pointer-events:none;
+  animation:locPulse 2.6s ease-out infinite;
+}
+.loc-pulse.p2{ animation-delay:1.3s; }
+.lastloc-wrap .loc-pulse{ background:rgba(138,143,152,.4); animation-duration:3.6s; }
+.lastloc-wrap .loc-pulse.p2{ animation-delay:1.8s; }
+@keyframes locPulse{ 0%{ transform:scale(.6); opacity:.65; } 100%{ transform:scale(3.2); opacity:0; } }
+.user-location-icon svg, .lastloc-wrap svg{ position:relative; z-index:1; }
+.lastloc-ring{ transform-origin:22px 22px; animation:lastlocSpin 16s linear infinite; }
+@keyframes lastlocSpin{ to{ transform:rotate(360deg); } }
+
+/* Keyboard focus ring (only for keyboard users) */
+button:focus-visible, [role="button"]:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible{
+  outline:2px solid #f5a623; outline-offset:2px;
+}
+
 /* Last known location (shown while GPS is off) */
 .lastloc-icon{ background:none; border:none; }
 .lastloc-wrap{ position:relative; width:44px; height:44px; }
@@ -1283,11 +1303,31 @@ html[data-theme="light"] #dateRangePicker {
 }
 @media (prefers-reduced-motion: reduce){
   .drift-icon{ display:none; }
+  .loc-pulse, .lastloc-ring{ animation:none; }
+  .loc-pulse{ opacity:.25; }
 }
 @media (prefers-reduced-motion: reduce){
   .pin-map-btn.pin-attn, .loc-chip-arrow, .splash-slogan, .splash-quote, .loc-chip{ animation:none; }
   .splash-quote{ opacity:.7; }
 }
+
+/* Empty state: no reports inside the on-map date filter. The card itself lets
+   touches through to the map; only its button is tappable. */
+#mapEmptyState{
+  position:fixed; left:50%; top:calc(50% - 30px); transform:translate(-50%,-50%); z-index:405;
+  display:none; flex-direction:column; align-items:center; gap:4px; text-align:center;
+  width:calc(100% - 48px); max-width:300px; padding:16px 18px;
+  background:var(--floating-bg); border:1px solid var(--floating-border); border-radius:var(--radius-xl);
+  box-shadow:0 4px 18px var(--floating-shadow);
+  backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
+  pointer-events:none;
+}
+#mapEmptyState.visible{ display:flex; }
+#mapEmptyState b{ font-size:var(--fs-14); color:var(--text-primary); }
+#mapEmptyState span{ font-size:var(--fs-12); line-height:1.4; color:var(--text-secondary); }
+#mapEmptyState .loc-chip-btn{ margin-top:8px; pointer-events:auto; }
+.settings-btn:disabled{ opacity:.45; cursor:not-allowed; }
+.settings-btn:disabled:active{ background:var(--bg-surface-alt); transform:none; }
 </style>
 </head>
 <body>
@@ -1344,7 +1384,7 @@ html[data-theme="light"] #dateRangePicker {
   <button type="button" class="pwa-banner-x" onclick="document.getElementById('updateBanner').style.display='none'" aria-label="Close">✕</button>
 </div>
 
-<div id="locChip" class="loc-chip" role="button" tabindex="0" onclick="locChipEnableGps()">
+<div id="locChip" class="loc-chip" role="button" tabindex="0" onclick="locChipEnableGps()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();locChipEnableGps();}">
   <span class="loc-chip-btn" id="locChipGpsBtn">Enable GPS</span>
   <span class="loc-chip-text" id="locChipText">or drop a pin</span>
   <span class="loc-chip-arrow" aria-hidden="true">➜</span>
@@ -1421,6 +1461,11 @@ html[data-theme="light"] #dateRangePicker {
   </div>
 </div>
 <input type="text" id="mapDateRangePicker" style="display:none">
+<div id="mapEmptyState" role="status" aria-live="polite">
+  <b id="mapEmptyTitle"></b>
+  <span id="mapEmptyBody"></span>
+  <button type="button" class="loc-chip-btn" id="mapEmptyBtn" onclick="openMapFilter()"></button>
+</div>
 <div id="hhSheet" role="dialog" aria-live="polite"></div>
 
 <button type="button" class="report-fab-btn" id="reportFabBtn" title="Report bad air" aria-label="Report bad air" onclick="reportFabTap()" disabled>
@@ -1490,6 +1535,13 @@ html[data-theme="light"] #dateRangePicker {
         <button type="button" class="export-btn" style="width:100%;" id="alertLocBtn" onclick="refreshAlertLocationNow()">Update my location now</button>
       </div>
       <p class="detail-export-hint" id="alertStatus"></p>
+    </div>
+
+    <div class="detail-section" id="lastLocSettingsSection">
+      <div class="detail-section-title" id="lastLocSectionTitle">Last known location</div>
+      <button type="button" class="settings-btn" style="width:100%;" id="forgetLastLocBtn" onclick="forgetLastLocation()">Forget last location</button>
+      <p class="detail-export-hint" id="forgetLastLocHint"></p>
+      <p class="detail-export-hint" id="forgetLastLocStatus" style="margin-top:4px;"></p>
     </div>
 
     <div class="detail-section" id="freshDriftSettingsSection">
@@ -2235,6 +2287,7 @@ function syncSettingsToggles() {
   set('traceHeatmapToggle', traceHeatmapEnabled);
   set('sourceHeatToggle', sourceHeatVisible);
   try { syncAlertUi(); refreshInstallUi(); set('remindersToggle', remindersEnabled()); set('splashQuotesToggle', splashQuotesEnabled()); set('freshDriftToggle', freshDriftEnabled()); } catch (e) { /* PWA block not initialised yet */ }
+  try { refreshForgetLastLocUi(); } catch (e) {}
   saveSettings();
 }
 
@@ -3020,6 +3073,16 @@ const T = {
   alertPromptTitle: { en:'Turn on wind alerts', sr:'Uključi upozorenja o vetru' },
   alertPromptBody: { en:'Get notified when bad air is reported nearby and the wind is carrying it toward you.', sr:'Dobij obaveštenje kada se u blizini prijavi loš vazduh, a vetar ga nosi ka tebi.' },
   alertPromptBtn: { en:'Turn on', sr:'Uključi' },
+  alertPromptAfterReportTitle: { en:'Get alerts for this area?', sr:'Upozorenja za ovo područje?' },
+  alertPromptAfterReportBody: { en:'Get notified when bad air is reported nearby and the wind is heading your way. This saves your approximate location.', sr:'Dobij obaveštenje kada se u blizini prijavi loš vazduh, a vetar ide ka tebi. Za to se čuva tvoja približna lokacija.' },
+  mapEmptyTitle: { en:'No reports for these dates', sr:'Nema prijava za ove datume' },
+  mapEmptyBody: { en:'Nothing was reported from {range}. Try a wider date range.', sr:'Nema prijava za period {range}. Probaj širi vremenski opseg.' },
+  mapEmptyBtn: { en:'Change dates', sr:'Promeni datume' },
+  forgetLastLocBtn: { en:'Forget last location', sr:'Zaboravi poslednju lokaciju' },
+  forgetLastLocHint: { en:'Your last GPS position is kept on this device only, so the map can show where the device was while GPS is off. Forgetting it also pauses saving until you reopen the app.', sr:'Tvoja poslednja GPS pozicija čuva se samo na ovom uređaju, da bi mapa mogla da prikaže gde se uređaj nalazio dok je GPS isključen. Kada je zaboraviš, čuvanje se pauzira do sledećeg otvaranja aplikacije.' },
+  forgetLastLocSaved: { en:'Saved {when}.', sr:'Sačuvano {when}.' },
+  forgetLastLocNone: { en:'No location is saved on this device.', sr:'Na ovom uređaju nije sačuvana lokacija.' },
+  forgetLastLocDone: { en:'Forgotten. It will not be saved again until you reopen the app.', sr:'Zaboravljeno. Neće se ponovo čuvati dok ponovo ne otvoriš aplikaciju.' },
   updateBannerTitle: { en:'New version available', sr:'Dostupna je nova verzija' },
   updateBannerBtn: { en:'Refresh', sr:'Osveži' },
   locChipGps: { en:'Enable GPS', sr:'Uključi GPS' },
@@ -3308,6 +3371,8 @@ function applyLang(){
 
   const mkm = document.getElementById('mapKeyModal');
   if (mkm && mkm.style.display !== 'none') buildMapKeyModalContent();
+
+  try { renderMapEmptyState(); refreshForgetLastLocUi(); } catch (e) { /* not initialised yet */ }
 
   buildHelpModalContent();
 }
@@ -3777,7 +3842,7 @@ function makeUserLocationIcon(windDeg) {
       ${arrowSvg}
     </svg>`;
 
-  return L.divIcon({ className: 'user-location-icon', html: svg, iconSize: [size, size], iconAnchor: [cx, cy] });
+  return L.divIcon({ className: 'user-location-icon', html: '<span class="loc-pulse"></span><span class="loc-pulse p2"></span>' + svg, iconSize: [size, size], iconAnchor: [cx, cy] });
 }
 
 function startWatching() {
@@ -3862,9 +3927,10 @@ initGps();
 ═══════════════════════════════════════════════════ */
 const LAST_GPS_KEY = 'ttt_last_gps';
 let lastGpsSavedAt = 0;
+var lastGpsForgotten = false;   // set by forgetLastLocation(): stop re-saving for the rest of this session
 let lastLocMarker = null;
 function saveLastGps(c) {
-  if (!c || Date.now() - lastGpsSavedAt < 30000) return;
+  if (!c || lastGpsForgotten || Date.now() - lastGpsSavedAt < 30000) return;
   lastGpsSavedAt = Date.now();
   try { localStorage.setItem(LAST_GPS_KEY, JSON.stringify({ lat: c.lat, lon: c.lon, ts: Date.now() })); } catch (e) {}
 }
@@ -3887,13 +3953,13 @@ function lastLocAgo(ts) {
 function makeLastLocIcon() {
   const svg = `
     <svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 44 44">
-      <circle cx="22" cy="22" r="18" fill="rgba(138,143,152,.14)" stroke="#8a8f98" stroke-width="1.5" stroke-dasharray="3 4"/>
+      <circle cx="22" cy="22" r="18" fill="rgba(138,143,152,.14)" stroke="#8a8f98" stroke-width="1.5" stroke-dasharray="3 4" class="lastloc-ring"/>
       <circle cx="22" cy="22" r="8" fill="#9aa0a8" stroke="#ffffff" stroke-width="2"/>
       <line x1="14" y1="30" x2="30" y2="14" stroke="#d93025" stroke-width="2.6" stroke-linecap="round"/>
     </svg>`;
   return L.divIcon({
     className: 'lastloc-icon',
-    html: `<div class="lastloc-wrap">${svg}<span class="lastloc-label">${t('lastLocGpsOff')}</span></div>`,
+    html: `<div class="lastloc-wrap"><span class="loc-pulse"></span><span class="loc-pulse p2"></span>${svg}<span class="lastloc-label">${t('lastLocGpsOff')}</span></div>`,
     iconSize: [44, 44], iconAnchor: [22, 22]
   });
 }
@@ -3922,6 +3988,28 @@ function updateLastLocMarker() {
   if (!map.hasLayer(lastLocMarker)) lastLocMarker.addTo(map);
   const lab = lastLocMarker.getElement() && lastLocMarker.getElement().querySelector('.lastloc-label');
   if (lab && lab.textContent !== t('lastLocGpsOff')) lab.textContent = t('lastLocGpsOff');
+}
+
+// Settings > "Forget last location": deletes the saved position from this
+// device and removes the grey marker. Saving stays paused until the next page
+// load -- otherwise a live GPS fix would just write it straight back.
+function forgetLastLocation() {
+  lastGpsForgotten = true;
+  try { localStorage.removeItem(LAST_GPS_KEY); } catch (e) {}
+  updateLastLocMarker();            // no saved position now, so this removes the marker
+  refreshForgetLastLocUi();
+}
+function refreshForgetLastLocUi() {
+  const el = id => document.getElementById(id);
+  if (!el('forgetLastLocBtn')) return;
+  const saved = readLastGps();
+  el('lastLocSectionTitle').textContent = t('lastLocTitle');
+  el('forgetLastLocBtn').textContent = t('forgetLastLocBtn');
+  el('forgetLastLocBtn').disabled = !saved;
+  el('forgetLastLocHint').textContent = t('forgetLastLocHint');
+  el('forgetLastLocStatus').textContent = saved
+    ? t('forgetLastLocSaved').replace('{when}', lastLocAgo(saved.ts))
+    : t(lastGpsForgotten ? 'forgetLastLocDone' : 'forgetLastLocNone');
 }
 
 /* ═══════════════════════════════════════════════════
@@ -4029,6 +4117,7 @@ function togglePinMode() {
 function enterTraceMode() {
   traceMode = true;
   mapDisplayedReports = [];   // nothing traced yet, so nothing on the map
+  updateMapEmptyState(false); // trace mode has its own empty map until a point is tapped
   tracePoiActive = false;
   syncSettingsToggles();      // also reached via a factory-pin tap, not just the switch
 
@@ -8286,6 +8375,20 @@ const AIR_REPORTS_LIST_COLUMNS = [
   'formatted_id', 'manual_wind_direction', 'updated_at', 'confidence', 'location_name'
 ].join(',');
 
+// Friendly card shown when the on-map date filter matches no reports.
+// `var`, not `let`: applyLang() can run before this line has executed.
+var mapEmptyShown = false;
+function renderMapEmptyState() {
+  const box = document.getElementById('mapEmptyState');
+  if (!box) return;
+  box.classList.toggle('visible', mapEmptyShown);
+  if (!mapEmptyShown) return;
+  document.getElementById('mapEmptyTitle').textContent = t('mapEmptyTitle');
+  document.getElementById('mapEmptyBody').textContent = t('mapEmptyBody').replace('{range}', mapFilterRange().label);
+  document.getElementById('mapEmptyBtn').textContent = t('mapEmptyBtn');
+}
+function updateMapEmptyState(show) { mapEmptyShown = !!show; renderMapEmptyState(); }
+
 async function fetchAll(){
   const {data,error}=await sb.from('air_reports').select(AIR_REPORTS_LIST_COLUMNS).order('created_at',{ascending:false});
   if(error){ console.error(error); return []; }
@@ -8316,6 +8419,7 @@ async function loadPinsByWindow() {
   // full date range here, or unmatched pins land on top of the trace and the
   // header count no longer matches the map. Re-run the trace instead.
   if (traceMode) {
+    updateMapEmptyState(false);
     updateReportCountUI(0);
     if (tracerMarker) {
       // getLatLng() returns {lat, lng}; the tracer expects {lat, lon}.
@@ -8343,6 +8447,8 @@ async function loadPinsByWindow() {
   });
 
   updateReportCountUI(n);
+  // data is [] when the load failed, so only claim "no reports" if some exist at all.
+  updateMapEmptyState(n === 0 && data.length > 0);
 
   evaluateActiveNearbyClusters();
   if (!traceMode) {
@@ -8700,6 +8806,7 @@ async function reportBadAir(){
     alert(t('submitted'));
     resetReportingForm();
     closeReportWizard();
+    offerAlertsAfterReport(category);   // the moment alerts are most relevant
     await loadPinsByWindow();
 
   } catch(err) {
@@ -9288,8 +9395,22 @@ function updateMapActionButtons() {
   al.title = t('alertPromptTitle');     al.setAttribute('aria-label', al.title);
 }
 
+// Banners share one spot under the header; when more than one is showing,
+// stack them instead of letting them cover each other.
+function restackBanners() {
+  const h = document.querySelector('header');
+  let top = (h ? h.offsetHeight : 60) + 10;
+  ['updateBanner', 'alertToast', 'installBanner', 'alertPromptBanner'].forEach(id => {
+    const b = document.getElementById(id);
+    if (!b || !b.style.display || b.style.display === 'none') return;
+    b.style.top = top + 'px';
+    top += b.offsetHeight + 8;
+  });
+}
+
 function updateLocChip() {
   updateMapActionButtons();
+  try { restackBanners(); } catch (e) {}
   try { updateLastLocMarker(); } catch (e) {}
   const chip = document.getElementById('locChip');
   const pinBtn = document.getElementById('pinMapBtn');
@@ -9393,16 +9514,39 @@ function tryShowInstallBanner() {
 
 /* ---------- Wind-alerts opt-in reminder (same pattern as the install banner) ---------- */
 let alertPromptTimer = null;
+var alertPromptAfterReport = false;   // true while the banner shows the "just reported" wording
 
-function showAlertPrompt() {
+function renderAlertPromptText() {
+  const k = alertPromptAfterReport ? 'alertPromptAfterReport' : 'alertPrompt';
+  const set = (id, key) => { const el = document.getElementById(id); if (el) el.textContent = t(key); };
+  set('alertPromptTitle', k + 'Title'); set('alertPromptBody', k + 'Body'); set('alertPromptBtn', 'alertPromptBtn');
+}
+function showAlertPrompt(afterReport) {
   const b = document.getElementById('alertPromptBanner');
   if (!b) return;
+  alertPromptAfterReport = !!afterReport;
+  renderAlertPromptText();
   placeBelowHeader(b);
   b.style.display = 'flex';
 }
 function hideAlertPrompt() {
   const b = document.getElementById('alertPromptBanner');
   if (b) b.style.display = 'none';
+  alertPromptAfterReport = false;
+}
+// Offered right after a bad-air report is submitted. Same Turn on / dismiss
+// buttons and the same snooze as the timed reminder, so a "no" is remembered.
+function offerAlertsAfterReport(category) {
+  try {
+    if (category === 'Clean Air') return;        // alerts are about bad air
+    if (!remindersEnabled()) return;
+    if (getAlertPrefs().on || alertsBlockedReason()) return;
+    if (Date.now() < (parseInt(lsGet('ttt_alert_prompt_snooze_until', '0'), 10) || 0)) return;
+    if (anyModalOpen()) return;
+    clearTimeout(alertPromptTimer);              // the generic reminder isn't needed now
+    showAlertPrompt(true);
+    restackBanners();
+  } catch (e) { console.warn('Post-report alert offer failed:', e); }
 }
 function dismissAlertPrompt() {
   hideAlertPrompt();
@@ -9430,6 +9574,8 @@ function scheduleAlertPrompt() {
 function tryShowAlertPrompt() {
   if (!remindersEnabled()) return;
   if (getAlertPrefs().on || alertsBlockedReason()) return;
+  const shown = document.getElementById('alertPromptBanner');
+  if (shown && shown.style.display === 'flex') return;   // already up (e.g. the post-report offer)
   const inst = document.getElementById('installBanner');
   const toast = document.getElementById('alertToast');
   const otherBannerUp = (inst && inst.style.display === 'flex') || (toast && toast.style.display === 'flex');
@@ -9740,7 +9886,7 @@ function applyPwaLang() {
   set('installBannerTitle', 'installBannerTitle'); set('installBannerBtn', 'installBannerBtn');
   set('alertToggleLabel', 'alertToggleLabel'); set('alertToggleHint', 'alertToggleHint');
   set('alertRadiusTitle', 'alertRadiusTitle'); set('alertToastBtn', 'alertShowMap'); set('alertLocBtn', 'alertLocBtn');
-  set('alertPromptTitle', 'alertPromptTitle'); set('alertPromptBody', 'alertPromptBody'); set('alertPromptBtn', 'alertPromptBtn');
+  renderAlertPromptText();
   const bb = document.getElementById('installBannerBody');
   if (bb && !(document.getElementById('installBannerBtn').style.display === 'none')) bb.textContent = t('installBannerBody');
   refreshInstallUi();
