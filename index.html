@@ -1395,7 +1395,7 @@ html[data-theme="light"] #dateRangePicker {
         <button type="button" class="theme-segment-btn active" onclick="setLang('sr')" id="langBtnSr">🇷🇸 SR</button>
         <button type="button" class="theme-segment-btn" onclick="setLang('auto')" id="langBtnAuto"><span id="langBtnAutoLabel">Auto</span></button>
       </div>
-      <p class="detail-export-hint" id="langAutoHint">We'll set the language based on your device/browser settings.</p>
+      <p class="detail-export-hint" id="langAutoHint">We'll set the language from your location if available, otherwise from your device, time zone, or network.</p>
     </div>
 
     <div class="detail-section" id="themeSettingsSection">
@@ -2648,7 +2648,7 @@ const T = {
   helpSectionTitle:  { en:'Help',                        sr:'Pomoć' },
   settingsHelpBtn:   { en:'How to use TraceTheToxin',    sr:'Kako se koristi TraceTheToxin' },
   languageSectionTitle: { en:'Language',                 sr:'Jezik' },
-  langAutoHint:      { en:"We'll set the language based on your location, falling back to your device/browser settings.", sr:'Jezik ćemo podesiti na osnovu vaše lokacije, a u suprotnom prema podešavanjima vašeg uređaja/pregledača.' },
+  langAutoHint:      { en:"We'll set the language from your location if available, otherwise from your device, time zone, or network.", sr:'Jezik ćemo podesiti prema vašoj lokaciji ako je dostupna, a u suprotnom prema uređaju, vremenskoj zoni ili mreži.' },
   langBtnAutoLabel:  { en:'Auto',                        sr:'Auto' },
   themeSectionTitle: { en:'Theme',                       sr:'Tema' },
   themeAutoHint:     { en:"Auto follows your device's light/dark setting. Smart adapts to ambient light where available, otherwise local time.", sr:'Auto prati podešavanje svetle/tamne teme vašeg uređaja. Pametna se prilagođava osvetljenju okoline gde je dostupno, inače lokalnom vremenu.' },
@@ -2868,9 +2868,40 @@ const T = {
 
 function t(k){ return T[k]?.[lang] ?? k; }
 
+// Synchronous, permission-free guess. Checks the full browser language
+// list (not just the first entry), then the device time zone, so a Serbian
+// user on an English-set phone still resolves to SR without GPS.
 function guessLangFromBrowser(){
-  const browserLang = (navigator.language || 'en').slice(0, 2).toLowerCase();
-  return browserLang === 'sr' ? 'sr' : 'en';
+  try {
+    const list = (navigator.languages && navigator.languages.length) ? navigator.languages : [navigator.language || 'en'];
+    if (list.some(l => /^sr\b/i.test(String(l)))) return 'sr';
+  } catch (e) {}
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+    if (tz === 'Europe/Belgrade') return 'sr';
+  } catch (e) {}
+  return 'en';
+}
+
+// IP-based country lookup: no GPS and no permission prompt. Tries one
+// service, then a second; if both fail the browser/time zone guess stands.
+function resolveLangFromIP(){
+  fetch('https://get.geojs.io/v1/ip/country.json')
+    .then(r => r.json())
+    .then(d => {
+      const cc = d && d.country && String(d.country).toLowerCase();
+      if (!cc) throw new Error('no country');
+      applyAutoLangResult(cc === 'rs' ? 'sr' : 'en');
+    })
+    .catch(() => {
+      fetch('https://ipapi.co/country/')
+        .then(r => r.text())
+        .then(txt => {
+          const cc = String(txt || '').trim().toLowerCase();
+          if (/^[a-z]{2}$/.test(cc)) applyAutoLangResult(cc === 'rs' ? 'sr' : 'en');
+        })
+        .catch(() => { /* offline/blocked — browser/time zone guess stands */ });
+    });
 }
 
 // Applies a language resolved by GPS/reverse-geocoding, but only if the
@@ -2903,12 +2934,27 @@ function detectAutoLang(){
 
   if (userCoords) {
     resolveLangFromCoords(userCoords.lat, userCoords.lon);
-  } else if (navigator.geolocation) {
-    navigator.geolocation.getCurrentPosition(
-      pos => resolveLangFromCoords(pos.coords.latitude, pos.coords.longitude),
-      () => { /* GPS denied/unavailable — browser-language guess stands */ },
-      { timeout: 8000 }
-    );
+    return;
+  }
+
+  // Never prompt for GPS just to pick a language. Use it only if the user
+  // has already granted it; otherwise (denied / not asked / unsupported)
+  // fall back to the IP lookup.
+  const useIP = () => resolveLangFromIP();
+  if (navigator.geolocation && navigator.permissions && navigator.permissions.query) {
+    navigator.permissions.query({ name: 'geolocation' }).then(res => {
+      if (res.state === 'granted') {
+        navigator.geolocation.getCurrentPosition(
+          pos => resolveLangFromCoords(pos.coords.latitude, pos.coords.longitude),
+          useIP,
+          { timeout: 8000 }
+        );
+      } else {
+        useIP();
+      }
+    }).catch(useIP);
+  } else {
+    useIP();
   }
 }
 
