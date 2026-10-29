@@ -1202,7 +1202,8 @@ html[data-theme="light"] #dateRangePicker {
 
 /* Persistent location reminder: small pill beside the pin button */
 .loc-chip{
-  position:fixed; right:64px; bottom:calc(var(--legend-bar-h) + 154px); z-index:950;
+  position:fixed; right:64px; bottom:calc(var(--legend-bar-h) + 170px); transform:translateY(50%); z-index:950; cursor:pointer;
+  -webkit-tap-highlight-color:transparent; touch-action:manipulation; user-select:none;
   display:none; align-items:center; gap:6px; padding:5px 6px 5px 6px;
   background:var(--floating-bg); border:1px solid #f5a623; border-radius:999px;
   box-shadow:0 2px 10px var(--floating-shadow);
@@ -1213,6 +1214,7 @@ html[data-theme="light"] #dateRangePicker {
   background:var(--accent); color:var(--accent-contrast); border:none; border-radius:999px;
   padding:5px 10px; font-size:var(--fs-12); font-weight:var(--fw-semibold); cursor:pointer; white-space:nowrap;
 }
+.loc-chip:active{ opacity:.85; }
 .loc-chip-text{ white-space:nowrap; color:var(--text-secondary); }
 .loc-chip-arrow{ color:#f5a623; font-weight:700; padding-right:4px; animation:locNudge 1.4s ease-in-out infinite; }
 @keyframes locNudge{ 0%,100%{ transform:translateX(0); } 50%{ transform:translateX(4px); } }
@@ -1275,8 +1277,8 @@ html[data-theme="light"] #dateRangePicker {
   <button type="button" class="pwa-banner-x" onclick="hideAlertToast()" aria-label="Close">✕</button>
 </div>
 
-<div id="locChip" class="loc-chip" role="status">
-  <button type="button" class="loc-chip-btn" id="locChipGpsBtn" onclick="locChipEnableGps()">Enable GPS</button>
+<div id="locChip" class="loc-chip" role="button" tabindex="0" onclick="locChipEnableGps()">
+  <span class="loc-chip-btn" id="locChipGpsBtn">Enable GPS</span>
   <span class="loc-chip-text" id="locChipText">or drop a pin</span>
   <span class="loc-chip-arrow" aria-hidden="true">➜</span>
 </div>
