@@ -714,44 +714,7 @@ span.flatpickr-weekday {
 #traceSourceBtn{ position:fixed; bottom:calc(var(--legend-bar-h) + 94px); right:12px; }
 #pinMapBtn{ position:fixed; bottom:calc(var(--legend-bar-h) + 148px); right:12px; }
 #mapFilterBtn{ position:fixed; bottom:calc(var(--legend-bar-h) + 202px); right:12px; }
-#sourceHeatBtn{ position:fixed; bottom:calc(var(--legend-bar-h) + 256px); right:12px; }
 #wildfireBtn{ position:fixed; bottom:calc(var(--legend-bar-h) + 322px); right:12px; }
-.source-heat-confidence-badge{
-  position:fixed; bottom:calc(var(--legend-bar-h) + 300px); right:12px;
-  z-index:800;
-  display:flex; align-items:center; gap:6px;
-  background:var(--bg-surface); color:var(--text-primary);
-  border:1px solid var(--border-color-strong);
-  border-radius:999px;
-  padding:6px 12px;
-  font-size:12px; font-weight:var(--fw-medium, 500);
-  box-shadow:0 2px 8px rgba(0,0,0,.25);
-  white-space:nowrap;
-  max-width:calc(100vw - 24px);
-}
-.source-heat-confidence-dot{
-  width:8px; height:8px; border-radius:50%;
-  background:var(--confidence-color, #888);
-  flex-shrink:0;
-}
-.source-heat-confidence-sub{ color:var(--text-secondary); font-weight:var(--fw-regular,400); }
-.source-heat-btn{
-  background:var(--floating-bg);
-  border:1px solid var(--floating-border);
-  border-radius:50%;
-  width:44px; height:44px;
-  display:flex; align-items:center; justify-content:center;
-  cursor:pointer; font-size:22px;
-  box-shadow:0 2px 8px var(--floating-shadow);
-  transition:background .15s ease, transform .12s ease, box-shadow .15s ease;
-  user-select:none;
-  -webkit-tap-highlight-color:transparent;
-  touch-action:manipulation;
-}
-.source-heat-btn:active{ transform:scale(.9); }
-.source-heat-btn.active{ background:#f5a623; border-color:#f5a623; }
-.source-heat-btn .icon-img{ filter:var(--icon-tint-filter); }
-.source-heat-btn.active .icon-img{ filter:none; }
 .wildfire-btn{
   background:var(--floating-bg);
   border:1px solid var(--floating-border);
@@ -1449,10 +1412,6 @@ button:focus-visible, [role="button"]:focus-visible, a:focus-visible, input:focu
   <div id="traceSourceBtn" class="trace-source-btn" style="display:flex" title="Trace Possible Source" onclick="toggleTraceMode()">
     <img class="icon-img" src="icons/search.png" alt="Trace">
   </div>
-  <div id="sourceHeatBtn" class="source-heat-btn" style="display:none" title="Show probable source heatmap" onclick="toggleSourceHeat()">
-    <img class="icon-img" src="icons/heatmap.png" alt="Heatmap">
-  </div>
-  <div id="sourceHeatConfidenceBadge" class="source-heat-confidence-badge" style="display:none"></div>
   <div id="wildfireBtn" class="wildfire-btn" style="display:none" title="Show active wildfires (NASA satellite data)" onclick="toggleWildfireLayer()">
     <img class="icon-img" src="icons/fire.png" alt="Fire">
   </div>
@@ -1663,23 +1622,6 @@ button:focus-visible, [role="button"]:focus-visible, a:focus-visible, input:focu
       <p class="detail-export-hint" id="traceHeatmapHint">While using Trace Possible Source: purple at the tracer pin, fading to red then orange toward each matched report, then a yellow tail continuing ~5km further along the wind past the report -- brightening back toward orange wherever it crosses another report's trail.</p>
     </div>
 
-    <div class="detail-section" id="sourceHeatSettingsSection">
-      <label class="settings-toggle-row" for="sourceHeatToggle">
-        <span id="sourceHeatToggleLabel">Source heatmap</span>
-        <span class="toggle-switch">
-          <input type="checkbox" id="sourceHeatToggle" autocomplete="off" onchange="setSourceHeat(this.checked)">
-          <span class="toggle-switch-track"><span class="toggle-switch-thumb"></span></span>
-        </span>
-      </label>
-      <p class="detail-export-hint" id="sourceHeatToggleHint">A concentration heatmap: one weighted point per report, so brighter/redder areas mean more (and stronger, more recent) reports nearby. Off by default.</p>
-    </div>
-
-    <div class="detail-section" id="sourceHeatScienceSettingsSection">
-      <div class="filter-title" style="margin-bottom:10px;" id="sourceHeatSectionTitle">Source Heatmap</div>
-      <p class="detail-export-hint" style="margin-top:-4px;margin-bottom:12px;" id="sourceHeatSectionBody">The source heatmap toggle above shows a plain concentration heatmap: one weighted point per report, so brighter/redder areas simply mean more (and stronger, more recent) reports nearby.</p>
-      <button class="export-btn" style="width:100%;margin-top:4px;" onclick="showHeatMethodologyModal()" id="sourceHeatMethBtn">How the source heatmap works</button>
-    </div>
-
     <div class="detail-section" style="padding:0;overflow:hidden;">
       <div class="filter-label-row" style="border-radius:0;">
         <span class="filter-title" id="filterTitleLabel">Time Window Filter</span>
@@ -1725,15 +1667,6 @@ button:focus-visible, [role="button"]:focus-visible, a:focus-visible, input:focu
   </div>
 </div>
 
-<div id="heatMethodologyModal" class="generic-modal-overlay" style="display:none">
-  <div class="generic-modal" style="max-width: 420px;">
-    <h2 style="margin-top: 6px;" id="heatMethModalTitle">How the source heatmap works</h2>
-    <div id="heatMethModalContent" style="max-height: 55vh; overflow-y: auto; padding-right: 4px; font-size: 14px; line-height: 1.5;">
-      <!-- Filled programmatically via buildHeatMethodologyContent() -->
-    </div>
-    <button class="generic-modal-close" onclick="hideHeatMethodologyModal()" id="heatMethModalBtn" style="margin-top:14px;">Close</button>
-  </div>
-</div>
 
 <div id="mapKeyModal" class="generic-modal-overlay" style="display:none">
   <div class="generic-modal" style="max-width: 440px;">
@@ -2285,7 +2218,6 @@ function syncSettingsToggles() {
   set('traceButtonToggle', traceButtonVisible);
   set('splineVisibilityToggle', splinesVisible);
   set('traceHeatmapToggle', traceHeatmapEnabled);
-  set('sourceHeatToggle', sourceHeatVisible);
   try { syncAlertUi(); refreshInstallUi(); set('remindersToggle', remindersEnabled()); set('splashQuotesToggle', splashQuotesEnabled()); set('freshDriftToggle', freshDriftEnabled()); } catch (e) { /* PWA block not initialised yet */ }
   try { refreshForgetLastLocUi(); } catch (e) {}
   saveSettings();
@@ -2296,7 +2228,7 @@ function saveSettings() {
   try {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify({
       factory: factoryVisible, wildfire: wildfireVisible, traceButton: traceButtonVisible,
-      splines: splinesVisible, traceHeat: traceHeatmapEnabled, sourceHeat: sourceHeatVisible
+      splines: splinesVisible, traceHeat: traceHeatmapEnabled
     }));
   } catch (e) {}
 }
@@ -2309,12 +2241,6 @@ function restoreSettings() {
   if (saved.splines) setSplineVisibility(true);
   if (saved.traceHeat) setTraceHeatmapEnabled(true);
   if (saved.traceButton) setTraceButtonVisible(true);
-  if (saved.sourceHeat) {
-    // Just flag it: loadPinsByWindow() draws the layer once reports arrive.
-    sourceHeatVisible = true;
-    const b = document.getElementById('sourceHeatBtn');
-    if (b) b.classList.add('active');
-  }
   if (saved.factory) setFactoryLayer(true);
   if (saved.wildfire) setWildfireLayer(true, true); // silent: no alert popups at page load
 }
@@ -2336,13 +2262,6 @@ function applyTraceButtonVisibility() {
 function hideSettingsModal() {
   document.getElementById('settingsModal').style.display = 'none';
 }
-function showHeatMethodologyModal() {
-  buildHeatMethodologyContent();
-  document.getElementById('heatMethodologyModal').style.display = 'flex';
-}
-function hideHeatMethodologyModal() {
-  document.getElementById('heatMethodologyModal').style.display = 'none';
-}
 function showMapKeyModal() {
   buildMapKeyModalContent();
   document.getElementById('mapKeyModal').style.display = 'flex';
@@ -2351,32 +2270,8 @@ function hideMapKeyModal() {
   document.getElementById('mapKeyModal').style.display = 'none';
 }
 
-// Builds the "How the source heatmap works" modal content from the
-// translation dictionary, the same pattern buildHelpModalContent() uses --
-// so it stays in sync with the active language both when first opened and
-// if the user switches language while it's already open.
-function buildHeatMethodologyContent() {
-  const titleEl = document.getElementById('heatMethModalTitle');
-  const btnEl = document.getElementById('heatMethModalBtn');
-  if (titleEl) titleEl.textContent = t('heatMethTitle');
-  if (btnEl) btnEl.textContent = t('helpClose');
-
-  const contentEl = document.getElementById('heatMethModalContent');
-  if (!contentEl) return;
-  contentEl.innerHTML = `
-    <p>${t('heatMethIntro')}</p>
-    <ul style="padding-left: 18px; margin: 10px 0;">
-      <li style="margin-bottom:8px;">${t('heatMethLi1')}</li>
-      <li style="margin-bottom:8px;">${t('heatMethLi2')}</li>
-      <li style="margin-bottom:8px;">${t('heatMethLi3')}</li>
-      <li>${t('heatMethLi4')}</li>
-    </ul>
-    <p style="color: var(--text-secondary);">${t('heatMethFooter')}</p>
-  `;
-}
-
 // Builds the "Map key" modal content from the translation dictionary --
-// same pattern as buildHelpModalContent()/buildHeatMethodologyContent().
+// same pattern as buildHelpModalContent().
 // The illustrative SVGs/gradients themselves aren't language-dependent, so
 // only the surrounding labels and captions are pulled through t().
 function buildMapKeyModalContent() {
@@ -2434,12 +2329,6 @@ function buildMapKeyModalContent() {
       </circle>
     </svg>
     <p style="color:var(--text-secondary); margin:0;">${t('mapKeyDriftBody')}</p>
-
-    <div style="height:1px;background:var(--border-color);margin:12px 0;"></div>
-
-    <div style="font-weight:600; margin-bottom:6px;">${t('mapKeySourceHeatTitle')}</div>
-    <div style="height:14px; border-radius:7px; margin-bottom:4px; background:linear-gradient(to right, #fff59d, #ffca28, #f57c00, #c41e27);"></div>
-    <p style="color:var(--text-secondary); margin:0 0 4px;">${t('mapKeySourceHeatBody')} <a href="#" onclick="showHeatMethodologyModal(); return false;">${t('mapKeyHowCalculated')}</a></p>
 
     <div style="height:1px;background:var(--border-color);margin:12px 0;"></div>
 
@@ -2880,14 +2769,11 @@ const T = {
   wildfireToggleHint:   { en:'Show active wildfires detected by NASA satellite data (FIRMS) near you. Off by default.', sr:'Prikaži aktivne požare koje su otkrili NASA sateliti (FIRMS) u vašoj blizini. Podrazumevano isključeno.' },
   traceButtonToggleLabel: { en:'Trace Possible Source button', sr:'Dugme „Traži mogući izvor“' },
   traceButtonToggleHint:  { en:'Show the Trace Possible Source button on the map. Turn it on, then tap the map to see which reports\' wind trails trace back to that point. Off by default.', sr:'Prikaži dugme „Traži mogući izvor“ na mapi. Uključite ga, pa dodirnite mapu da vidite tragove vetra kojih prijava vode do te tačke. Podrazumevano isključeno.' },
-  sourceHeatToggleLabel:{ en:'Source heatmap', sr:'Toplotna mapa izvora' },
-  sourceHeatToggleHint: { en:'A concentration heatmap: one weighted point per report, so brighter/redder areas mean more (and stronger, more recent) reports nearby. Off by default.', sr:'Toplotna mapa koncentracije: jedna ponderisana tačka po prijavi, tako da svetlije/crvenije oblasti znače više (i jačih, skorijih) prijava u blizini. Podrazumevano isključeno.' },
 
   // Map buttons / tooltips / aria labels
   mapFilterBtnTitle:    { en:'Filter reports shown on the map by date', sr:'Filtriraj prijave prikazane na mapi po datumu' },
   pinMapBtnTitle:       { en:'Set location manually', sr:'Ručno postavi lokaciju' },
   traceSourceBtnTitle:  { en:'Trace Possible Source', sr:'Traži mogući izvor' },
-  sourceHeatBtnTitle:   { en:'Show probable source heatmap', sr:'Prikaži toplotnu mapu mogućeg izvora' },
   wildfireBtnTitle:     { en:'Show active wildfires (NASA satellite data)', sr:'Prikaži aktivne požare (NASA satelitski podaci)' },
   reportFabTitle:       { en:'Report bad air', sr:'Prijavi loš vazduh' },
   windCompassTitle:     { en:'Live wind direction', sr:'Smer vetra uživo' },
@@ -2909,28 +2795,7 @@ const T = {
     en:'While using Trace Possible Source: purple at the tracer pin, fading to red then orange toward each matched report, then a yellow tail continuing ~5km further along the wind past the report -- brightening back toward orange wherever it crosses another report\'s trail.',
     sr:'Prilikom korišćenja funkcije Traži mogući izvor: ljubičasta boja kod oznake za traženje, prelazi u crvenu pa narandžastu ka svakoj podudarnoj prijavi, zatim žuti rep koji se nastavlja ~5km dalje niz vetar posle prijave -- ponovo posvetljava ka narandžastoj gde god preseca trag druge prijave.' },
 
-  sourceHeatSectionTitle: { en:'Source Heatmap', sr:'Toplotna mapa izvora' },
-  sourceHeatSectionBody:  {
-    en:'The source heatmap toggle above shows a plain concentration heatmap: one weighted point per report, so brighter/redder areas simply mean more (and stronger, more recent) reports nearby.',
-    sr:'Prekidač za toplotnu mapu izvora iznad prikazuje jednostavnu toplotnu mapu koncentracije: jedna ponderisana tačka po prijavi, tako da svetlije/crvenije oblasti jednostavno znače više (i jačih, skorijih) prijava u blizini.' },
 
-  heatMethTitle: { en:'How the source heatmap works', sr:'Kako funkcioniše toplotna mapa izvora' },
-  heatMethIntro: {
-    en:'The source heatmap shows where reports are concentrated -- it\'s not a wind or dispersion model, just a weighted density map of active reports:',
-    sr:'Toplotna mapa izvora prikazuje gde su prijave koncentrisane -- to nije model vetra ili disperzije, već samo ponderisana mapa gustine aktivnih prijava:' },
-  heatMethLi1: { en:'Every active report contributes one point at its own location.', sr:'Svaka aktivna prijava doprinosi jednom tačkom na svojoj lokaciji.' },
-  heatMethLi2: {
-    en:'<strong>Intensity &amp; time-decay</strong> weight stronger, more recent reports more heavily than older or milder ones.',
-    sr:'<strong>Jačina i vremensko opadanje</strong> daju veću težinu jačim i skorijim prijavama u odnosu na starije ili blaže.' },
-  heatMethLi3: {
-    en:'<strong>Station corroboration</strong> gives a small boost where the nearest air-quality station measured elevated pollution around the same time as the report.',
-    sr:'<strong>Potvrda stanice</strong> daje mali dodatak tamo gde je najbliža stanica za kvalitet vazduha izmerila povišeno zagađenje otprilike u vreme prijave.' },
-  heatMethLi4: {
-    en:'Overlapping reports simply add together, so areas with more (and stronger) reports read brighter and redder.',
-    sr:'Preklapajuće prijave se jednostavno sabiraju, tako da područja sa više (i jačih) prijava izgledaju svetlije i crvenije.' },
-  heatMethFooter: {
-    en:'Treat it as a quick visual summary of where reports are clustering, not a verified pollution-source location.',
-    sr:'Posmatrajte ovo kao brzi vizuelni prikaz gde se prijave grupišu, a ne kao potvrđenu lokaciju izvora zagađenja.' },
 
   mapKeyTitle: { en:'Map key', sr:'Legenda mape' },
   mapKeyReportPinsTitle: { en:'Report pins', sr:'Oznake prijava' },
@@ -2948,11 +2813,6 @@ const T = {
   mapKeyTrailsBody2: {
     en:'Tap a report to spotlight its trail -- every other trail and pin dims so it\'s easy to follow. Close the popup (or tap elsewhere) to bring everything back.',
     sr:'Dodirnite prijavu da istaknete njen trag -- svi ostali tragovi i oznake se zatamne radi lakšeg praćenja. Zatvorite iskačući prozor (ili dodirnite negde drugde) da vratite sve na prikaz.' },
-  mapKeySourceHeatTitle: { en:'Source heatmap (Settings)', sr:'Toplotna mapa izvora (Podešavanja)' },
-  mapKeySourceHeatBody: {
-    en:'Brighter/redder = more (and stronger, more recent) reports clustered in that area.',
-    sr:'Svetlije/crvenije = više (i jačih, skorijih) prijava grupisanih u tom području.' },
-  mapKeyHowCalculated: { en:'How it\'s calculated', sr:'Kako se izračunava' },
   mapKeyTraceTitle: { en:'Trace Possible Source', sr:'Traži mogući izvor' },
   mapKeyTraceBody: {
     en:'Purple at the tracer pin, fading to red then orange as each matched report\'s trail arrives, then a yellow tail continuing ~1h further along the wind past the report.',
@@ -3314,13 +3174,10 @@ function applyLang(){
   if (el('splineVisibilityHint'))  el('splineVisibilityHint').textContent = t('splineVisibilityHint');
   if (el('traceHeatmapLabel'))     el('traceHeatmapLabel').textContent = t('traceHeatmapLabel');
   if (el('traceHeatmapHint'))      el('traceHeatmapHint').textContent = t('traceHeatmapHint');
-  if (el('sourceHeatSectionTitle')) el('sourceHeatSectionTitle').textContent = t('sourceHeatSectionTitle');
-  if (el('sourceHeatSectionBody'))  el('sourceHeatSectionBody').textContent = t('sourceHeatSectionBody');
-  if (el('sourceHeatMethBtn'))      el('sourceHeatMethBtn').textContent = t('heatMethTitle');
   if (el('pullRefreshLabel'))      el('pullRefreshLabel').textContent = t('pullToRefresh');
 
   // Settings switches for map layers
-  ['factory', 'wildfire', 'traceButton', 'sourceHeat'].forEach(k => {
+  ['factory', 'wildfire', 'traceButton'].forEach(k => {
     if (el(k + 'ToggleLabel')) el(k + 'ToggleLabel').textContent = t(k + 'ToggleLabel');
     if (el(k + 'ToggleHint'))  el(k + 'ToggleHint').textContent  = t(k + 'ToggleHint');
   });
@@ -3330,7 +3187,6 @@ function applyLang(){
   setTitle('mapFilterBtn', 'mapFilterBtnTitle');
   setTitle('pinMapBtn', 'pinMapBtnTitle');
   setTitle('traceSourceBtn', 'traceSourceBtnTitle');
-  setTitle('sourceHeatBtn', 'sourceHeatBtnTitle');
   setTitle('wildfireBtn', 'wildfireBtnTitle');
   setTitle('factoryBtn', 'factoryBtnTitle');
   setTitle('windCompassWidget', 'windCompassTitle');
@@ -3348,7 +3204,6 @@ function applyLang(){
   if (el('splashSlogan')) el('splashSlogan').textContent = t('splashSlogan');
   renderSplashQuote();
   if (el('windCompassDir') && currentWindDegForMarker != null) el('windCompassDir').textContent = degToCardinal(currentWindDegForMarker);
-  updateSourceHeatBadge(mapDisplayedReports || globalActiveData);
   if (lastKnownReportCount !== null) updateReportCountUI(lastKnownReportCount, lastKnownReportTotal);
   if (trailInfo) updateTrailChip();
   if (lastKnownExportCount !== null) updateExportCountUI();
@@ -3365,9 +3220,6 @@ function applyLang(){
 
   const gm = document.getElementById('gpsModal');
   if(gm && gm.style.display!=='none') updateGpsModalText();
-
-  const hmm = document.getElementById('heatMethodologyModal');
-  if (hmm && hmm.style.display !== 'none') buildHeatMethodologyContent();
 
   const mkm = document.getElementById('mapKeyModal');
   if (mkm && mkm.style.display !== 'none') buildMapKeyModalContent();
@@ -4070,13 +3922,6 @@ new TraceControl().addTo(map);
 document.getElementById('traceSourceBtn').style.display = 'flex';
 applyTraceButtonVisibility();
 
-// Source Heatmap and Wildfires no longer get their
-// own floating map buttons -- they default off and live as toggles in
-// Settings instead (see the settings modal), so the buttons/controls that
-// used to sit on the map for them have been removed. Their underlying
-// #sourceHeatBtn/#wildfireBtn elements stay in the DOM
-// (still display:none) purely so the toggle functions' classList calls
-// keep working harmlessly.
 
 function togglePinMode() {
   pinMode = !pinMode;
@@ -4140,7 +3985,6 @@ function enterTraceMode() {
   lastTraceTracerCoords = null;
   lastTraceMatchedReports = [];
   applySplineVisibility();
-  if (sourceHeatVisible) renderSourceHeatLayer([]);
 }
 
 // Explicit on/off (the Settings switch passes its own checked state, so the
@@ -6452,23 +6296,6 @@ function updateConeVisibilityForClustering() {
     el.style.display = hideCones ? 'none' : '';
   });
 }
-/* ═══════════════════════════════════════════════════
-   PROBABLE SOURCE HEATMAP (report concentration)
-   Toggled via the flame button. This is a plain concentration heatmap:
-   one point per active report, weighted by how strong/recent it is (and
-   nudged up a little if a nearby air-quality station's own reading
-   corroborates it around the same time). Leaflet.heat's additive
-   blending does the rest -- more overlapping reports simply read
-   brighter/redder. No wind trails, dispersion modeling, or triangulation
-   are involved; this earlier version tried walking each report's wind
-   trail backward to guess a plume origin, but that made the heatmap
-   balloon out across the wind trails themselves rather than showing
-   where reports actually cluster, so it's back to measuring report
-   density.
-═══════════════════════════════════════════════════ */
-let sourceHeatVisible = false;
-let sourceHeatLayer = null;
-
 // Sets heat-layer data without ever touching a layer that's currently
 // detached from the map. leaflet.heat's own setLatLngs() unconditionally
 // calls redraw(), which reaches into this._map -- if the layer was
@@ -6482,105 +6309,9 @@ function safeSetHeatData(layer, points) {
   if (layer._map) layer.redraw();
 }
 
-// Per-report weight: stronger/more recent reports (and ones corroborated
-// by a nearby air-quality station reading around the same time) weigh
-// more heavily into the concentration heatmap.
-async function computeReportWeightFactor(report) {
-  const intensity = parseInt(report.intensity, 10);
-  const intensityFactor = isNaN(intensity) ? 1 : Math.max(0.3, intensity / 5); // 5/10 (wizard default) = neutral 1.0
-
-  const ageHours = (Date.now() - new Date(report.created_at).getTime()) / 3600000;
-  const DECAY_HALF_LIFE_HOURS = 18;
-  const timeDecayFactor = Math.max(0.25, Math.pow(0.5, ageHours / DECAY_HALF_LIFE_HOURS));
-
-  let corroborationFactor = 1.0;
-  try {
-    const lat = parseFloat(report.latitude), lon = parseFloat(report.longitude);
-    const nearest = !isNaN(lat) && !isNaN(lon) ? findNearestStation(lat, lon) : null;
-    if (nearest && nearest.distanceKm <= STATION_TRAIL_MATCH_RADIUS_KM) {
-      const reading = await getStationReadingNear(nearest.station.id, report.created_at);
-      const severity = reading?.category != null ? AQI_SEVERITY[reading.category] : undefined;
-      if (severity != null) corroborationFactor = 1.0 + severity * 0.15; // up to +0.75 at the worst AQI category
-    }
-  } catch (e) { /* corroboration is a bonus, never block the heatmap on it */ }
-
-  return intensityFactor * timeDecayFactor * corroborationFactor;
-}
-
-// One heat point per report at its own location -- plain concentration,
-// no wind-trail spreading.
-async function buildReportConcentrationHeatPoints(reports) {
-  const points = [];
-  await Promise.all(reports.map(async (report) => {
-    const lat = parseFloat(report.latitude);
-    const lon = parseFloat(report.longitude);
-    if (isNaN(lat) || isNaN(lon)) return;
-    const weight = await computeReportWeightFactor(report);
-    points.push([lat, lon, weight * 3]); // scaled so a single strong report still reads clearly against the fixed `max` below
-  }));
-  return points;
-}
-
-// (Re)builds the heat layer from the given active reports. Safe to call
-// even when the heatmap is currently hidden -- it just won't be added to
-// the map until toggleSourceHeat() turns it on.
-async function renderSourceHeatLayer(reports) {
-  const points = await buildReportConcentrationHeatPoints(reports || globalActiveData);
-  if (sourceHeatLayer) {
-    safeSetHeatData(sourceHeatLayer, points);
-  } else {
-    sourceHeatLayer = L.heatLayer(points, {
-      radius: 30,
-      blur: 22,
-      maxZoom: 17,
-      max: 6.5, // fixed scale so color meaning (red=dense) stays consistent regardless of how many reports are on screen
-      minOpacity: 0.25,
-      gradient: { 0.15: '#fff59d', 0.4: '#ffca28', 0.65: '#f57c00', 1.0: '#c41e27' }
-    });
-  }
-  if (sourceHeatVisible && !map.hasLayer(sourceHeatLayer)) {
-    sourceHeatLayer.addTo(map);
-  }
-  updateSourceHeatBadge(reports || globalActiveData);
-}
-
-// Small "N reports" badge near the flame button, just so it's clear what
-// the heatmap on screen is summarizing.
-function updateSourceHeatBadge(reports) {
-  const badge = document.getElementById('sourceHeatConfidenceBadge');
-  if (!badge) return;
-  if (!sourceHeatVisible) {
-    badge.style.display = 'none';
-    return;
-  }
-  const totalReports = (reports || globalActiveData || []).length;
-  badge.style.display = 'flex';
-  badge.style.removeProperty('--confidence-color');
-  badge.textContent = `${totalReports} ${totalReports === 1 ? t('reportCount1') : t('reportCount')}`.toLowerCase();
-}
-
-function setSourceHeat(on) {
-  sourceHeatVisible = !!on;
-
-  const btn = document.getElementById('sourceHeatBtn');
-  if (btn) btn.classList.toggle('active', sourceHeatVisible);
-
-  // Use what's actually on the map (date filter / traced subset), not every
-  // report ever loaded.
-  const shown = mapDisplayedReports || globalActiveData;
-  if (sourceHeatVisible) {
-    renderSourceHeatLayer(shown);
-  } else {
-    if (sourceHeatLayer && map.hasLayer(sourceHeatLayer)) map.removeLayer(sourceHeatLayer);
-    updateSourceHeatBadge(shown);
-  }
-  syncSettingsToggles();
-}
-function toggleSourceHeat() { setSourceHeat(!sourceHeatVisible); }
-
 /* ═══════════════════════════════════════════════════
    WILDFIRES (NASA FIRMS) -- satellite-detected hotspot dots,
-   toggled via the button just above the source-heat flame button.
+   toggled from Settings.
    See the FIRMS_MAP_KEY/WILDFIRE_* constants near the Supabase config
    for setup, state (wildfireVisible/wildfireLayer/wildfireLastFetchedAt),
    and region/source tuning.
@@ -8454,7 +8185,6 @@ async function loadPinsByWindow() {
   if (!traceMode) {
     mapDisplayedReports = activeReports;
     generateAllBackgroundTrails(activeReports);
-    if (sourceHeatVisible) renderSourceHeatLayer(activeReports);
   }
 }
 
@@ -8515,9 +8245,136 @@ function distanceToSegment(p, p1, p2) {
        overlap up into a hotter color.
 ═══════════════════════════════════════════════════ */
 let traceHeatLayer = null;
+
+/* Ground-scaled heat layer. leaflet.heat sizes its dots in screen pixels and
+   its sprite breaks (solid, clipped circles) once radius+blur gets large, so
+   it can't hold a fixed 5 km radius across zoom levels. This layer takes a
+   radius in km, converts it to pixels on every redraw and draws each dot as a
+   soft radial gradient with no size limit. Same surface the code below uses
+   (_latlngs, redraw(), options). Points are [lat, lon, weight]. */
+L.GroundHeatLayer = L.Layer.extend({
+  options: { radiusKm: 5, max: 1, minOpacity: 0.05, gradient: { 0.4: 'blue', 0.6: 'cyan', 0.7: 'lime', 0.8: 'yellow', 1: 'red' } },
+  initialize: function (latlngs, options) {
+    this._latlngs = latlngs || [];
+    L.setOptions(this, options);
+  },
+  setOptions: function (options) {
+    L.setOptions(this, options);
+    this._grad = null;
+    return this.redraw();
+  },
+  onAdd: function (map) {
+    this._map = map;
+    if (!this._canvas) {
+      const c = this._canvas = L.DomUtil.create('canvas', 'leaflet-heatmap-layer leaflet-layer');
+      c.style.pointerEvents = 'none';
+      c.style[L.DomUtil.testProp(['transformOrigin', 'WebkitTransformOrigin', 'msTransformOrigin'])] = '50% 50%';
+      const animated = map.options.zoomAnimation && L.Browser.any3d;
+      L.DomUtil.addClass(c, 'leaflet-zoom-' + (animated ? 'animated' : 'hide'));
+    }
+    map.getPanes().overlayPane.appendChild(this._canvas);
+    map.on('moveend', this._reset, this);
+    map.on('resize', this._reset, this);
+    if (map.options.zoomAnimation && L.Browser.any3d) map.on('zoomanim', this._animateZoom, this);
+    this._reset();
+  },
+  onRemove: function (map) {
+    map.getPanes().overlayPane.removeChild(this._canvas);
+    map.off('moveend', this._reset, this);
+    map.off('resize', this._reset, this);
+    map.off('zoomanim', this._animateZoom, this);
+    this._map = null;
+  },
+  addTo: function (map) { map.addLayer(this); return this; },
+  redraw: function () {
+    if (this._map && !this._frame && !this._map._animatingZoom) {
+      this._frame = L.Util.requestAnimFrame(this._redraw, this);
+    }
+    return this;
+  },
+  _reset: function () {
+    if (!this._map) return;
+    L.DomUtil.setPosition(this._canvas, this._map.containerPointToLayerPoint([0, 0]));
+    const size = this._map.getSize();
+    if (this._canvas.width !== size.x) this._canvas.width = size.x;
+    if (this._canvas.height !== size.y) this._canvas.height = size.y;
+    this._redraw();
+  },
+  _animateZoom: function (e) {
+    const scale = this._map.getZoomScale(e.zoom);
+    const offset = this._map._getCenterOffset(e.center)._multiplyBy(-scale).subtract(this._map._getMapPanePos());
+    if (L.DomUtil.setTransform) L.DomUtil.setTransform(this._canvas, offset, scale);
+    else this._canvas.style[L.DomUtil.TRANSFORM] = L.DomUtil.getTranslateString(offset) + ' scale(' + scale + ')';
+  },
+  _buildGradient: function () {
+    const g = document.createElement('canvas');
+    g.width = 1; g.height = 256;
+    const gctx = g.getContext('2d', { willReadFrequently: true });
+    const grad = gctx.createLinearGradient(0, 0, 0, 256);
+    for (const k in this.options.gradient) grad.addColorStop(k, this.options.gradient[k]);
+    gctx.fillStyle = grad;
+    gctx.fillRect(0, 0, 1, 256);
+    this._grad = gctx.getImageData(0, 0, 1, 256).data;
+  },
+  _redraw: function () {
+    this._frame = null;
+    const map = this._map;
+    if (!map || !this._canvas) return;
+    if (!this._grad) this._buildGradient();
+    const canvas = this._canvas, w = canvas.width, h = canvas.height;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    ctx.clearRect(0, 0, w, h);
+
+    // km -> px at the map centre's latitude and the current zoom.
+    const lat = map.getCenter().lat;
+    const metersPerPx = 40075016.686 * Math.cos(lat * Math.PI / 180) / (256 * Math.pow(2, map.getZoom()));
+    const r = Math.max(2, (this.options.radiusKm * 1000) / metersPerPx);
+    const max = this.options.max || 1, minA = this.options.minOpacity || 0;
+
+    for (let i = 0; i < this._latlngs.length; i++) {
+      const p = this._latlngs[i];
+      const pt = map.latLngToContainerPoint([p[0], p[1]]);
+      if (pt.x < -r || pt.y < -r || pt.x > w + r || pt.y > h + r) continue;
+      const a = Math.min(1, Math.max((p[2] === undefined ? 1 : p[2]) / max, minA));
+      const g = ctx.createRadialGradient(pt.x, pt.y, 0, pt.x, pt.y, r);
+      g.addColorStop(0, 'rgba(0,0,0,' + a + ')');
+      g.addColorStop(0.5, 'rgba(0,0,0,' + (a * 0.5) + ')');
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(pt.x - r, pt.y - r, 2 * r, 2 * r);
+    }
+
+    const img = ctx.getImageData(0, 0, w, h), d = img.data, lut = this._grad;
+    for (let i = 3; i < d.length; i += 4) {
+      const a = d[i];
+      if (a) { const j = a * 4; d[i - 3] = lut[j]; d[i - 2] = lut[j + 1]; d[i - 1] = lut[j + 2]; }
+    }
+    ctx.putImageData(img, 0, 0);
+  }
+});
+
+const TRACE_HEAT_RADIUS_KM = 5; // dots cover a fixed 5 km on the ground, so they grow/shrink with zoom
 let lastTraceTracerCoords = null;
 let lastTraceMatchedReports = [];
 let lastTraceTotalInRange = 0;
+
+// Wind trails are densely sampled; with 5 km heat dots that piles dozens of
+// overlapping dots on every stretch of trail and saturates everything to the
+// top colour. Keep at most one point per ~2.5 km ground cell within a single
+// trail (the heaviest one), so only *different* trails stacking up add heat.
+const TRACE_HEAT_CELL_KM = 2.5;
+const TRACE_HEAT_POINT_SCALE = 0.45; // per-point weight vs. the colour scale
+function thinHeatPoints(pts) {
+  const dLat = TRACE_HEAT_CELL_KM / 111;
+  const best = new Map();
+  pts.forEach(p => {
+    const dLon = dLat / Math.max(0.2, Math.cos(p[0] * Math.PI / 180));
+    const key = Math.floor(p[0] / dLat) + ':' + Math.floor(p[1] / dLon);
+    const cur = best.get(key);
+    if (!cur || p[2] > cur[2]) best.set(key, p);
+  });
+  return [...best.values()];
+}
 
 async function buildTraceHeatPoints(tracerCoords, matchedReports) {
   const points = [];
@@ -8540,19 +8397,22 @@ async function buildTraceHeatPoints(tracerCoords, matchedReports) {
         const d = getHaversineDistance(pt.lat, pt.lon, tracerCoords.lat, tracerCoords.lon);
         if (d < closestDist) { closestDist = d; closestIdx = i; }
       });
+      const trailPts = [];
       for (let i = 0; i <= closestIdx; i++) {
         const t = closestIdx > 0 ? i / closestIdx : 1; // 0 at the report (orange), 1 at the source (red)
         const weight = 1.4 + t * 2.0; // 1.4 (report end, orange) ramping to 3.4 (source end, red, just under the tracer's purple)
-        points.push([trail[i].lat, trail[i].lon, weight]);
+        trailPts.push([trail[i].lat, trail[i].lon, weight * TRACE_HEAT_POINT_SCALE]);
       }
+      thinHeatPoints(trailPts).forEach(p => points.push(p));
     }
 
     const tail = forwardTails[idx];
     if (tail && tail.length) {
-      tail.forEach((pt, i) => {
+      const tailPts = tail.map((pt, i) => {
         const weight = Math.max(0.3, 1.0 - 0.7 * (i / tail.length)); // starts near the report's orange, fades down into yellow
-        points.push([pt.lat, pt.lon, weight]);
+        return [pt.lat, pt.lon, weight * TRACE_HEAT_POINT_SCALE];
       });
+      thinHeatPoints(tailPts).forEach(p => points.push(p));
     }
   });
 
@@ -8564,12 +8424,10 @@ async function renderTraceHeatLayer(tracerCoords, matchedReports, force = false)
   if (traceHeatLayer) {
     safeSetHeatData(traceHeatLayer, points);
   } else {
-    traceHeatLayer = L.heatLayer(points, {
-      radius: 24,
-      blur: 18,
-      maxZoom: 17,
+    traceHeatLayer = new L.GroundHeatLayer(points, {
+      radiusKm: TRACE_HEAT_RADIUS_KM,
       max: 4.2, // fixed scale so the tracer pin reliably reaches full purple regardless of how many reports are on screen
-      minOpacity: 0.25,
+      minOpacity: 0.05, // a high floor makes every overlapping dot add 25% alpha and saturate
       gradient: {
         0.05: '#fff59d', // pale yellow -- far end of the forward tail
         0.20: '#ffca28', // yellow-orange -- tail approaching the report
@@ -8671,7 +8529,6 @@ async function filterPinsBySourceTrajectory(tracerCoords) {
 
   mapDisplayedReports = activeReportsToDrawTrails;
   generateAllBackgroundTrails(activeReportsToDrawTrails, tracerCoords);
-  if (sourceHeatVisible) renderSourceHeatLayer(activeReportsToDrawTrails);
 
   lastTraceTracerCoords = tracerCoords;
   lastTraceMatchedReports = activeReportsToDrawTrails;
