@@ -2564,6 +2564,11 @@ const STATION_MATCH_EXTENDED_HOURS_STEPS = [24, 48];
 // isn't missed just because the nearest downwind station happens to be far.
 const STATION_MATCH_FORWARD_HOURS = TRAIL_WINDOW_HOURS;
 const STATION_MATCH_FORWARD_MAX_KM = 300;
+// How far the wind-history spline keeps going PAST the report point, using the
+// real hourly wind for the hours after the report was made. Hours is the
+// limit that matters; the km cap is only a safety net for very strong wind.
+const TRAIL_FORWARD_HOURS = 8; // enough for 50 km even in light wind
+const TRAIL_FORWARD_KM = 50;
 
 /* ═══════════════════════════════════════════════════
    SUPABASE
@@ -5156,7 +5161,7 @@ async function showFocusTrail(report) {
   focusTrail.id = report.id;
   const tracer = trailStoreTracer;
   if (tracer && it.tail === undefined) {
-    try { it.tail = await computeForwardWindExtension(report, 5, 1); } catch (e) { it.tail = []; }
+    try { it.tail = await computeForwardWindExtension(report, TRAIL_FORWARD_KM, TRAIL_FORWARD_HOURS); } catch (e) { it.tail = []; }
     if (focusTrail.id !== report.id) return;   // popup closed/changed while fetching
   }
   const layers = drawFullTrail(it, tracer, { pane: 'focusTrailPane', animate: true, baseOpacity: 0.95, animClass: 'bg-trail-animated' });
@@ -6190,7 +6195,7 @@ async function generateAllBackgroundTrails(reports, tracerCoords = null) {
   // each report, for the yellow continuation past the orange report point.
   // Larger sets fetch it on demand, just for the selected report.
   if (tracerCoords && tier === 'full') {
-    const tails = await Promise.all(trailsToRender.map(({ report }) => computeForwardWindExtension(report, 5, 1).catch(() => [])));
+    const tails = await Promise.all(trailsToRender.map(({ report }) => computeForwardWindExtension(report, TRAIL_FORWARD_KM, TRAIL_FORWARD_HOURS).catch(() => [])));
     if (mySeq !== trailGenSeq) return;
     trailsToRender.forEach((it, idx) => { it.tail = tails[idx]; });
   }
@@ -8236,7 +8241,7 @@ function distanceToSegment(p, p1, p2) {
        from "orange near the report" to "red near the source", so it
        reads as one continuous purple -> red -> orange gradient with the
        tracer cluster above.
-     - A short tail continuing ~5km past the report, using REAL wind data
+     - A tail continuing past the report for TRAIL_FORWARD_HOURS (same as the drawn spline), using REAL wind data
        for the hours after the report was made (computeForwardWindExtension)
        -- low weight, fading from orange into yellow. Where two reports'
        tails (or a tail and another report's backtrajectory) happen to
@@ -8261,6 +8266,7 @@ L.GroundHeatLayer = L.Layer.extend({
   setOptions: function (options) {
     L.setOptions(this, options);
     this._grad = null;
+    this._sprites = null;
     return this.redraw();
   },
   onAdd: function (map) {
@@ -8325,7 +8331,8 @@ L.GroundHeatLayer = L.Layer.extend({
   // drawImage + globalAlpha (instead of building a gradient per point).
   _getSprite: function (rs) {
     const key = Math.round(rs * 2) / 2;
-    if (this._sprite && this._spriteKey === key) return this._sprite;
+    const cache = this._sprites || (this._sprites = {});
+    if (cache[key]) return cache[key];
     const size = Math.max(2, Math.ceil(key * 2));
     const c = document.createElement('canvas');
     c.width = c.height = size;
@@ -8336,8 +8343,7 @@ L.GroundHeatLayer = L.Layer.extend({
     g.addColorStop(1, 'rgba(0,0,0,0)');
     x.fillStyle = g;
     x.fillRect(0, 0, size, size);
-    this._spriteKey = key;
-    return (this._sprite = c);
+    return (cache[key] = c);
   },
   _redraw: function () {
     this._frame = null;
@@ -8352,20 +8358,52 @@ L.GroundHeatLayer = L.Layer.extend({
     // km -> px (at the reduced resolution) at the map centre's latitude and zoom.
     const lat = map.getCenter().lat;
     const metersPerPx = 40075016.686 * Math.cos(lat * Math.PI / 180) / (256 * Math.pow(2, map.getZoom()));
-    const r = Math.max(1, ((this.options.radiusKm * 1000) / metersPerPx) * S);
-    const sprite = this._getSprite(r), half = sprite.width / 2;
+    const kmToPx = (km) => Math.max(1, ((km * 1000) / metersPerPx) * S);
     const max = this.options.max || 1, minA = this.options.minOpacity || 0;
 
-    let drawn = 0;
-    for (let i = 0; i < this._latlngs.length; i++) {
-      const p = this._latlngs[i];
+    // Ordinary points stack up (alpha compositing) and, with hundreds of
+    // overlapping trails, saturate to the top colour everywhere. With
+    // options.ceiling set, that pile-up is clamped to the ceiling and points
+    // flagged as "core" (p[3] === true, e.g. the tracer pin) are drawn on top
+    // afterwards, so only they can reach the very top of the colour scale.
+    const ceiling = this.options.ceiling;
+    const drawPoint = (p) => {
       const pt = map.latLngToContainerPoint([p[0], p[1]]);
       const x = pt.x * S, y = pt.y * S;
-      if (x < -half || y < -half || x > w + half || y > h + half) continue;
+      // Per-point radius (p[4], km) lets a dot grow as the wind carries it;
+      // points without one use the layer's radiusKm.
+      const sprite = this._getSprite(kmToPx(p[4] || this.options.radiusKm)), half = sprite.width / 2;
+      // p[5] = bearing the plume is moving towards, p[6] = stretch along it.
+      const stretch = p[6] || 1, reach = half * stretch;
+      if (x < -reach || y < -reach || x > w + reach || y > h + reach) return false;
       ctx.globalAlpha = Math.min(1, Math.max((p[2] === undefined ? 1 : p[2]) / max, minA));
-      ctx.drawImage(sprite, x - half, y - half);
-      drawn++;
+      if (stretch !== 1 && p[5] !== undefined) {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate((p[5] - 90) * Math.PI / 180); // bearing 90 (east) = screen +x
+        ctx.scale(stretch, 1);
+        ctx.drawImage(sprite, -half, -half);
+        ctx.restore();
+      } else {
+        ctx.drawImage(sprite, x - half, y - half);
+      }
+      return true;
+    };
+    let drawn = 0;
+    const cores = [];
+    for (let i = 0; i < this._latlngs.length; i++) {
+      const p = this._latlngs[i];
+      if (ceiling && p[3] === true) { cores.push(p); continue; }
+      if (drawPoint(p)) drawn++;
     }
+    ctx.globalAlpha = 1;
+    if (ceiling && drawn) {
+      const cap = Math.round(ceiling * 255);
+      const pre = ctx.getImageData(0, 0, w, h), pd = pre.data;
+      for (let i = 3; i < pd.length; i += 4) if (pd[i] > cap) pd[i] = cap;
+      ctx.putImageData(pre, 0, 0);
+    }
+    for (let i = 0; i < cores.length; i++) { if (drawPoint(cores[i])) drawn++; }
     ctx.globalAlpha = 1;
     if (!drawn) return;
 
@@ -8378,7 +8416,15 @@ L.GroundHeatLayer = L.Layer.extend({
   }
 });
 
-const TRACE_HEAT_RADIUS_KM = 5; // dots cover a fixed 5 km on the ground, so they grow/shrink with zoom
+const TRACE_HEAT_RADIUS_KM = 4; // dots start at 4 km on the ground (at the tracer and along the trail up to the report)
+// ...and past the report they grow as the wind carries the smell, at the same
+// rate the trace matching assumes (TRACER_DISPERSION_RATE_KM_H), up to a ceiling.
+const TRACE_HEAT_GROW_KM_PER_H = TRACER_DISPERSION_RATE_KM_H;
+const TRACE_HEAT_MAX_RADIUS_KM = 15;
+// 4) Past the report the spread is a plume, not a circle: dots are stretched
+// along the wind (crosswind width stays the radius above), by up to 2.2x.
+const TRACE_HEAT_PLUME_STRETCH_PER_H = 0.5;
+const TRACE_HEAT_PLUME_MAX_STRETCH = 2.2;
 let lastTraceTracerCoords = null;
 let lastTraceMatchedReports = [];
 let lastTraceTotalInRange = 0;
@@ -8405,11 +8451,12 @@ async function buildTraceHeatPoints(tracerCoords, matchedReports) {
   const points = [];
 
   // Tracer pin -- highest weight, purple end of the gradient.
-  points.push([tracerCoords.lat, tracerCoords.lon, 4]);
-  points.push([tracerCoords.lat, tracerCoords.lon, 4]);
+  // A single point at full scale: only its very core reaches purple, and it
+  // falls off through red/orange quickly.
+  points.push([tracerCoords.lat, tracerCoords.lon, 4.2, true]);
 
   const trails = await Promise.all(matchedReports.map(r => renderHistoricSplineTrailForReport(r)));
-  const forwardTails = await Promise.all(matchedReports.map(r => computeForwardWindExtension(r)));
+  const forwardTails = await Promise.all(matchedReports.map(r => computeForwardWindExtension(r, TRAIL_FORWARD_KM, TRAIL_FORWARD_HOURS).catch(() => [])));
 
   matchedReports.forEach((report, idx) => {
     const trail = trails[idx];
@@ -8433,9 +8480,21 @@ async function buildTraceHeatPoints(tracerCoords, matchedReports) {
 
     const tail = forwardTails[idx];
     if (tail && tail.length) {
-      const tailPts = tail.map((pt, i) => {
-        const weight = Math.max(0.3, 1.0 - 0.7 * (i / tail.length)); // starts near the report's orange, fades down into yellow
-        return [pt.lat, pt.lon, weight * TRACE_HEAT_POINT_SCALE];
+      const t0 = new Date(report.created_at).getTime();
+      let prevLat = parseFloat(report.latitude), prevLon = parseFloat(report.longitude), travelled = 0;
+      const tailPts = tail.map((pt) => {
+        travelled += getHaversineDistance(prevLat, prevLon, pt.lat, pt.lon);
+        // Fades with distance travelled, to almost nothing at the end of the tail.
+        const weight = Math.max(0.03, 1.0 - 0.97 * Math.min(1, travelled / TRAIL_FORWARD_KM));
+        const hours = Math.max(0, (new Date(pt.time).getTime() - t0) / 3600000);
+        const radius = Math.min(TRACE_HEAT_MAX_RADIUS_KM, TRACE_HEAT_RADIUS_KM + TRACE_HEAT_GROW_KM_PER_H * hours);
+        const stretch = Math.min(TRACE_HEAT_PLUME_MAX_STRETCH, 1 + TRACE_HEAT_PLUME_STRETCH_PER_H * hours);
+        // Direction the smell is moving (geographic bearing, 0 = north, clockwise).
+        const dy = pt.lat - prevLat;
+        const dx = (pt.lon - prevLon) * Math.cos(prevLat * Math.PI / 180);
+        const bearing = ((Math.atan2(dx, dy) * 180 / Math.PI) + 360) % 360;
+        prevLat = pt.lat; prevLon = pt.lon;
+        return [pt.lat, pt.lon, weight * TRACE_HEAT_POINT_SCALE, false, radius, bearing, stretch];
       });
       thinHeatPoints(tailPts).forEach(p => points.push(p));
     }
@@ -8453,14 +8512,16 @@ async function renderTraceHeatLayer(tracerCoords, matchedReports, force = false)
       radiusKm: TRACE_HEAT_RADIUS_KM,
       max: 4.2, // fixed scale so the tracer pin reliably reaches full purple regardless of how many reports are on screen
       minOpacity: 0.05, // a high floor makes every overlapping dot add 25% alpha and saturate
+      ceiling: 0.78, // overlapping trails can pile up to deep red at most; only the tracer pin's core goes beyond
       gradient: {
         0.05: '#fff59d', // pale yellow -- far end of the forward tail
         0.20: '#ffca28', // yellow-orange -- tail approaching the report
         0.35: '#f57c00', // orange -- at/near the report
         0.55: '#e64a19', // red-orange -- partway back along the trail
-        0.75: '#c41e27', // red -- approaching the source
-        0.92: '#8e24aa', // purple -- right at the tracer pin
-        1.0: '#6a1b9a'
+        0.70: '#d32f2f', // red -- approaching the source
+        0.80: '#b71c1c', // deep red -- the hottest the trail overlap gets
+        0.96: '#8e24aa', // purple -- only the core at the tracer pin
+        1.0: '#7b1fa2'
       }
     });
   }
@@ -8562,7 +8623,9 @@ async function filterPinsBySourceTrajectory(tracerCoords) {
   if (hhState && hhState.status !== 'loading' && document.getElementById('hhSheet')?.style.display === 'block') hhRenderSheet();
   // With a big trace the individual lines are limited, so the heatmap
   // becomes the overview -- shown automatically even if the setting is off.
-  const autoHeat = trailTier(activeReportsToDrawTrails.length) === 'top';
+  // Also shown automatically when the trace was started by tapping a factory /
+  // burner / landfill pin, so those taps always show the spread heat.
+  const autoHeat = trailTier(activeReportsToDrawTrails.length) === 'top' || !!tracePoiActive;
   if (traceHeatmapEnabled || autoHeat) renderTraceHeatLayer(tracerCoords, activeReportsToDrawTrails, autoHeat);
   else if (traceHeatLayer && map.hasLayer(traceHeatLayer)) map.removeLayer(traceHeatLayer);
 
