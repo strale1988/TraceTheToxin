@@ -716,6 +716,28 @@ span.flatpickr-weekday {
 }
 #traceSourceBtn{ position:fixed; bottom:calc(var(--legend-bar-h) + 94px); right:12px; }
 #pinMapBtn{ position:fixed; bottom:calc(var(--legend-bar-h) + 148px); right:12px; }
+#sourceEstBtn{ position:fixed; bottom:calc(var(--legend-bar-h) + 256px); right:12px; }
+#sourceEstBtn.active svg{ stroke:#fff; }
+#sourceEstBtn.active svg circle[fill]{ fill:#fff; }
+#sourceEstPanel{
+  display:none; position:fixed; left:12px; right:68px; z-index:430;
+  bottom:calc(var(--legend-bar-h) + 12px); max-width:380px;
+  padding:12px 14px; border-radius:var(--radius-xl);
+  background:var(--floating-bg); border:1px solid var(--floating-border);
+  box-shadow:0 4px 18px var(--floating-shadow);
+  font-size:var(--fs-12); line-height:1.4; color:var(--text-secondary);
+}
+#sourceEstPanel.visible{ display:block; }
+#sourceEstPanel b.se-h{ font-size:var(--fs-14); color:var(--text-primary); }
+#sourceEstPanel .se-row{ margin-top:4px; }
+#sourceEstPanel .se-warn{ margin-top:6px; color:var(--danger); }
+#sourceEstPanel .se-note{ margin-top:6px; font-size:var(--fs-11); opacity:.8; }
+#sourceEstPanel .se-actions{ display:flex; justify-content:space-between; align-items:center; gap:10px; margin-top:8px; }
+#sourceEstPanel label{ display:flex; align-items:center; gap:6px; cursor:pointer; }
+#sourceEstPanel button{
+  border:1px solid var(--floating-border); background:transparent; color:var(--text-primary);
+  border-radius:var(--radius-xl); padding:4px 12px; cursor:pointer; font-size:var(--fs-12);
+}
 #mapFilterBtn{ position:fixed; bottom:calc(var(--legend-bar-h) + 202px); right:12px; }
 #wildfireBtn{ position:fixed; bottom:calc(var(--legend-bar-h) + 322px); right:12px; }
 .wildfire-btn{
@@ -1412,6 +1434,9 @@ button:focus-visible, [role="button"]:focus-visible, a:focus-visible, input:focu
   <div id="traceSourceBtn" class="trace-source-btn" style="display:flex" title="Trace Possible Source" onclick="toggleTraceMode()">
     <img class="icon-img" src="icons/search.png" alt="Trace">
   </div>
+  <div id="sourceEstBtn" class="trace-source-btn" style="display:flex" data-title-key="seBtnTitle" onclick="toggleSourceEstimate()">
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="var(--text-primary)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="0.8" fill="var(--text-primary)"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/></svg>
+  </div>
   <div id="wildfireBtn" class="wildfire-btn" style="display:none" title="Show active wildfires (NASA satellite data)" onclick="toggleWildfireLayer()">
     <img class="icon-img" src="icons/fire.png" alt="Fire">
   </div>
@@ -1420,6 +1445,7 @@ button:focus-visible, [role="button"]:focus-visible, a:focus-visible, input:focu
   </div>
 </div>
 <input type="text" id="mapDateRangePicker" style="display:none">
+<div id="sourceEstPanel" role="status" aria-live="polite"></div>
 <div id="mapEmptyState" role="status" aria-live="polite">
   <b id="mapEmptyTitle"></b>
   <span id="mapEmptyBody"></span>
@@ -1466,6 +1492,27 @@ button:focus-visible, [role="button"]:focus-visible, a:focus-visible, input:focu
           </svg> Map key
         </button>
       </div>
+    </div>
+
+    <div class="detail-section" id="languageSettingsSection">
+      <div class="detail-section-title" id="languageSectionTitle">Language</div>
+      <div class="theme-segment" id="langSegment">
+        <button type="button" class="theme-segment-btn" onclick="setLang('en')" id="langBtnEn">🇬🇧 EN</button>
+        <button type="button" class="theme-segment-btn active" onclick="setLang('sr')" id="langBtnSr">🇷🇸 SR</button>
+        <button type="button" class="theme-segment-btn" onclick="setLang('auto')" id="langBtnAuto"><span id="langBtnAutoLabel">Auto</span></button>
+      </div>
+      <p class="detail-export-hint" id="langAutoHint">We'll set the language from your location if available, otherwise from your device, time zone, or network.</p>
+    </div>
+
+    <div class="detail-section" id="themeSettingsSection">
+      <div class="detail-section-title" id="themeSectionTitle">Theme</div>
+      <div class="theme-segment" id="themeSegment">
+        <button type="button" class="theme-segment-btn" onclick="setThemeMode('light')" id="themeBtnLight">Light</button>
+        <button type="button" class="theme-segment-btn active" onclick="setThemeMode('dark')" id="themeBtnDark">Dark</button>
+        <button type="button" class="theme-segment-btn" onclick="setThemeMode('auto')" id="themeBtnAuto">Auto</button>
+        <button type="button" class="theme-segment-btn" onclick="setThemeMode('smart')" id="themeBtnSmart">Smart</button>
+      </div>
+      <p class="detail-export-hint" id="themeAutoHint">Auto follows your device's light/dark setting. Smart adapts to ambient light where available, otherwise local time.</p>
     </div>
 
     <div class="detail-section" id="installSettingsSection">
@@ -1534,27 +1581,6 @@ button:focus-visible, [role="button"]:focus-visible, a:focus-visible, input:focu
         </span>
       </label>
       <p class="detail-export-hint" id="splashQuotesToggleHint"></p>
-    </div>
-
-    <div class="detail-section" id="languageSettingsSection">
-      <div class="detail-section-title" id="languageSectionTitle">Language</div>
-      <div class="theme-segment" id="langSegment">
-        <button type="button" class="theme-segment-btn" onclick="setLang('en')" id="langBtnEn">🇬🇧 EN</button>
-        <button type="button" class="theme-segment-btn active" onclick="setLang('sr')" id="langBtnSr">🇷🇸 SR</button>
-        <button type="button" class="theme-segment-btn" onclick="setLang('auto')" id="langBtnAuto"><span id="langBtnAutoLabel">Auto</span></button>
-      </div>
-      <p class="detail-export-hint" id="langAutoHint">We'll set the language from your location if available, otherwise from your device, time zone, or network.</p>
-    </div>
-
-    <div class="detail-section" id="themeSettingsSection">
-      <div class="detail-section-title" id="themeSectionTitle">Theme</div>
-      <div class="theme-segment" id="themeSegment">
-        <button type="button" class="theme-segment-btn" onclick="setThemeMode('light')" id="themeBtnLight">Light</button>
-        <button type="button" class="theme-segment-btn active" onclick="setThemeMode('dark')" id="themeBtnDark">Dark</button>
-        <button type="button" class="theme-segment-btn" onclick="setThemeMode('auto')" id="themeBtnAuto">Auto</button>
-        <button type="button" class="theme-segment-btn" onclick="setThemeMode('smart')" id="themeBtnSmart">Smart</button>
-      </div>
-      <p class="detail-export-hint" id="themeAutoHint">Auto follows your device's light/dark setting. Smart adapts to ambient light where available, otherwise local time.</p>
     </div>
 
     <div class="detail-section" id="trailHoursSettingsSection">
@@ -2239,6 +2265,8 @@ function applyTraceButtonVisibility() {
   // Hide the Leaflet control wrapper too, so it leaves no empty gap.
   const holder = btn.closest('.leaflet-control') || btn;
   holder.style.display = traceButtonVisible ? '' : 'none';
+  const se = document.getElementById('sourceEstBtn');
+  if (se) se.style.display = traceButtonVisible ? 'flex' : 'none';
 }
 function hideSettingsModal() {
   document.getElementById('settingsModal').style.display = 'none';
@@ -2662,6 +2690,29 @@ const T = {
   popupDuration: { en: 'Duration',                      sr: 'Trajanje' },
 
   historical: { en: 'Historical Data', sr: 'Istorijski Podaci' },
+  elevation: { en: 'Elevation', sr: 'Nadmorska visina' },
+  mixingLayer: { en: 'Mixing layer', sr: 'Sloj mešanja' },
+  mix_shallow: { en: 'shallow', sr: 'plitak' },
+  mix_moderate: { en: 'moderate', sr: 'umeren' },
+  mix_deep: { en: 'deep', sr: 'dubok' },
+  mixRain: { en: 'rain', sr: 'kiša' },
+  seBtnTitle: { en: 'Estimate the likely source where wind trajectories converge', sr: 'Proceni verovatan izvor tamo gde se putanje vetra susreću' },
+  seHeader: { en: 'Source estimate', sr: 'Procena izvora' },
+  seRunning: { en: 'Computing trajectories {n}/{m}…', sr: 'Računam putanje {n}/{m}…' },
+  seNone: { en: 'Need at least 3 reports on the map. Pick a date range that has reports first.', sr: 'Potrebno je bar 3 prijave na mapi. Prvo izaberi period koji ima prijave.' },
+  seTooFew: { en: 'Fewer than 3 reports have a usable wind trail yet (very new reports or missing wind data).', sr: 'Manje od 3 prijave imaju upotrebljivu putanju vetra (nove prijave ili nedostaju podaci o vetru).' },
+  seNoConv: { en: 'No clear convergence: this peak is not stronger than random pairings of the same reports and wind paths produce (p = {p}). Heatmap is for reference only.', sr: 'Nema jasnog preklapanja: ovaj vrh nije jači od onog koji daju nasumična uparivanja istih prijava i putanja vetra (p = {p}). Toplotna mapa je samo orijentaciona.' },
+  seChecking: { en: 'Checking against random pairings {n}/{m}…', sr: 'Proveravam naspram nasumičnih uparivanja {n}/{m}…' },
+  seChance: { en: 'Chance check ({k} shuffles): p = {p}', sr: 'Provera slučajnosti ({k} mešanja): p = {p}' },
+  seSupport: { en: '{n} of {m} trajectories pass within 1.5σ of the peak', sr: '{n} od {m} putanja prolazi unutar 1,5σ od vrha' },
+  sePeak: { en: 'Peak at {lat}, {lon}', sr: 'Vrh na {lat}, {lon}' },
+  seArea: { en: 'Area above half of the peak score: ≈ {a} km²', sr: 'Površina iznad polovine vrha: ≈ {a} km²' },
+  seTransport: { en: 'Median {d} km and {h} h upwind of the reports', sr: 'Medijana {d} km i {h} h uz vetar od prijava' },
+  seMixing: { en: '{p}% of these reports were made under a shallow mixing layer (< 300 m)', sr: '{p}% ovih prijava je nastalo pod plitkim slojem mešanja (< 300 m)' },
+  seSubset: { en: 'Using the {u} strongest of {t} reports', sr: 'Koristim {u} najjačih od {t} prijava' },
+  seBias: { en: 'Correct for where people report', sr: 'Koriguj prema tome gde ljudi prijavljuju' },
+  seClose: { en: 'Close', sr: 'Zatvori' },
+  seNote: { en: 'Heuristic model built on 10 m wind trajectories, not a dispersion model. Treat it as a lead, not proof.', sr: 'Heuristički model zasnovan na putanjama vetra na 10 m, a ne model disperzije. Tretiraj ga kao trag, ne kao dokaz.' },
 
   aqStationLabel: { en: 'Air Quality Station', sr: 'Stanica za kvalitet vazduha' },
   aqUpdated:      { en: 'Updated',             sr: 'Ažurirano' },
@@ -2894,7 +2945,7 @@ const T = {
   installBannerBody: { en:'Add it to your home screen for quick access.', sr:'Dodaj je na početni ekran za brz pristup.' },
   installBannerBtn: { en:'Install', sr:'Instaliraj' },
   alertToggleLabel: { en:'Wind alerts', sr:'Upozorenja o vetru' },
-  alertToggleHint: { en:'Get a notification when several people report bad air nearby and the wind is carrying it toward you. For this, your approximate location (about 250 m accuracy) is stored.', sr:'Dobij obaveštenje kada više ljudi prijavi loš vazduh u blizini, a vetar ga nosi ka tebi. Za to se čuva tvoja približna lokacija (tačnost oko 250 m).' },
+  alertToggleHint: { en:'Get a notification when several people report bad air nearby and the wind is carrying it toward you. For this, your approximate location (about 150 m accuracy) is stored.', sr:'Dobij obaveštenje kada više ljudi prijavi loš vazduh u blizini, a vetar ga nosi ka tebi. Za to se čuva tvoja približna lokacija (tačnost oko 150 m).' },
   alertRadiusTitle: { en:'Alert distance', sr:'Udaljenost upozorenja' },
   alertsOn: { en:'Alerts are on.', sr:'Upozorenja su uključena.' },
   alertsInAppOnly: { en:'Background notifications could not be set up. Alerts will still show while the app is open. Try again in a moment.', sr:'Obaveštenja u pozadini nisu mogla da se podese. Upozorenja će se i dalje prikazivati dok je aplikacija otvorena. Pokušaj ponovo za koji trenutak.' },
@@ -3130,6 +3181,7 @@ function applyLang(){
   try { applyPwaLang(); } catch (e) { /* PWA block not initialised yet */ }
 
   if (el('subtitle'))         el('subtitle').textContent = t('subtitle');
+  if (el('sourceEstBtn'))     el('sourceEstBtn').title = t('seBtnTitle');
   if (el('csvLabel'))         el('csvLabel').textContent = t('csvLabel');
   if (el('stationCsvLabel'))  el('stationCsvLabel').textContent = t('stationCsvLabel');
   if (el('filterTitleLabel')) el('filterTitleLabel').textContent = t('timeFilter');
@@ -3650,9 +3702,12 @@ function checkFormReady() {
   }
 }
 
+// Max random offset applied to every GPS fix before it is stored or shown.
+const GPS_BLUR_METERS = 150;
+
 // Obfuscate a GPS fix by offsetting it a random distance (up to radiusMeters)
 // in a random direction, so the device's true location is never stored or shown.
-function fuzzCoords(lat, lon, radiusMeters = 250) {
+function fuzzCoords(lat, lon, radiusMeters = GPS_BLUR_METERS) {
   const earthRadius = 6371000; // meters
   const randomAngle = Math.random() * 2 * Math.PI;
   // sqrt() gives a uniform distribution of points across the disk area
@@ -3697,7 +3752,7 @@ function makeUserLocationIcon(windDeg) {
 function startWatching() {
   navigator.geolocation.getCurrentPosition(
     pos => {
-      userCoords = fuzzCoords(pos.coords.latitude, pos.coords.longitude, 250);
+      userCoords = fuzzCoords(pos.coords.latitude, pos.coords.longitude, GPS_BLUR_METERS);
       saveLastGps(userCoords);
       hideGpsModal();
 
@@ -7971,6 +8026,22 @@ function buildReportPopupHtml(report, stationSectionHtml) {
       </span>
     </div>
 
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <span style="font-size:9px;color:var(--text-secondary);">${t('elevation')}</span>
+      <span style="font-size:10px;color:var(--text-secondary);white-space:nowrap;">
+        ${report.elevation != null ? Math.round(report.elevation) + ' m' : '–'}
+      </span>
+    </div>
+
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <span style="font-size:9px;color:var(--text-secondary);">${t('mixingLayer')}</span>
+      <span style="font-size:10px;color:var(--text-secondary);white-space:nowrap;">
+        ${report.stability && report.stability.blh_m != null
+          ? Math.round(report.stability.blh_m) + ' m · ' + t('mix_' + (report.stability.cls || 'moderate')) + (report.stability.wet ? ' · ' + t('mixRain') : '')
+          : '–'}
+      </span>
+    </div>
+
     <div style="height:1px;background:var(--border-color);margin:2px 0;"></div>
     ${stationSectionHtml}
 
@@ -8108,7 +8179,7 @@ function renderPin(report, index = 0){
 const AIR_REPORTS_LIST_COLUMNS = [
   'id', 'created_at', 'latitude', 'longitude', 'wind_speed', 'wind_direction',
   'sea_level_pressure', 'comment', 'category', 'duration', 'intensity',
-  'formatted_id', 'manual_wind_direction', 'updated_at', 'confidence', 'location_name'
+  'formatted_id', 'manual_wind_direction', 'updated_at', 'confidence', 'location_name', 'elevation', 'stability'
 ].join(',');
 
 // Friendly card shown when the on-map date filter matches no reports.
@@ -8125,9 +8196,118 @@ function renderMapEmptyState() {
 }
 function updateMapEmptyState(show) { mapEmptyShown = !!show; renderMapEmptyState(); }
 
+// ── Elevation (metres above sea level) ─────────────────────────────────
+// Open-Meteo's elevation endpoint accepts up to 100 coordinates per call.
+async function fetchElevations(points) {
+  const out = [];
+  for (let i = 0; i < points.length; i += 100) {
+    const chunk = points.slice(i, i + 100);
+    const lat = chunk.map(p => Number(p.lat).toFixed(5)).join(',');
+    const lon = chunk.map(p => Number(p.lon).toFixed(5)).join(',');
+    const r = await fetch(`https://api.open-meteo.com/v1/elevation?latitude=${lat}&longitude=${lon}`);
+    if (!r.ok) throw new Error('elevation HTTP ' + r.status);
+    const j = await r.json();
+    if (!Array.isArray(j.elevation) || j.elevation.length !== chunk.length) throw new Error('elevation: bad response');
+    out.push(...j.elevation.map(v => (v == null ? null : Math.round(v))));
+  }
+  return out;
+}
+
+// ── Atmospheric mixing context ─────────────────────────────────────────
+// Same schema the one-off database backfill used: boundary-layer height at
+// report time and over the previous 12 h, plus temperature, humidity, cloud
+// and 12 h rain. `cls` is a simple heuristic (<300 m shallow, <1000 moderate).
+function classifyMixing(blh) { return blh < 300 ? 'shallow' : blh < 1000 ? 'moderate' : 'deep'; }
+async function fetchStabilityContext(lat, lon, isoTime) {
+  const tgt = new Date(isoTime).getTime();
+  const vars = 'boundary_layer_height,temperature_2m,relative_humidity_2m,precipitation,cloud_cover';
+  const ageDays = (Date.now() - tgt) / 86400000;
+  const sd = new Date(tgt - 13 * 3600000).toISOString().slice(0, 10);
+  const ed = new Date(tgt + 3600000).toISOString().slice(0, 10);
+  const la = Number(lat).toFixed(3), lo = Number(lon).toFixed(3);
+  const url = ageDays < 7
+    ? `https://api.open-meteo.com/v1/forecast?latitude=${la}&longitude=${lo}&hourly=${vars}&timezone=UTC&past_days=7&forecast_days=1`
+    : `https://historical-forecast-api.open-meteo.com/v1/forecast?latitude=${la}&longitude=${lo}&start_date=${sd}&end_date=${ed}&hourly=${vars}&timezone=UTC`;
+  const h = await runWithOpenMeteoLimit(async () => {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error('stability HTTP ' + r.status);
+    return (await r.json()).hourly;
+  });
+  if (!h?.time?.length) return null;
+  const tgtHour = Math.round(tgt / 3600000) * 3600000;
+  const i0 = h.time.findIndex(x => Date.parse(x + 'Z') === tgtHour);
+  if (i0 < 0 || h.boundary_layer_height?.[i0] == null) return null;
+  const win = [];
+  for (let i = Math.max(0, i0 - 11); i <= i0; i++) win.push(i);
+  const blhs = win.map(i => h.boundary_layer_height[i]).filter(v => v != null);
+  const rain = win.reduce((a, i) => a + (h.precipitation?.[i] || 0), 0);
+  const blh = h.boundary_layer_height[i0];
+  return {
+    blh_m: Math.round(blh),
+    blh_min12_m: Math.round(Math.min(...blhs)),
+    blh_mean12_m: Math.round(blhs.reduce((a, v) => a + v, 0) / blhs.length),
+    temp_c: h.temperature_2m?.[i0] != null ? Math.round(h.temperature_2m[i0] * 10) / 10 : null,
+    rh_pct: h.relative_humidity_2m?.[i0] != null ? Math.round(h.relative_humidity_2m[i0]) : null,
+    cloud_pct: h.cloud_cover?.[i0] != null ? Math.round(h.cloud_cover[i0]) : null,
+    precip_12h_mm: Math.round(rain * 10) / 10,
+    cls: classifyMixing(blh),
+    wet: rain >= 1.0,
+    src: 'open-meteo'
+  };
+}
+
+// Safety net for reports that still lack stability (an older app version, or
+// the lookup failed at submit time). A few per load, sequentially, so it
+// never competes with the map's own wind requests.
+let stabilityBackfillRunning = false;
+async function backfillMissingStability(reports) {
+  if (stabilityBackfillRunning) return;
+  const todo = reports.filter(r => r.stability == null && r.latitude != null).slice(0, 5);
+  if (!todo.length) return;
+  stabilityBackfillRunning = true;
+  try {
+    for (const r of todo) {
+      const ctx = await fetchStabilityContext(r.latitude, r.longitude, r.created_at);
+      if (!ctx) continue;
+      const { error } = await sb.from('air_reports').update({ stability: ctx }).eq('id', Number(r.id));
+      if (!error) r.stability = ctx;
+    }
+  } catch (e) {
+    console.warn('Stability backfill skipped:', e);
+  } finally {
+    stabilityBackfillRunning = false;
+  }
+}
+
+// Safety net: fills elevation for any report that doesn't have it yet
+// (e.g. one inserted by an older app version). The DB only allows
+// null -> value, so this can never overwrite a stored reading.
+let elevationBackfillRunning = false;
+async function backfillMissingElevations(reports) {
+  if (elevationBackfillRunning) return;
+  const missing = reports.filter(r => r.elevation == null && r.latitude != null && r.longitude != null);
+  if (!missing.length) return;
+  elevationBackfillRunning = true;
+  try {
+    const batch = missing.slice(0, 100);
+    const elevs = await fetchElevations(batch.map(r => ({ lat: r.latitude, lon: r.longitude })));
+    for (let i = 0; i < batch.length; i++) {
+      if (elevs[i] == null) continue;
+      const { error } = await sb.from('air_reports').update({ elevation: elevs[i] }).eq('id', Number(batch[i].id));
+      if (!error) batch[i].elevation = elevs[i];
+    }
+  } catch (e) {
+    console.warn('Elevation backfill skipped:', e);
+  } finally {
+    elevationBackfillRunning = false;
+  }
+}
+
 async function fetchAll(){
   const {data,error}=await sb.from('air_reports').select(AIR_REPORTS_LIST_COLUMNS).order('created_at',{ascending:false});
   if(error){ console.error(error); return []; }
+  backfillMissingElevations(data);   // fire-and-forget, no-op once everything is filled
+  backfillMissingStability(data);
   return data;
 }
 
@@ -8138,6 +8318,7 @@ let pinLoadSeq = 0;
 async function loadPinsByWindow() {
   const mySeq = ++pinLoadSeq;
   activeTraceRequestId++;   // cancel any trace still computing against the old filter/data
+  if (typeof seClear === 'function') seClear();   // a source estimate belongs to the previous filter
   clearMarkers(); clearBacktrack(); clearBackgroundTrails();
   const data = await fetchAll();
   if (mySeq !== pinLoadSeq) return;
@@ -8191,6 +8372,396 @@ async function loadPinsByWindow() {
     mapDisplayedReports = activeReports;
     generateAllBackgroundTrails(activeReports);
   }
+}
+
+/* ═══════════════════════════════════════════════════
+   SOURCE ESTIMATE (trajectory convergence)
+   Every displayed report already has a backward wind trajectory. Where many
+   of them pass through the same place, a source is plausible there. Each
+   trajectory contributes a "soft pass-through" score in [0,1] to every map
+   cell: 1 on its path, falling off as a Gaussian with distance from the path.
+   The Gaussian widens with travel distance (more wobble in wind direction ->
+   wider) and the score decays with distance from the report (odour dilutes;
+   faster under deep mixing or rain, slower under a shallow inversion).
+   Scores are summed over trajectories, so one report can never dominate,
+   then optionally divided by how densely people report in that area so the
+   map doesn't just light up where people live. This is a heuristic on 10 m
+   wind, not a dispersion model.
+═══════════════════════════════════════════════════ */
+const SE_MAX_REPORTS = 120;        // keeps Open-Meteo traffic and CPU bounded
+const SE_SIGMA0_KM = 0.6;          // base position error (GPS blur + model grid)
+const SE_SIGMA0_CALM_KM = 1.0;     // wind so light the trail barely moves
+const SE_MIN_ANGLE = 15, SE_MAX_ANGLE = 55;   // wind-direction spread, degrees
+const SE_DECAY_KM = { shallow: 14, moderate: 9, deep: 5 };
+const SE_WET_DECAY_FACTOR = 0.6;
+const SE_BIAS_SIGMA_KM = 3;        // smoothing for the "where people report" map
+const SE_BIAS_EPS = 0.35;          // regularises the bias correction
+const SE_MIN_SUPPORT = 3;
+const SE_SUPPORT_Z = 1.5;
+const SE_MAX_GRID = 200;
+const SE_TAIL_DECAYS = 3.5;        // ignore path beyond 3.5 decay lengths (score < 3%)
+const SE_VMIN = 0.02;              // kernel cut-off value
+const SE_NULL_RUNS = 49;           // permutation shuffles for the chance check
+const SE_ALPHA = 0.05;
+const SE_MAX_EXTENT_KM = 160;
+
+const SE = { runId: 0, running: false, biasOn: true, cache: null, overlay: null, marker: null, ellipse: null, active: false };
+
+function seIsCleanAir(r) { return /clean air|čist vazduh/i.test(String(r.category || '')); }
+
+function seProj(lat0, lon0) {
+  const kx = 111.320 * Math.cos(lat0 * Math.PI / 180), ky = 110.574;
+  return { lat0, lon0, kx, ky,
+    xy: (lat, lon) => [(lon - lon0) * kx, (lat - lat0) * ky],
+    ll: (x, y) => [lat0 + y / ky, lon0 + x / kx] };
+}
+
+function seMakeTraj(report, rawTrail, P) {
+  const xy = rawTrail.map(p => P.xy(parseFloat(p.lat), parseFloat(p.lon)));
+  const cum = [0], brg = [];
+  for (let i = 1; i < xy.length; i++) {
+    const dx = xy[i][0] - xy[i - 1][0], dy = xy[i][1] - xy[i - 1][1], len = Math.hypot(dx, dy);
+    cum.push(cum[i - 1] + len);
+    if (len > 0.05) brg.push(Math.atan2(dx, dy));
+  }
+  const total = cum[cum.length - 1];
+
+  // How much did the wind direction wobble over the window? (circular std)
+  let ang = SE_MIN_ANGLE;
+  if (brg.length >= 3) {
+    const c = brg.reduce((a, b) => a + Math.cos(b), 0) / brg.length;
+    const s = brg.reduce((a, b) => a + Math.sin(b), 0) / brg.length;
+    const R = Math.max(Math.hypot(c, s), 1e-6);
+    const sd = Math.sqrt(-2 * Math.log(Math.min(R, 1))) * 180 / Math.PI;
+    ang = Math.min(SE_MAX_ANGLE, Math.max(SE_MIN_ANGLE, sd));
+  }
+  const tanA = Math.tan(ang * Math.PI / 180);
+  const sig0 = total < 1 ? SE_SIGMA0_CALM_KM : SE_SIGMA0_KM;
+
+  const cls = report.stability?.cls || 'moderate';
+  let decay = SE_DECAY_KM[cls] || SE_DECAY_KM.moderate;
+  if (report.stability?.wet) decay *= SE_WET_DECAY_FACTOR;
+  const inten = Math.min(10, Math.max(1, Number(report.intensity) || 5));
+  const w = 0.4 + 0.6 * inten / 10;
+
+  const samples = [];
+  if (xy.length < 2 || total < 0.05) {
+    samples.push({ x: xy[0][0], y: xy[0][1], d: 0, h: 0, sigma: sig0, a: w });
+  } else {
+    let seg = 1, d = 0;
+    for (;;) {
+      while (seg < cum.length - 1 && cum[seg] < d) seg++;
+      const A = xy[seg - 1], B = xy[seg], span = (cum[seg] - cum[seg - 1]) || 1;
+      const f = Math.min(1, Math.max(0, (d - cum[seg - 1]) / span));
+      const sigma = Math.sqrt(sig0 * sig0 + (d * tanA) * (d * tanA));
+      samples.push({ x: A[0] + (B[0] - A[0]) * f, y: A[1] + (B[1] - A[1]) * f,
+                     d, h: (seg - 1) + f, sigma, a: w * Math.exp(-d / decay) });
+      if (d >= total || d > SE_TAIL_DECAYS * decay) break;   // beyond this the score is negligible
+      d = Math.min(total, d + Math.max(0.25, Math.min(sigma / 1.5, 3)));
+    }
+  }
+  return { id: report.id, report, origin: xy[0], samples, total, ang, cls };
+}
+
+function seMakeGrid(trajs) {
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  trajs.forEach(t => t.samples.forEach(s => {
+    const pad = Math.min(3 * s.sigma, 25);
+    minX = Math.min(minX, s.x - pad); maxX = Math.max(maxX, s.x + pad);
+    minY = Math.min(minY, s.y - pad); maxY = Math.max(maxY, s.y + pad);
+  }));
+  let w = maxX - minX, h = maxY - minY;
+  const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+  w = Math.min(w, SE_MAX_EXTENT_KM); h = Math.min(h, SE_MAX_EXTENT_KM);
+  const cell = Math.max(0.25, Math.max(w, h) / SE_MAX_GRID);
+  const nx = Math.max(8, Math.ceil(w / cell)), ny = Math.max(8, Math.ceil(h / cell));
+  return { x0: cx - nx * cell / 2, y0: cy - ny * cell / 2, cell, nx, ny };
+}
+
+// Writes max(existing, a*exp(-r²/2σ²)) when `mode` is 'max', or adds when 'add'.
+function seDeposit(buf, g, x, y, sigma, a, mode) {
+  if (a <= SE_VMIN) return;
+  const r = Math.min(3, Math.sqrt(2 * Math.log(a / SE_VMIN))) * sigma, r2 = r * r, inv = 1 / (2 * sigma * sigma);
+  const i0 = Math.max(0, Math.floor((x - r - g.x0) / g.cell)), i1 = Math.min(g.nx - 1, Math.ceil((x + r - g.x0) / g.cell));
+  const j0 = Math.max(0, Math.floor((y - r - g.y0) / g.cell)), j1 = Math.min(g.ny - 1, Math.ceil((y + r - g.y0) / g.cell));
+  for (let j = j0; j <= j1; j++) {
+    const dy = g.y0 + (j + 0.5) * g.cell - y, dy2 = dy * dy;
+    for (let i = i0; i <= i1; i++) {
+      const dx = g.x0 + (i + 0.5) * g.cell - x, q = dx * dx + dy2;
+      if (q > r2) continue;
+      const v = a * Math.exp(-q * inv), k = j * g.nx + i;
+      if (mode === 'max') { if (v > buf[k]) buf[k] = v; } else buf[k] += v;
+    }
+  }
+}
+
+function seBuildBias(g, origins) {
+  const B = new Float32Array(g.nx * g.ny);
+  origins.forEach(([x, y]) => seDeposit(B, g, x, y, SE_BIAS_SIGMA_KM, 1, 'add'));
+  let m = 0; for (let k = 0; k < B.length; k++) if (B[k] > m) m = B[k];
+  if (m > 0) for (let k = 0; k < B.length; k++) B[k] /= m;
+  return B;
+}
+function seScoreGrid(g, sampleSets) {
+  const L = new Float32Array(g.nx * g.ny), tmp = new Float32Array(g.nx * g.ny);
+  sampleSets.forEach(samples => {
+    tmp.fill(0);
+    samples.forEach(s => seDeposit(tmp, g, s.x, s.y, s.sigma, s.a, 'max'));
+    for (let k = 0; k < tmp.length; k++) L[k] += tmp[k];
+  });
+  return L;
+}
+function sePeaks(L, B) {
+  let raw = 0, bias = 0;
+  for (let k = 0; k < L.length; k++) {
+    if (L[k] > raw) raw = L[k];
+    const v = L[k] / (SE_BIAS_EPS + B[k]); if (v > bias) bias = v;
+  }
+  return { raw, bias };
+}
+
+// Chance check. Re-pairs every report's wind path (its shape relative to the
+// report) with a different report's location, many times. That keeps where
+// people report and the mix of wind paths, but breaks the report-specific
+// alignment that makes real trajectories converge. If shuffled data produce
+// peaks as high as the real one, the convergence is not meaningful.
+async function seSignificance(trajs, origins, onProgress, myRun) {
+  let maxRel = 0;
+  trajs.forEach(t => t.samples.forEach(s => { maxRel = Math.max(maxRel, Math.hypot(s.x - t.origin[0], s.y - t.origin[1])); }));
+  maxRel = Math.min(maxRel, 80) + 2;
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  trajs.forEach(t => { x0 = Math.min(x0, t.origin[0]); x1 = Math.max(x1, t.origin[0]); y0 = Math.min(y0, t.origin[1]); y1 = Math.max(y1, t.origin[1]); });
+  x0 -= maxRel; x1 += maxRel; y0 -= maxRel; y1 += maxRel;
+  const cell = Math.max(1, Math.max(x1 - x0, y1 - y0) / 120);
+  const gn = { x0, y0, cell, nx: Math.ceil((x1 - x0) / cell), ny: Math.ceil((y1 - y0) / cell) };
+  const Bn = seBuildBias(gn, origins);
+  const obs = sePeaks(seScoreGrid(gn, trajs.map(t => t.samples)), Bn);
+  const n = trajs.length;
+  let geRaw = 0, geBias = 0;
+  for (let k = 0; k < SE_NULL_RUNS; k++) {
+    if (SE.runId !== myRun) return null;
+    const perm = [...Array(n).keys()];
+    for (let i = n - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [perm[i], perm[j]] = [perm[j], perm[i]]; }
+    const sets = trajs.map((tr, i) => {
+      const src = trajs[perm[i]], dx = tr.origin[0] - src.origin[0], dy = tr.origin[1] - src.origin[1];
+      return src.samples.map(s => ({ x: s.x + dx, y: s.y + dy, sigma: s.sigma, a: s.a }));
+    });
+    const pk = sePeaks(seScoreGrid(gn, sets), Bn);
+    if (pk.raw >= obs.raw) geRaw++;
+    if (pk.bias >= obs.bias) geBias++;
+    if (k % 4 === 3) { if (onProgress) onProgress(k + 1); await new Promise(r => setTimeout(r, 0)); }
+  }
+  return { K: SE_NULL_RUNS, pRaw: (1 + geRaw) / (SE_NULL_RUNS + 1), pBias: (1 + geBias) / (SE_NULL_RUNS + 1) };
+}
+
+function seClear() {
+  SE.runId++; SE.running = false; SE.cache = null; SE.active = false;
+  [SE.overlay, SE.marker, SE.ellipse].forEach(l => { if (l) { try { map.removeLayer(l); } catch (e) {} } });
+  SE.overlay = SE.marker = SE.ellipse = null;
+  const panel = document.getElementById('sourceEstPanel');
+  if (panel) { panel.classList.remove('visible'); panel.innerHTML = ''; }
+  const btn = document.getElementById('sourceEstBtn');
+  if (btn) btn.classList.remove('active');
+}
+
+function sePanel(html) {
+  const panel = document.getElementById('sourceEstPanel');
+  if (!panel) return;
+  panel.innerHTML = html;
+  panel.classList.add('visible');
+}
+function sePanelProgress(k) {
+  const el = document.getElementById('sourceEstChecking');
+  if (el) el.textContent = seFill(t('seChecking'), { n: k, m: SE_NULL_RUNS });
+}
+function seFill(str, o) { return String(str).replace(/\{(\w+)\}/g, (_, k) => (o[k] != null ? o[k] : '')); }
+
+function toggleSourceEstimate() {
+  if (SE.active || SE.running) { seClear(); return; }
+  runSourceEstimate();
+}
+
+async function runSourceEstimate() {
+  const btn = document.getElementById('sourceEstBtn');
+  const shown = (typeof mapDisplayedReports !== 'undefined' && mapDisplayedReports) ? mapDisplayedReports : [];
+  const eligible = shown.filter(r => !seIsCleanAir(r) && r.latitude != null && r.longitude != null &&
+    (Date.now() - new Date(r.created_at).getTime()) / 3600000 >= TRAIL_MIN_HOURS);
+  if (eligible.length < 3) {
+    sePanel(`<b class="se-h">${t('seHeader')}</b><div class="se-row">${t('seNone')}</div>
+      <div class="se-actions"><span></span><button onclick="seClear()">${t('seClose')}</button></div>`);
+    if (btn) btn.classList.add('active');
+    SE.active = true;
+    return;
+  }
+
+  const chosen = eligible.length > SE_MAX_REPORTS
+    ? eligible.slice().sort((a, b) => (Number(b.intensity) || 0) - (Number(a.intensity) || 0) ||
+        new Date(b.created_at) - new Date(a.created_at)).slice(0, SE_MAX_REPORTS)
+    : eligible;
+
+  const myRun = ++SE.runId;
+  SE.running = true;
+  if (btn) btn.classList.add('active');
+  const progress = n => sePanel(`<b class="se-h">${t('seHeader')}</b><div class="se-row">${seFill(t('seRunning'), { n, m: chosen.length })}</div>`);
+  progress(0);
+
+  const trails = new Array(chosen.length).fill(null);
+  let next = 0, done = 0;
+  const worker = async () => {
+    for (;;) {
+      const i = next++;
+      if (i >= chosen.length || SE.runId !== myRun) return;
+      try { trails[i] = await buildWindTrailForReport(chosen[i]); } catch (e) { trails[i] = null; }
+      done++;
+      if (SE.runId === myRun) progress(done);
+    }
+  };
+  await Promise.all([worker(), worker(), worker(), worker()]);
+  if (SE.runId !== myRun) return;
+
+  const valid = [];
+  chosen.forEach((r, i) => { if (trails[i]?.rawTrail?.length >= 2) valid.push({ r, raw: trails[i].rawTrail }); });
+  if (valid.length < 3) {
+    SE.running = false; SE.active = true;
+    sePanel(`<b class="se-h">${t('seHeader')}</b><div class="se-row">${t('seTooFew')}</div>
+      <div class="se-actions"><span></span><button onclick="seClear()">${t('seClose')}</button></div>`);
+    return;
+  }
+
+  // Let the browser paint "computing" before the number crunching starts.
+  await new Promise(res => setTimeout(res, 0));
+
+  const lat0 = valid.reduce((a, v) => a + parseFloat(v.r.latitude), 0) / valid.length;
+  const lon0 = valid.reduce((a, v) => a + parseFloat(v.r.longitude), 0) / valid.length;
+  const P = seProj(lat0, lon0);
+  const trajs = valid.map(v => seMakeTraj(v.r, v.raw, P));
+  const g = seMakeGrid(trajs);
+
+  // Sum of per-trajectory pass-through scores.
+  const Lgrid = new Float32Array(g.nx * g.ny), tmp = new Float32Array(g.nx * g.ny);
+  trajs.forEach((tr, idx) => {
+    tmp.fill(0);
+    tr.samples.forEach(s => seDeposit(tmp, g, s.x, s.y, s.sigma, s.a, 'max'));
+    for (let k = 0; k < tmp.length; k++) Lgrid[k] += tmp[k];
+  });
+
+  // Where people report (all loaded reports, any time): reporting-effort map.
+  const origins = (globalActiveData || []).filter(r => r.latitude != null)
+    .map(r => P.xy(parseFloat(r.latitude), parseFloat(r.longitude)));
+  const Bgrid = seBuildBias(g, origins);
+
+  SE.cache = { P, g, trajs, Lgrid, Bgrid, total: eligible.length, used: chosen.length, sig: null };
+  SE.active = true;
+  seFinalize();   // show the map right away, then run the chance check
+
+  const sig = await seSignificance(trajs, origins,
+    k => { if (SE.runId === myRun) sePanelProgress(k); }, myRun);
+  if (SE.runId !== myRun) return;
+  SE.running = false;
+  SE.cache.sig = sig;
+  seFinalize();
+}
+
+function seFinalize() {
+  const c = SE.cache; if (!c) return;
+  const { P, g, trajs, Lgrid, Bgrid } = c;
+  const n = g.nx * g.ny, S = new Float32Array(n);
+  let smax = 0, kmax = 0;
+  for (let k = 0; k < n; k++) {
+    S[k] = SE.biasOn ? Lgrid[k] / (SE_BIAS_EPS + Bgrid[k]) : Lgrid[k];
+    if (S[k] > smax) { smax = S[k]; kmax = k; }
+  }
+  if (smax <= 0) return;
+  const pi = kmax % g.nx, pj = Math.floor(kmax / g.nx);
+  const px = g.x0 + (pi + 0.5) * g.cell, py = g.y0 + (pj + 0.5) * g.cell;
+
+  // Which trajectories actually agree on the peak?
+  const supp = [];
+  trajs.forEach(tr => {
+    let best = null;
+    tr.samples.forEach(s => {
+      const z = Math.hypot(s.x - px, s.y - py) / s.sigma;
+      if (!best || z < best.z) best = { z, d: s.d, h: s.h, ox: tr.origin[0], oy: tr.origin[1] };
+    });
+    if (best && best.z <= SE_SUPPORT_Z) supp.push(best);
+  });
+  const median = a => { const b = a.slice().sort((x, y) => x - y); const m = b.length >> 1; return b.length ? (b.length % 2 ? b[m] : (b[m - 1] + b[m]) / 2) : 0; };
+  const medDist = median(supp.map(s => Math.hypot(px - s.ox, py - s.oy)));
+  const medHours = median(supp.map(s => s.h));
+  const sig = c.sig;
+  const pVal = sig ? (SE.biasOn ? sig.pBias : sig.pRaw) : null;
+  const converged = supp.length >= SE_MIN_SUPPORT && pVal != null && pVal <= SE_ALPHA;
+  const pending = !sig;
+
+  // Connected region above half the peak -> area and an ellipse (2σ of the region).
+  const thr = 0.5 * smax, seen = new Uint8Array(n), stack = [kmax];
+  seen[kmax] = 1;
+  let wsum = 0, mx = 0, my = 0, count = 0; const cells = [];
+  while (stack.length) {
+    const k = stack.pop(); const i = k % g.nx, j = (k - i) / g.nx;
+    const wgt = S[k]; const x = g.x0 + (i + 0.5) * g.cell, y = g.y0 + (j + 0.5) * g.cell;
+    wsum += wgt; mx += wgt * x; my += wgt * y; count++; cells.push([x, y, wgt]);
+    [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([di, dj]) => {
+      const ni = i + di, nj = j + dj; if (ni < 0 || nj < 0 || ni >= g.nx || nj >= g.ny) return;
+      const nk = nj * g.nx + ni; if (!seen[nk] && S[nk] >= thr) { seen[nk] = 1; stack.push(nk); }
+    });
+  }
+  mx /= wsum; my /= wsum;
+  let sxx = 0, syy = 0, sxy = 0;
+  cells.forEach(([x, y, wgt]) => { sxx += wgt * (x - mx) ** 2; syy += wgt * (y - my) ** 2; sxy += wgt * (x - mx) * (y - my); });
+  sxx /= wsum; syy /= wsum; sxy /= wsum;
+  const tr2 = (sxx + syy) / 2, dd = Math.sqrt(((sxx - syy) / 2) ** 2 + sxy * sxy);
+  const A = Math.max(0.5, 2 * Math.sqrt(Math.max(tr2 + dd, 0))), B = Math.max(0.5, 2 * Math.sqrt(Math.max(tr2 - dd, 0)));
+  const th = 0.5 * Math.atan2(2 * sxy, sxx - syy);
+  const ring = [];
+  for (let a = 0; a <= 64; a++) {
+    const u = A * Math.cos(a / 64 * 2 * Math.PI), v = B * Math.sin(a / 64 * 2 * Math.PI);
+    ring.push(P.ll(mx + u * Math.cos(th) - v * Math.sin(th), my + u * Math.sin(th) + v * Math.cos(th)));
+  }
+  const areaKm2 = count * g.cell * g.cell;
+
+  // Heat overlay
+  const cv = document.createElement('canvas'); cv.width = g.nx; cv.height = g.ny;
+  const ctx = cv.getContext('2d'), img = ctx.createImageData(g.nx, g.ny);
+  for (let j = 0; j < g.ny; j++) for (let i = 0; i < g.nx; i++) {
+    const v = S[j * g.nx + i] / smax; if (v < 0.1) continue;
+    const tt = (v - 0.1) / 0.9, o = ((g.ny - 1 - j) * g.nx + i) * 4;
+    img.data[o] = 255; img.data[o + 1] = Math.round(235 * (1 - tt)); img.data[o + 2] = Math.round(40 * (1 - tt));
+    img.data[o + 3] = Math.round(255 * (0.18 + 0.5 * tt));
+  }
+  ctx.putImageData(img, 0, 0);
+  const sw = P.ll(g.x0, g.y0), ne = P.ll(g.x0 + g.nx * g.cell, g.y0 + g.ny * g.cell);
+
+  if (!map.getPane('sourceEstPane')) {
+    map.createPane('sourceEstPane'); map.getPane('sourceEstPane').style.zIndex = 420; map.getPane('sourceEstPane').style.pointerEvents = 'none';
+    map.createPane('sourceEstTopPane'); map.getPane('sourceEstTopPane').style.zIndex = 625;
+  }
+  [SE.overlay, SE.marker, SE.ellipse].forEach(l => { if (l) map.removeLayer(l); });
+  SE.overlay = L.imageOverlay(cv.toDataURL(), [sw, ne], { pane: 'sourceEstPane', interactive: false }).addTo(map);
+  SE.ellipse = L.polygon(ring, { pane: 'sourceEstTopPane', color: '#ff4b4b', weight: 2, dashArray: '6 6', fill: false, interactive: false }).addTo(map);
+  const [plat, plon] = P.ll(px, py);
+  const icon = L.divIcon({ className: '', iconSize: [30, 30], iconAnchor: [15, 15],
+    html: `<svg width="30" height="30" viewBox="0 0 30 30"><circle cx="15" cy="15" r="9" fill="none" stroke="#fff" stroke-width="5"/><circle cx="15" cy="15" r="9" fill="none" stroke="#ff4b4b" stroke-width="2.5" ${converged ? '' : 'stroke-dasharray="3 3"'}/><circle cx="15" cy="15" r="2.5" fill="#ff4b4b"/></svg>` });
+  SE.marker = L.marker([plat, plon], { icon, pane: 'sourceEstTopPane', keyboard: false }).addTo(map);
+
+  const shallowPct = Math.round(100 * trajs.filter(t => t.report.stability?.cls === 'shallow').length / trajs.length);
+  const html = `<b class="se-h">${t('seHeader')}</b>
+    <div class="se-row">${seFill(t('sePeak'), { lat: plat.toFixed(4), lon: plon.toFixed(4) })}</div>
+    <div class="se-row">${seFill(t('seSupport'), { n: supp.length, m: trajs.length })}</div>
+    ${pending ? `<div class="se-row" id="sourceEstChecking">${seFill(t('seChecking'), { n: 0, m: SE_NULL_RUNS })}</div>`
+    : converged ? `<div class="se-row">${seFill(t('seTransport'), { d: medDist.toFixed(1), h: medHours.toFixed(1) })}</div>
+    <div class="se-row">${seFill(t('seArea'), { a: areaKm2 < 10 ? areaKm2.toFixed(1) : Math.round(areaKm2) })}</div>
+    <div class="se-row">${seFill(t('seChance'), { k: sig.K, p: pVal.toFixed(3) })}</div>`
+    : `<div class="se-warn">${seFill(t('seNoConv'), { p: pVal != null ? pVal.toFixed(2) : '–' })}</div>`}
+    <div class="se-row">${seFill(t('seMixing'), { p: shallowPct })}</div>
+    ${c.used < c.total ? `<div class="se-row">${seFill(t('seSubset'), { u: c.used, t: c.total })}</div>` : ''}
+    <div class="se-actions">
+      <label><input type="checkbox" ${SE.biasOn ? 'checked' : ''} onchange="SE.biasOn=this.checked;seFinalize()"> ${t('seBias')}</label>
+      <button onclick="seClear()">${t('seClose')}</button>
+    </div>
+    <div class="se-note">${t('seNote')}</div>`;
+  sePanel(html);
+  SE.marker.bindPopup(`<b>${t('seHeader')}</b><br>${seFill(t('sePeak'), { lat: plat.toFixed(4), lon: plon.toFixed(4) })}<br>${seFill(t('seSupport'), { n: supp.length, m: trajs.length })}`);
 }
 
 /* ═══════════════════════════════════════════════════
@@ -8723,6 +9294,23 @@ async function reportBadAir(){
     console.warn('Reverse geocode failed at report time, will be backfilled on next CSV export:', geocodeErr);
   }
 
+  // Ground elevation (m above sea level) of the blurred report location.
+  let elevationM = null;
+  try {
+    const m = await fetchElevations([{ lat: coords.lat, lon: coords.lon }]);
+    elevationM = m[0];
+  } catch (elevErr) {
+    console.warn('Elevation fetch failed at report time, will be backfilled on next load:', elevErr);
+  }
+
+  // Mixing-layer / dispersion context at the report's own time.
+  let stabilityCtx = null;
+  try {
+    stabilityCtx = await fetchStabilityContext(coords.lat, coords.lon, reportDate.toISOString());
+  } catch (stabErr) {
+    console.warn('Stability fetch failed at report time, will be backfilled on next load:', stabErr);
+  }
+
   try {
     const { error } = await sb.from('air_reports').insert([{
       latitude:              parseFloat(coords.lat),
@@ -8737,6 +9325,8 @@ async function reportBadAir(){
       // once historical data is available.
       wind_speed:            finalSpeed,
       sea_level_pressure:    finalPressure || null,
+      elevation:             elevationM,
+      stability:             stabilityCtx,
       location_name:         locationName || null,
       comment,
       category,
@@ -9036,7 +9626,7 @@ async function downloadCSVInner() {
   const stationAverages = await computeStationAveragesForReports(visible, stationsForExport);
 
   let csv = `Report Generated/Downloaded On: ${new Date().toLocaleString()}\n\n`;
-  csv += 'ID,Date,Location,Latitude,Longitude,Category,Intensity,WindSpeed,WindDirection,HistoryWindDirection,SeaLevelPressure,Comment,' +
+  csv += 'ID,Date,Location,Latitude,Longitude,Category,Intensity,WindSpeed,WindDirection,HistoryWindDirection,SeaLevelPressure,ElevationM,BoundaryLayerM,MixingClass,Precip12hMm,Comment,' +
          'StationsAveraged,StationNames,AvgPM10,AvgPM2.5,AvgSO2,AvgNO2,AvgO3,StationsNotReporting,SensorsNotReporting\n';
 
   visible.forEach((r, i) => {
@@ -9056,6 +9646,10 @@ async function downloadCSVInner() {
       csvField(r.manual_wind_direction != null ? r.manual_wind_direction : ''),
       csvField(r.wind_direction != null ? r.wind_direction : ''),
       csvField(r.sea_level_pressure != null ? Number(r.sea_level_pressure).toFixed(1) : ''),
+      csvField(r.elevation != null ? Math.round(r.elevation) : ''),
+      csvField(r.stability?.blh_m ?? ''),
+      csvField(r.stability?.cls ?? ''),
+      csvField(r.stability?.precip_12h_mm ?? ''),
       csvField(r.comment || ''),
       csvField(sa.count),
       csvField(sa.names),
@@ -9639,13 +10233,13 @@ function alertsBlockedReason() {
   return '';
 }
 
-// Position used for alerts: the app's own (already fuzzed to ~250 m) location.
+// Position used for alerts: the app's own (already fuzzed to ~150 m) location.
 function getAlertLocation(fresh) {
   return new Promise((resolve, reject) => {
     if (!fresh && userCoords) return resolve({ lat: userCoords.lat, lon: userCoords.lon });
     if (!navigator.geolocation) return reject(new Error('no geolocation'));
     navigator.geolocation.getCurrentPosition(
-      p => { const c = fuzzCoords(p.coords.latitude, p.coords.longitude, 250); resolve({ lat: c.lat, lon: c.lon }); },
+      p => { const c = fuzzCoords(p.coords.latitude, p.coords.longitude, GPS_BLUR_METERS); resolve({ lat: c.lat, lon: c.lon }); },
       () => reject(new Error('location denied')),
       { timeout: 10000, maximumAge: fresh ? 0 : 600000 }
     );
