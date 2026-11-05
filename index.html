@@ -2921,6 +2921,31 @@ const T = {
   burnerWhatBurns:    { en:'What burns (public sources)', sr:'Šta se sagoreva (javni izvori)' },
   burnerApprox:       { en:'Approximate location: pin may be 1–2 km off.', sr:'Približna lokacija: oznaka može biti pomerena 1–2 km.' },
   burnerSources:      { en:'Sources', sr:'Izvori' },
+  plumeHourlyTitle:   { en:'Where the wind carries the plume', sr:'Kuda vetar nosi plume' },
+  plumeHourlyLoading: { en:'Loading hourly wind forecast…', sr:'Učitavanje satne prognoze vetra…' },
+  plumeHourlyUnavailable: { en:'Hourly wind data are not available for this location.', sr:'Satni podaci o vetru trenutno nisu dostupni za ovu lokaciju.' },
+  plumeHourlyEstimate: { en:'Model estimate from this site, not confirmation of an active emission.', sr:'Procena modela od ove lokacije, nije potvrda da postoji emisija.' },
+  plumeHourlyStackMode: { en:'Stack height not documented; uses a default blend of 10–180 m wind.', sr:'Visina dimnjaka nije dokumentovana; koristi se podrazumevana mešavina vetra 10–180 m.' },
+  plumeHourlyGroundMode: { en:'Emission height is unknown; uses 10 m wind.', sr:'Visina emisije nije poznata; koristi se vetar na 10 m.' },
+  plumeHourlyTime:    { en:'Hour', sr:'Sat' },
+  plumeHourlyDirection: { en:'Direction of travel', sr:'Pravac kretanja' },
+  plumeHourlySpeed:  { en:'Speed', sr:'Brzina' },
+  plumeHourlyNorth:  { en:'north', sr:'sever' },
+  plumeHourlyNorthEast: { en:'north-east', sr:'severoistok' },
+  plumeHourlyEast:   { en:'east', sr:'istok' },
+  plumeHourlySouthEast: { en:'south-east', sr:'jugoistok' },
+  plumeHourlySouth:  { en:'south', sr:'jug' },
+  plumeHourlySouthWest: { en:'south-west', sr:'jugozapad' },
+  plumeHourlyWest:   { en:'west', sr:'zapad' },
+  plumeHourlyNorthWest: { en:'north-west', sr:'severozapad' },
+  plumeHourlyCalm:   { en:'Calm / too weak for a reliable direction', sr:'Slab vetar — pravac nije pouzdan' },
+  plumeHourlyVariable: { en:'Variable direction', sr:'Promenljiv pravac' },
+  plumeHourlyNoStep: { en:'No forecast for this hour', sr:'Nema prognoze za ovaj sat' },
+  plumeHourlyLevelsTitle: { en:'Wind at each height', sr:'Vetar na različitim visinama' },
+  plumeHourlyLevelsNote: { en:'Arrows show where the air moves, not where it comes from.', sr:'Strelice pokazuju kuda se vazduh kreće, a ne odakle dolazi.' },
+  plumeHourlyNoLevel: { en:'No data', sr:'Nema podatka' },
+  plumeHourlyCalmShort: { en:'Calm', sr:'Slab' },
+  plumeHourly100FallbackNote: { en:'* 100 m is shown where the archive has no 120 m data.', sr:'* Prikazano je 100 m tamo gde arhivski podaci nemaju nivo od 120 m.' },
   factoryKindWorks:   { en:'Factory / industrial site', sr:'Fabrika / industrijski objekat' },
   factoryKindEnergy:  { en:'Power plant', sr:'Elektrana' },
   factoryKindLandfill:{ en:'Landfill', sr:'Deponija' },
@@ -5688,7 +5713,7 @@ async function buildAnchoredTrail(report, att) {
   const fit = anchoredFitCore(b, h, lat, lon, tR);
   if (!fit || !fit.ok) return null;          // no puff from this source reaches the report: not explained
   const best = fit.best;
-  const sd = plumeBiasFor(b.n, plumeStability(tR, b.a, b.o), stackWindFromAt(h, tR)).sd;
+  const sd = plumeBiasFor(b.n, plumeStability(tR, b.a, b.o), stackWindFromAt(h, tR, b)).sd;
   const end = best.pts[best.pts.length - 1], total = Math.max(best.dist, 1e-6);
   const dLat = lat - end.lat, dLon = lon - end.lon;
   // report first, then back in time to the chimney (same order as the regular trail)
@@ -5975,7 +6000,7 @@ async function computeForwardWindExtension(report, maxKm = 5, maxHoursForward = 
   // Chimney-height wind plus the learned correction for reports downwind of a known stack.
   const att = reportSource(report);
   const mode = att ? burnerMode(att.b) : 'ground';
-  const biasDeg = att ? plumeBiasFor(att.b.n, plumeStability(t0, lat0, lon0), stackWindFromAt(hourly, t0)).bias : 0;
+  const biasDeg = att ? plumeBiasFor(att.b.n, plumeStability(t0, lat0, lon0), stackWindFromAt(hourly, t0, att.b)).bias : 0;
   const path = advectParcel(lat0, lon0, t0, forwardEnd.getTime(), hourly, { mode, biasDeg, stepMin: 10 });
   const out = [];
   let nextT = t0 + 30 * 60000;                   // one point per 30 min, real timestamps
@@ -7277,6 +7302,7 @@ function buildFactoryPopupHtml(idx) {
   </div>
   <div style="padding:6px 8px;display:flex;flex-direction:column;gap:5px;">
     ${f.d ? `<div style="font-size:11px;color:var(--text-primary);">${ttEsc(f.d)}</div>` : ''}
+    ${hourlyPlumePanelHtml(`factory-hourly-${idx}`, f)}
     <button type="button" class="hh-open-btn" onclick="openHeatHistoryForFactory(${idx})">${t('hhOpenBtn')}</button>
     ${nearbyReportsStatHtml(f.a, f.o)}
     <a href="https://www.openstreetmap.org/${osmType}/${ttEsc(f.i.slice(1))}" target="_blank" rel="noopener" style="font-size:10px;color:var(--accent);">${t('factoryOsm')}</a>
@@ -7321,7 +7347,11 @@ function renderFactoryMarkers() {
   factoryData.forEach((f, idx) => {
     if (!isLikelyOdorSource(f)) return; // idx is still the real array index -- just skip rendering
     L.marker([f.a, f.o], { icon: makeFactoryIcon(f.k) })
-      .bindPopup(() => buildFactoryPopupHtml(idx), { maxWidth: 360, minWidth: 220 })
+      .bindPopup(() => buildFactoryPopupHtml(idx), { maxWidth: 380, minWidth: 240 })
+      .on('popupopen', function (e) {
+        const host = e.popup && e.popup.getElement() && e.popup.getElement().querySelector(`#factory-hourly-${idx} .plume-hourly-content`);
+        if (host) loadHourlyPlumeForPopup(f, host, false);
+      })
       .on('click', function () { traceFromPoint(f.a, f.o).then(() => { const p = this.getPopup(); if (p && p.isOpen()) p.update(); }); })
       .addTo(factoryLayer);
   });
@@ -7347,27 +7377,51 @@ async function loadFactoryData(silent) {
    covers them, but the pin itself may be 1-2 km off. */
 const KNOWN_BURNERS = [
   { n: 'Lafarge BFC cement plant (Beočin)', a: 45.20786, o: 19.70843, k: 'cement', approx: false,
+    stk: { baseAmsl: [81.5, 100], list: [{ h: 40.3, st: 'user', lbl: 'D3' }, { h: null, st: 'unknown', lbl: 'D1' }, { h: null, st: 'unknown', lbl: 'D2' }],
+           note: { en: 'D3 = rotary-kiln stack, 40.3 m above ground (supplied by the project owner, not yet checked against the permit). Ground at the plant is 81.5–100 m a.s.l. (owner-supplied range), so the stack top is about 121.8–140.3 m a.s.l. Wind is read in metres above ground, so the ground level does not change it. D1 (raw-material line) and D2 (coal mill) heights are unknown; the permit plan says kiln gas also goes through D1 for drying raw material, so while the raw mill runs the kiln gas may leave from D1, not D3. Plume rise is not included (exit temperature and velocity unknown).',
+                   sr: 'D3 = dimnjak rotacione peći, 40,3 m iznad tla (uneo vlasnik projekta, još nije proveren prema dozvoli). Teren u fabrici je 81,5–100 m n.v. (raspon koji je uneo vlasnik projekta), pa je vrh dimnjaka oko 121,8–140,3 m n.v. Vetar se čita u metrima iznad tla, pa visina terena na njega ne utiče. Visine D1 (linija sirovine) i D2 (mlin uglja) nisu poznate; prema planu monitoringa gas iz peći ide i kroz D1 radi sušenja sirovine, pa dok mlin sirovine radi gas iz peći može izlaziti kroz D1, a ne kroz D3. Izdizanje perjanice nije uračunato (temperatura i brzina izlaza nisu poznate).' },
+           src: [['Plan monitoringa emisija (Lafarge BFC)', 'https://www.ekourbapv.vojvodina.gov.rs/wp-content/uploads/2018/10/Prilog-I-1.3-Plan-vrsenja-monitoringa.pdf']] },
     fuel: { en: 'Cement kilns. Fossil fuel plus alternative fuels: waste tyres, biomass and processed waste-derived fuel (co-processing in Serbia since 2008–2010, per industry sources).',
             sr: 'Peći za cement. Fosilno gorivo plus alternativna goriva: otpadne gume, biomasa i gorivo dobijeno iz otpada (koprocesiranje u Srbiji od 2008–2010, prema izvorima iz industrije).' },
     src: [['Global Energy Monitor', 'https://www.gem.wiki/Holcim_BFC_Serbia_doo_Beocin_Cement_Plant']] },
   { n: 'Moravacem cement plant (Popovac, Paraćin)', a: 43.90895, o: 21.50976, k: 'cement', approx: false,
+    stk: { list: [],
+           note: { en: 'Stack height not found in public sources; check the plant\'s integrated permit. Until then the default blend of 10–180 m wind is used.',
+                   sr: 'Visina dimnjaka nije pronađena u javnim izvorima; proverite integrisanu dozvolu postrojenja. Do tada se koristi podrazumevana mešavina vetra 10–180 m.' },
+           src: [] },
     fuel: { en: 'Cement kilns. Co-incineration of waste since 2006: waste tyres and solid recovered fuel; the company also processes waste into alternative fuels.',
             sr: 'Peći za cement. Koinsineracija otpada od 2006: otpadne gume i čvrsto gorivo iz otpada; kompanija i sama prerađuje otpad u alternativna goriva.' },
     src: [['Moravacem', 'https://moravacem.rs/en/'],
           ['Global Energy Monitor', 'https://www.gem.wiki/Moravacem_Popovac_Cement_Plant']] },
   { n: 'Titan cement plant (Kosjerić)', a: 44.017, o: 19.883, k: 'cement', approx: true,
+    stk: { list: [],
+           note: { en: 'Stack height not found in public sources; check the plant\'s integrated permit. Until then the default blend of 10–180 m wind is used.',
+                   sr: 'Visina dimnjaka nije pronađena u javnim izvorima; proverite integrisanu dozvolu postrojenja. Do tada se koristi podrazumevana mešavina vetra 10–180 m.' },
+           src: [] },
     fuel: { en: 'Cement kilns on conventional fuel. Industry sources (2014, 2018) said it had not yet started using waste as fuel; check for newer permits.',
             sr: 'Peći za cement na konvencionalna goriva. Izvori iz industrije (2014, 2018) navode da još nije počela da koristi otpad kao gorivo; proverite novije dozvole.' },
     src: [['Balkan Green Energy News (2018)', 'https://balkangreenenergynews.com/serbias-cement-industry-important-link-sustainable-waste-management-standards-are-necessary/']] },
   { n: 'TE Nikola Tesla A & B (Obrenovac)', a: 44.67167, o: 20.15722, k: 'power', approx: true,
+    stk: { list: [{ h: 150, st: 'doc', lbl: 'A' },{ h: 220, st: 'doc', lbl: 'A' },{ h: 280, st: 'doc', lbl: 'B' }],
+           note: { en: 'Stack heights from public sources (not checked against permits): TENT A 150 m and 220 m, TENT B 280 m. A newer 150 m stack at TENT B (built 2022–2025) is not included because its role is unclear. The pin is at TENT A; EPS places TENT B about 17 km upstream along the Sava, so wind at B is not measured here. Equal weight is given to each stack (emission split unknown).',
+                   sr: 'Visine dimnjaka iz javnih izvora (nisu proverene prema dozvolama): TENT A 150 m i 220 m, TENT B 280 m. Noviji dimnjak od 150 m na TENT B (2022–2025) nije uključen jer mu je uloga nejasna. Pin je na TENT A; EPS navodi da je TENT B oko 17 km uzvodno na Savi, pa se vetar za B ovde ne meri. Svaki dimnjak ima isti težinski udeo (podela emisije nije poznata).' },
+           src: [['RTV Studio MAG', 'https://www.rtvmag.co.rs/24_sata_o_obrenovcu_objava.php?o=3785'],['Wikipedia', 'https://en.wikipedia.org/wiki/List_of_tallest_structures_in_Serbia'],['EPS', 'https://www.eps.rs/lat/tent/Stranice/Proizvodni_kapaciteti.aspx']] },
     fuel: { en: 'Lignite (coal), over 3,000 MW. Serbia\'s largest coal power station; EPS reported roughly 59,000 t (unit A) and 77,000 t (unit B) of SO₂ for 2024.',
             sr: 'Lignit (ugalj), preko 3.000 MW. Najveća termoelektrana na ugalj u Srbiji; EPS je za 2024. prijavio oko 59.000 t (blok A) i 77.000 t (blok B) SO₂.' },
     src: [['Global Energy Monitor', 'https://www.gem.wiki/Nikola_Tesla_power_station'], ['Wikipedia', 'https://en.wikipedia.org/wiki/TPP_Nikola_Tesla']] },
   { n: 'TE Kostolac A & B', a: 44.7307, o: 21.2104, k: 'power', approx: false,
+    stk: { list: [{ h: 180, st: 'doc', lbl: 'B' },{ h: 250, st: 'conflict', lbl: 'B' }],
+           note: { en: 'Kostolac B: a 180 m desulphurisation stack is reported as built; the older stack is given as 250 m by eKapija and as 295 m by Wikipedia (sources disagree). Kostolac A stack height: not found. Every height at or above 180 m maps to the top wind level the model offers (180 m), so the wind used does not depend on which value is right.',
+                   sr: 'Kostolac B: prijavljena je izgradnja dimnjaka od 180 m uz odsumporavanje; stariji dimnjak eKapija navodi kao 250 m, a Wikipedia kao 295 m (izvori se ne slažu). Visina dimnjaka Kostolac A: nije pronađena. Sve visine od 180 m naviše svode se na najviši nivo vetra koji model nudi (180 m), pa korišćeni vetar ne zavisi od toga koja je vrednost tačna.' },
+           src: [['eKapija', 'https://www.ekapija.com/news/974640/pocela-gradnja-dimnjaka-u-te-kostolac-b'],['Građevinarstvo.rs', 'https://gradjevinarstvo.rs/vesti/12459/810/dimnjak-cisti-„kostolac-b“'],['Wikipedia', 'https://en.wikipedia.org/wiki/List_of_tallest_structures_in_Serbia']] },
     fuel: { en: 'Lignite (coal). Kostolac A also supplies district heating to Kostolac and Požarevac.',
             sr: 'Lignit (ugalj). Kostolac A snabdeva i daljinsko grejanje Kostolca i Požarevca.' },
     src: [['Global Energy Monitor', 'https://www.gem.wiki/Serbia_and_coal']] },
   { n: 'TE Kolubara A (Veliki Crljeni)', a: 44.46722, o: 20.28389, k: 'power', approx: true,
+    stk: { list: [],
+           note: { en: 'Stack height not found in public sources; check the plant\'s integrated permit. Until then the default blend of 10–180 m wind is used.',
+                   sr: 'Visina dimnjaka nije pronađena u javnim izvorima; proverite integrisanu dozvolu postrojenja. Do tada se koristi podrazumevana mešavina vetra 10–180 m.' },
+           src: [] },
     fuel: { en: 'Lignite (coal), about 239 MW. Residents of Veliki Crljeni have had a lawsuit against EPS over environmental and health impacts since 2021.',
             sr: 'Lignit (ugalj), oko 239 MW. Meštani Velikih Crljena od 2021. vode spor protiv EPS-a zbog uticaja na životnu sredinu i zdravlje.' },
     src: [['Global Energy Monitor', 'https://www.gem.wiki/Kolubara_A_power_station']] },
@@ -7388,6 +7442,38 @@ function makeBurnerIcon() {
   });
 }
 
+const STACK_STATUS_TXT = {
+  user:     { en: 'supplied by project owner, not independently verified', sr: 'uneo vlasnik projekta, nije nezavisno proveren' },
+  doc:      { en: 'public source, not checked against the permit', sr: 'javni izvor, nije proveren prema dozvoli' },
+  conflict: { en: 'public sources disagree', sr: 'izvori se ne slažu' },
+  unknown:  { en: 'height unknown', sr: 'visina nepoznata' }
+};
+function burnerStackHtml(b) {
+  if (!b.stk) return '';
+  const L = lang === 'sr' ? 'sr' : 'en', list = b.stk.list || [];
+  let rows;
+  if (!list.length) {
+    rows = `<div>${L === 'sr' ? 'Visina dimnjaka: nepoznata' : 'Stack height: unknown'}</div>`;
+  } else {
+    rows = list.map(s => s.h == null
+      ? `<div>${s.lbl ? ttEsc(s.lbl) + ': ' : ''}<span style="color:var(--text-secondary);">${ttEsc(STACK_STATUS_TXT.unknown[L])}</span></div>`
+      : `<div>${s.lbl ? ttEsc(s.lbl) + ': ' : ''}<strong>${s.h} m</strong> ${L === 'sr' ? 'iznad tla' : 'above ground'} <span style="color:var(--text-secondary);">(${ttEsc(STACK_STATUS_TXT[s.st][L])})</span></div>`).join('');
+    const known = list.filter(s => s.h != null);
+    if (b.stk.baseAmsl != null && known.length === 1) {
+      const lo = [].concat(b.stk.baseAmsl)[0], hi = [].concat(b.stk.baseAmsl).slice(-1)[0], fmt = x => (+x.toFixed(1)).toString();
+      const gr = lo === hi ? fmt(lo) : fmt(lo) + '–' + fmt(hi), top = lo === hi ? fmt(lo + known[0].h) : fmt(lo + known[0].h) + '–' + fmt(hi + known[0].h);
+      rows += `<div>${L === 'sr' ? 'Teren' : 'Ground'}: ${gr} m a.s.l. · ${L === 'sr' ? 'vrh dimnjaka' : 'stack top'} ≈ ${top} m a.s.l.</div>`;
+    }
+  }
+  const srcs = (b.stk.src || []).map(([label, url]) => `<a href="${ttEsc(url)}" target="_blank" rel="noopener" style="color:var(--accent);">${ttEsc(label)}</a>`).join(' · ');
+  return `<div style="border:1px solid var(--border-color);border-radius:7px;padding:6px 8px;background:var(--bg-surface-alt);font-size:11px;color:var(--text-primary);line-height:1.35;">
+    <div style="font-size:9px;color:var(--text-secondary);text-transform:uppercase;margin-bottom:2px;">${L === 'sr' ? 'Dimnjak' : 'Stack'}</div>
+    ${rows}
+    <div style="font-size:10px;color:var(--text-secondary);margin-top:3px;">${ttEsc(b.stk.note[L])}</div>
+    ${srcs ? `<div style="font-size:10px;color:var(--text-secondary);margin-top:2px;">${L === 'sr' ? 'Izvori' : 'Sources'}: ${srcs}</div>` : ''}
+  </div>`;
+}
+
 function buildBurnerPopupHtml(idx) {
   const b = KNOWN_BURNERS[idx];
   const srcs = b.src.map(([label, url]) => `<a href="${ttEsc(url)}" target="_blank" rel="noopener" style="color:var(--accent);">${ttEsc(label)}</a>`).join(' · ');
@@ -7400,6 +7486,8 @@ function buildBurnerPopupHtml(idx) {
     <div style="font-size:9px;color:var(--text-secondary);text-transform:uppercase;">${t('burnerWhatBurns')}</div>
     <div style="font-size:11px;color:var(--text-primary);line-height:1.35;">${ttEsc(b.fuel[lang] || b.fuel.en)}</div>
     ${b.approx ? `<div style="font-size:10px;color:#ffb300;">${t('burnerApprox')}</div>` : ''}
+    ${burnerStackHtml(b)}
+    ${hourlyPlumePanelHtml(`burner-hourly-${idx}`, b)}
     <button type="button" class="hh-open-btn" onclick="openHeatHistoryForBurner(${idx})">${t('hhOpenBtn')}</button>
     ${nearbyReportsStatHtml(b.a, b.o)}
     <div style="font-size:10px;color:var(--text-secondary);">${t('burnerSources')}: ${srcs}</div>
@@ -7413,6 +7501,10 @@ function renderBurnerMarkers() {
   KNOWN_BURNERS.forEach((b, idx) => {
     L.marker([b.a, b.o], { icon: makeBurnerIcon(), zIndexOffset: 800 })
       .bindPopup(() => buildBurnerPopupHtml(idx), { maxWidth: 380, minWidth: 230 })
+      .on('popupopen', function (e) {
+        const host = e.popup && e.popup.getElement() && e.popup.getElement().querySelector(`#burner-hourly-${idx} .plume-hourly-content`);
+        if (host) loadHourlyPlumeForPopup(b, host, true);
+      })
       .on('click', function () { traceFromPoint(b.a, b.o).then(() => { const p = this.getPopup(); if (p && p.isOpen()) p.update(); }); })
       .addTo(burnerLayer);
   });
@@ -8380,7 +8472,8 @@ function updateSmellForecastStatus() {
       the stack nudge the forecast for the rest of that episode.
 ═══════════════════════════════════════════════════ */
 // Level weights. 'ground' keeps the plain 10 m wind (what the forecast always used);
-// 'stack' follows the air at chimney height.
+// 'stack' is the LEGACY default blend for stacks whose height is not documented (10-180 m).
+// Stacks with a documented height use mode 'h:<heights>' instead (see burnerMode / stackHeightVecAt).
 const TRANSPORT_WEIGHTS = {
   ground: { 10: 1, 80: 0, 120: 0, 180: 0 },
   stack:  { 10: 0.10, 80: 0.30, 120: 0.35, 180: 0.25 }
@@ -8390,7 +8483,7 @@ const PLUME_ATTRIB_MAX_KM = 30;       // a report this close, and downwind, is a
 const PLUME_ATTRIB_CONE_DEG = 70;
 const PLUME_DEFAULT_SD_DEG = 25;      // measured episode-to-episode scatter of the plume direction
 const PLUME_MIN_SD_DEG = 15, PLUME_MAX_SD_DEG = 35, PLUME_MAX_BIAS_DEG = 35;
-const PLUME_CAL_KEY = 'ttt_plume_cal_v2';   // v2: learned on wind along the path, no day/night split
+const PLUME_CAL_KEY = 'ttt_plume_cal_v3';   // v3: stack-height wind per source (v2 was learned on the fixed 10-180 m blend)
 const PLUME_CAL_TTL_MS = 6 * 3600000;
 const PLUME_CAL_DAYS = 90;            // Open-Meteo forecast API serves up to 92 past days
 const PLUME_CAL_MIN_REPORTS = 8;
@@ -8398,6 +8491,8 @@ const PLUME_CAL_MIN_REPORTS = 8;
 // the big gain (57 % -> 77 % of reports inside the band), a day/night split on top of them slightly
 // hurt, weaker shrinkage of the sector turn helped (+4/-0 reports), the mean of 4 models changed
 // nothing (+7/-7), and learning on wind along the path helped (+10/-1). Re-check with plumeBacktest().
+// NOTE: that backtest used the old fixed 10-180 m blend for Beocin. Beocin now uses wind interpolated to its 40.3 m
+// stack, so those figures no longer apply to it until plumeBacktest() is run again.
 const PLUME_USE_DAYNIGHT = false;
 const PLUME_SECTOR_K = 2;
 const PLUME_PUFF_STEP_MIN = 30;
@@ -8418,6 +8513,9 @@ function windLevelVec(h, i, lev) {
 // Weighted vector blend of whichever levels the data has; missing levels are skipped and the
 // weights renormalised, so an hourly object with only 10 m wind still works.
 function transportVecAt(h, i, mode) {
+  if (typeof mode === 'string' && mode.startsWith('h:')) {
+    return stackHeightVecAt(h, i, mode) || transportVecAt(h, i, 'ground');
+  }
   const w = TRANSPORT_WEIGHTS[mode] || TRANSPORT_WEIGHTS.ground;
   let su = 0, sv = 0, sw = 0;
   [10, 80, 120, 180].forEach(lev => {
@@ -8428,6 +8526,43 @@ function transportVecAt(h, i, mode) {
   });
   if (sw === 0 && mode !== 'ground') return transportVecAt(h, i, 'ground');
   return sw > 0 ? { u: su / sw, v: sv / sw } : null;
+}
+// ── Wind interpolated to a documented stack height ──
+// Open-Meteo heights are metres above ground (AGL), so a stack height AGL maps straight onto them.
+// Mode 'h:40.3' or 'h:150,220,280' = vector interpolation, linear in ln(height) (the surface-layer wind
+// grows roughly with ln z), between the nearest levels the data really has (10/80/100/120/180 m).
+// Above the highest level or below the lowest the nearest level is used: no extrapolation.
+// Not modelled: plume rise (needs exit temperature/velocity), stability, turning of wind with height.
+const OM_WIND_LEVELS = [10, 80, 100, 120, 180];
+function windProfileVecs(h, i) {
+  const out = [];
+  OM_WIND_LEVELS.forEach(z => {
+    const sp = h['wind_speed_' + z + 'm']?.[i], dr = h['wind_direction_' + z + 'm']?.[i];
+    if (sp != null && dr != null) { const v = forecastWindVec(sp, dr); out.push({ z, u: v.u, v: v.v }); }
+  });
+  return out;
+}
+function interpWindVecAtHeight(levels, z) {
+  if (!levels.length) return null;
+  if (z <= levels[0].z) return { u: levels[0].u, v: levels[0].v };
+  const last = levels[levels.length - 1];
+  if (z >= last.z) return { u: last.u, v: last.v };
+  for (let k = 0; k < levels.length - 1; k++) {
+    const a = levels[k], b = levels[k + 1];
+    if (z >= a.z && z <= b.z) {
+      const f = Math.log(z / a.z) / Math.log(b.z / a.z);
+      return { u: a.u + (b.u - a.u) * f, v: a.v + (b.v - a.v) * f };
+    }
+  }
+  return null;
+}
+function stackHeightVecAt(h, i, mode) {
+  const hs = String(mode).slice(2).split(',').map(Number).filter(x => isFinite(x) && x > 0);
+  if (!hs.length) return null;
+  const levels = windProfileVecs(h, i);
+  let su = 0, sv = 0, n = 0;
+  hs.forEach(z => { const v = interpWindVecAtHeight(levels, z); if (v) { su += v.u; sv += v.v; n++; } });
+  return n ? { u: su / n, v: sv / n } : null;
 }
 function forecastHourComp(h, i, mode) { return transportVecAt(h, i, mode || 'ground'); }
 const forecastHourlyMsCache = new WeakMap();
@@ -8502,6 +8637,136 @@ function parcelPosAt(pts, tMs) {
   return null;
 }
 
+// Shared hourly downwind panel for both curated sources and OpenStreetMap industrial sites.
+// The table describes the direction in which the plume moves, not the meteorological FROM direction.
+function hourlyPlumePanelHtml(id, source) {
+  const hs = PLUME_STACK_KINDS.includes(source.k) ? stackHeightsOf(source) : [];
+  const modeLabel = !PLUME_STACK_KINDS.includes(source.k) ? t('plumeHourlyGroundMode')
+    : hs.length ? (lang === 'sr' ? `Koristi vetar interpolisan na visini dimnjaka (${hs.join(', ')} m iznad tla).` : `Uses wind interpolated to the stack height (${hs.join(', ')} m above ground).`)
+    : t('plumeHourlyStackMode');
+  return `<section id="${ttEsc(id)}" style="border:1px solid var(--border-color);border-radius:7px;padding:7px 8px;margin:2px 0;background:var(--bg-surface-alt);">
+    <div style="font-size:10px;font-weight:700;color:var(--text-primary);margin-bottom:5px;">${t('plumeHourlyTitle')}</div>
+    <div style="font-size:9px;color:var(--text-secondary);margin-bottom:6px;">${modeLabel}</div>
+    <div class="plume-hourly-content" style="font-size:10px;color:var(--text-secondary);">${t('plumeHourlyLoading')}</div>
+    <div style="font-size:9px;color:var(--text-secondary);margin-top:6px;line-height:1.3;">${t('plumeHourlyEstimate')}</div>
+  </section>`;
+}
+
+function plumeTowardName(bearing) {
+  const dirs = [
+    { key: 'plumeHourlyNorth', arrow: '↑', short: { sr:'S', en:'N' } },
+    { key: 'plumeHourlyNorthEast', arrow: '↗', short: { sr:'SI', en:'NE' } },
+    { key: 'plumeHourlyEast', arrow: '→', short: { sr:'I', en:'E' } },
+    { key: 'plumeHourlySouthEast', arrow: '↘', short: { sr:'JI', en:'SE' } },
+    { key: 'plumeHourlySouth', arrow: '↓', short: { sr:'J', en:'S' } },
+    { key: 'plumeHourlySouthWest', arrow: '↙', short: { sr:'JZ', en:'SW' } },
+    { key: 'plumeHourlyWest', arrow: '←', short: { sr:'Z', en:'W' } },
+    { key: 'plumeHourlyNorthWest', arrow: '↖', short: { sr:'SZ', en:'NW' } }
+  ];
+  return dirs[Math.round((((bearing % 360) + 360) % 360) / 45) % 8];
+}
+
+// Interpolate the wind vector at one requested altitude and forecast time.
+// Vectors point in the direction the air travels (downwind), not FROM.
+function forecastWindLevelAt(hourly, tMs, level) {
+  if (!hourly || !hourly.time || !hourly.time.length) return null;
+  let ms = forecastHourlyMsCache.get(hourly);
+  if (!ms) { ms = hourly.time.map(x => Date.parse(x + 'Z')); forecastHourlyMsCache.set(hourly, ms); }
+  let i = 0;
+  while (i < ms.length - 1 && ms[i + 1] <= tMs) i++;
+  const j = Math.min(i + 1, ms.length - 1);
+  const f = j === i ? 0 : Math.min(1, Math.max(0, (tMs - ms[i]) / (ms[j] - ms[i])));
+  const a = windLevelVec(hourly, i, level), b = windLevelVec(hourly, j, level);
+  if (!a && !b) return null;
+  if (!a) return b;
+  if (!b) return a;
+  return { u: a.u + (b.u - a.u) * f, v: a.v + (b.v - a.v) * f };
+}
+
+function hourlyWindHeightCell(hourly, tMs, level, label) {
+  const w = forecastWindLevelAt(hourly, tMs, level);
+  if (!w) return `<div style="min-width:0;border:1px solid var(--border-color);border-radius:5px;padding:4px 3px;background:var(--bg-surface);"><div style="font-size:9px;color:var(--text-secondary);">${label}</div><div style="font-size:10px;color:var(--text-secondary);">— ${t('plumeHourlyNoLevel')}</div></div>`;
+  const speed = Math.hypot(w.u, w.v);
+  if (speed < 2) return `<div style="min-width:0;border:1px solid var(--border-color);border-radius:5px;padding:4px 3px;background:var(--bg-surface);"><div style="font-size:9px;color:var(--text-secondary);">${label}</div><div style="font-size:11px;font-weight:700;color:var(--text-secondary);">· ${t('plumeHourlyCalmShort')}</div><div style="font-size:9px;color:var(--text-secondary);">${speed.toFixed(1)} km/h</div></div>`;
+  const bearing = (Math.atan2(w.u, w.v) * 180 / Math.PI + 360) % 360;
+  const d = plumeTowardName(bearing);
+  const full = `${lang === 'sr' ? 'Ka ' : 'Toward '}${t(d.key)}, ${speed.toFixed(1)} km/h`;
+  return `<div title="${ttEsc(full)}" style="min-width:0;border:1px solid var(--border-color);border-radius:5px;padding:4px 3px;background:var(--bg-surface);"><div style="font-size:9px;color:var(--text-secondary);">${label}</div><div style="font-size:13px;line-height:1.2;font-weight:700;color:var(--text-primary);">${d.arrow} <span style="font-size:10px;">${d.short[lang] || d.short.en}</span></div><div style="font-size:9px;color:var(--text-secondary);white-space:nowrap;">${speed.toFixed(1)} km/h</div></div>`;
+}
+
+function hourlyWindHeightRows(hourly, startMs) {
+  const rows = [];
+  const has120 = hourly.wind_speed_120m?.some(v => v != null) && hourly.wind_direction_120m?.some(v => v != null);
+  const has100 = !has120 && hourly.wind_speed_100m?.some(v => v != null) && hourly.wind_direction_100m?.some(v => v != null);
+  const level120 = has100 ? 100 : 120;
+  const level120Label = has100 ? '100 m*' : '120 m';
+  for (let hour = 1; hour <= FORECAST_AHEAD_H; hour++) {
+    const targetMs = startMs + hour * 3600000;
+    const slotTime = new Date(targetMs).toLocaleTimeString(lang === 'sr' ? 'sr-RS' : 'en-GB', { hour: '2-digit', minute: '2-digit' });
+    rows.push(`<div style="padding:5px 0;border-top:1px solid var(--border-color);"><div style="font-size:9px;font-weight:700;color:var(--text-primary);margin-bottom:4px;">+${hour} h · ${slotTime}</div><div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;">${hourlyWindHeightCell(hourly, targetMs, 10, '10 m')}${hourlyWindHeightCell(hourly, targetMs, 80, '80 m')}${hourlyWindHeightCell(hourly, targetMs, level120, level120Label)}${hourlyWindHeightCell(hourly, targetMs, 180, '180 m')}</div></div>`);
+  }
+  return `<section style="margin-top:8px;padding-top:6px;border-top:1px solid var(--border-color);"><div style="font-size:10px;font-weight:700;color:var(--text-primary);margin-bottom:3px;">${t('plumeHourlyLevelsTitle')}</div><div style="font-size:9px;color:var(--text-secondary);margin-bottom:5px;">${t('plumeHourlyLevelsNote')}</div>${rows.join('')}${has100 ? `<div style="font-size:8px;color:var(--text-secondary);margin-top:4px;">${t('plumeHourly100FallbackNote')}</div>` : ''}</section>`;
+}
+
+function hourlyPlumeRows(path, startMs) {
+  const rows = [];
+  const stepsPerHour = Math.round(60 / FORECAST_STEP_MIN);
+  for (let hour = 1; hour <= FORECAST_AHEAD_H; hour++) {
+    const slotTime = new Date(startMs + hour * 3600000).toLocaleTimeString(lang === 'sr' ? 'sr-RS' : 'en-GB', { hour: '2-digit', minute: '2-digit' });
+    const slotLabel = `+${hour} h · ${slotTime}`;
+    const endIdx = hour * stepsPerHour;
+    const fromIdx = (hour - 1) * stepsPerHour + 1;
+    if (endIdx >= path.length) {
+      rows.push(`<tr><td style="padding:4px 3px;white-space:nowrap;">${slotLabel}</td><td style="padding:4px 3px;color:var(--text-secondary);">${t('plumeHourlyNoStep')}</td><td style="padding:4px 3px;text-align:right;">—</td></tr>`);
+      continue;
+    }
+    let u = 0, v = 0, speedSum = 0, count = 0;
+    for (let i = fromIdx; i <= endIdx; i++) {
+      const p = path[i];
+      if (!p || p.spd == null || !p.dir) continue;
+      u += p.dir.x * p.spd; v += p.dir.y * p.spd;
+      speedSum += p.spd; count++;
+    }
+    const meanSpeed = count ? speedSum / count : null;
+    const resultant = count ? Math.hypot(u, v) / count : 0;
+    let directionHtml;
+    if (meanSpeed == null) directionHtml = t('plumeHourlyNoStep');
+    else if (meanSpeed < 2) directionHtml = `<span style="color:var(--text-secondary);">${t('plumeHourlyCalm')}</span>`;
+    else if (resultant < 1.5) directionHtml = `<span style="color:var(--text-secondary);">${t('plumeHourlyVariable')}</span>`;
+    else {
+      const bearing = (Math.atan2(u, v) * 180 / Math.PI + 360) % 360;
+      const d = plumeTowardName(bearing);
+      directionHtml = `<span style="font-size:14px;font-weight:700;vertical-align:-1px;margin-right:4px;">${d.arrow}</span><strong style="color:var(--text-primary);">${lang === 'sr' ? 'ka ' : 'toward '}${t(d.key)}</strong>`;
+    }
+    rows.push(`<tr style="border-top:1px solid var(--border-color);"><td style="padding:4px 3px;white-space:nowrap;color:var(--text-primary);">${slotLabel}</td><td style="padding:4px 3px;">${directionHtml}</td><td style="padding:4px 3px;text-align:right;white-space:nowrap;color:var(--text-primary);">${meanSpeed == null ? '—' : meanSpeed.toFixed(1) + ' km/h'}</td></tr>`);
+  }
+  return `<table style="width:100%;border-collapse:collapse;font-size:10px;"><thead><tr style="color:var(--text-secondary);text-align:left;"><th style="padding:2px 3px;font-weight:600;">${t('plumeHourlyTime')}</th><th style="padding:2px 3px;font-weight:600;">${t('plumeHourlyDirection')}</th><th style="padding:2px 3px;text-align:right;font-weight:600;">${t('plumeHourlySpeed')}</th></tr></thead><tbody>${rows.join('')}</tbody></table>`;
+}
+
+async function loadHourlyPlumeForPopup(source, host, isCurated) {
+  if (!host || !host.isConnected) return;
+  host.textContent = t('plumeHourlyLoading');
+  try {
+    const now = Date.now(), iso = new Date(now).toISOString();
+    const hourly = await fetchForwardWind(source.a, source.o, iso, iso);
+    if (!host.isConnected) return;
+    if (!hourly || !hourly.time || !hourly.time.length) throw new Error('missing hourly wind');
+    const field = await buildWindField(source, hourly);
+    if (!host.isConnected) return;
+    const mode = burnerMode(source);
+    const bias = isCurated && PLUME_STACK_KINDS.includes(source.k)
+      ? plumeBiasEstimate(source, plumeStability(now, source.a, source.o), hourly, [], now).bias
+      : 0;
+    const path = advectParcel(source.a, source.o, now, now + FORECAST_AHEAD_H * 3600000, hourly, {
+      mode, biasDeg: bias, stepMin: FORECAST_STEP_MIN, field
+    });
+    if (path.length < 2) throw new Error('empty plume path');
+    host.innerHTML = hourlyPlumeRows(path, now) + hourlyWindHeightRows(hourly, now);
+  } catch (e) {
+    if (host.isConnected) host.textContent = t('plumeHourlyUnavailable');
+  }
+}
+
 // Sun height in degrees (NOAA approximation). Below ~3 deg the surface layer is stable and the
 // wind turns most with height.
 function solarElevationDeg(tMs, lat, lon) {
@@ -8542,7 +8807,12 @@ function reportWindFrom(r) {
 // A report is linked to a known source when a puff released there (carried by the source-level wind and the learned
 // turn) can reach the report within the uncertainty band. This replaces the 10 m wind cone for reports the app has
 // wind data for; no category or source is singled out, every report near any known source is treated the same way.
-const burnerMode = b => PLUME_STACK_KINDS.includes(b.k) ? 'stack' : 'ground';
+const stackHeightsOf = b => ((b && b.stk && b.stk.list) || []).map(s => s.h).filter(h => isFinite(h) && h > 0);
+const burnerMode = b => {
+  if (!PLUME_STACK_KINDS.includes(b.k)) return 'ground';
+  const hs = stackHeightsOf(b);
+  return hs.length ? 'h:' + hs.join(',') : 'stack';
+};
 // FIT_MAX_AGE_DAYS: model-fit attribution applies to every report (research tool, nothing is targeted), whatever its age.
 const FIT_MAX_KM = 40, FIT_MAX_AGE_DAYS = 36500, FIT_MAX_TRAVEL_H = 8, FIT_STEP_MIN = 10;
 const fitAttribCache = {};   // report.id -> { b, d, miss, width, norm, travelMin, calAt } | { none: true, near, calAt }
@@ -8563,7 +8833,7 @@ function anchoredFitCore(b, h, lat, lon, tR, o = {}) {
   const biasAt = o.biasAt || ((tr, from) => plumeBiasFor(b.n, plumeStability(tr, b.a, b.o), from).bias);
   const cands = [];
   for (let tr = tR - FIT_MAX_TRAVEL_H * 3600000; tr <= tR - 10 * 60000; tr += FIT_STEP_MIN * 60000) {
-    const pts = advectParcel(b.a, b.o, tr, tR, h, { mode, biasDeg: biasAt(tr, stackWindFromAt(h, tr)), stepMin: FIT_STEP_MIN });
+    const pts = advectParcel(b.a, b.o, tr, tR, h, { mode, biasDeg: biasAt(tr, stackWindFromAt(h, tr, b)), stepMin: FIT_STEP_MIN });
     if (pts.length < 2) continue;
     const end = pts[pts.length - 1];
     if (end.tMs < tR - 1) continue;            // ran out of wind data
@@ -8687,7 +8957,7 @@ function robustBias(items) {
 // plausibly came from this stack. The wind is read at the stack, half way through the smell's
 // travel time.
 function plumeResiduals(b, hourly, reports, opts = {}) {
-  const { minKm = 2.5, gate = 60, mode = 'stack' } = opts;
+  const { minKm = 2.5, gate = 60, mode = burnerMode(b) } = opts;
   const wAt = opts.windFn ? (t, la, lo) => opts.windFn(t, la, lo, mode) : (t) => forecastWindAt(hourly, t, mode);
   const out = [];
   reports.forEach(r => {
@@ -8752,14 +9022,14 @@ function plumeBiasFor(name, stab, fromDeg) {
   return { bias: clampN(bias, -PLUME_MAX_BIAS_DEG, PLUME_MAX_BIAS_DEG), sd: clampN(sd * 1.15, PLUME_MIN_SD_DEG, PLUME_MAX_SD_DEG), n };
 }
 // Wind-from direction at stack height at a moment (for the sector lookup).
-function stackWindFromAt(hourly, tMs) {
-  const w = hourly ? forecastWindAt(hourly, tMs, 'stack') : null;
+function stackWindFromAt(hourly, tMs, b) {
+  const w = hourly ? forecastWindAt(hourly, tMs, b ? burnerMode(b) : 'stack') : null;
   return w ? (Math.atan2(-w.u, -w.v) * 180 / Math.PI + 360) % 360 : null;
 }
 // Learned bias, nudged by how this episode's reports sit relative to the model. Returns
 // { bias, sd, nHist, nEp }.
 function plumeBiasEstimate(b, stab, srcHourly, reports, nowMs) {
-  const h = plumeBiasFor(b.n, stab, stackWindFromAt(srcHourly, nowMs));
+  const h = plumeBiasFor(b.n, stab, stackWindFromAt(srcHourly, nowMs, b));
   let e = null;
   if (srcHourly) {
     const recent = reports.filter(r => nowMs - Date.parse(r.created_at) <= 4 * 3600000);
@@ -8947,7 +9217,7 @@ async function plumeBacktest(opts = {}) {
   // the chimney-height wind; other kinds (landfills ...) use the 10 m wind, so the same checks show whether the
   // learned turn would help them too.
   for (const b of KNOWN_BURNERS) {
-    const MODE = PLUME_STACK_KINDS.includes(b.k) ? 'stack' : 'ground';
+    const MODE = burnerMode(b);
     const label = b.n.replace(/\s*\(.*\)$/, '') + (MODE === 'ground' ? ' [10 m wind]' : '');
     const near = data.filter(r => { const d = getHaversineDistance(b.a, b.o, +r.latitude, +r.longitude); return d >= 2.5 && d <= maxKm; })
       .sort((x, y) => Date.parse(x.created_at) - Date.parse(y.created_at));
