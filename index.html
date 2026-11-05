@@ -1550,6 +1550,7 @@ button:focus-visible, [role="button"]:focus-visible, a:focus-visible, input:focu
       <p class="detail-export-hint" id="freshDriftToggleHint"></p>
     </div>
 
+
     <div class="detail-section" id="smellForecastSettingsSection">
       <label class="settings-toggle-row" for="smellForecastToggle">
         <span id="smellForecastToggleLabel">Smell forecast (next 3 hours)</span>
@@ -1559,9 +1560,6 @@ button:focus-visible, [role="button"]:focus-visible, a:focus-visible, input:focu
         </span>
       </label>
       <p class="detail-export-hint" id="smellForecastToggleHint"></p>
-      <p class="detail-export-hint" id="smellForecastStatus" style="margin-top:4px;"></p>
-      <button type="button" class="hh-open-btn" id="plumeBacktestBtn" onclick="runPlumeBacktestUi()" style="margin-top:6px;"></button>
-      <p class="detail-export-hint" id="plumeBacktestOut" style="margin-top:4px;"></p>
     </div>
 
     <div class="detail-section" id="remindersSettingsSection">
@@ -1586,6 +1584,7 @@ button:focus-visible, [role="button"]:focus-visible, a:focus-visible, input:focu
       <p class="detail-export-hint" id="splashQuotesToggleHint"></p>
     </div>
 
+
     <div class="detail-section" id="trailHoursSettingsSection">
       <div class="detail-section-title" id="trailHoursSectionTitle">Wind Trail Length</div>
       <div class="theme-segment" id="trailHoursSegment">
@@ -1598,13 +1597,13 @@ button:focus-visible, [role="button"]:focus-visible, a:focus-visible, input:focu
 
     <div class="detail-section" id="factorySettingsSection">
       <label class="settings-toggle-row" for="factoryToggle">
-        <span id="factoryToggleLabel">Factories &amp; industrial sites</span>
+        <span id="factoryToggleLabel">More industrial sites</span>
         <span class="toggle-switch">
           <input type="checkbox" id="factoryToggle" autocomplete="off" onchange="setFactoryLayer(this.checked)">
           <span class="toggle-switch-track"><span class="toggle-switch-thumb"></span></span>
         </span>
       </label>
-      <p class="detail-export-hint" id="factoryToggleHint">Show factories, power plants and landfills near you (OpenStreetMap data plus a hand-checked list). Off by default.</p>
+      <p class="detail-export-hint" id="factoryToggleHint">Also show other factories and landfills from OpenStreetMap. Major chimneys (cement plants, power stations) are always shown. Off by default.</p>
     </div>
 
     <div class="detail-section" id="wildfireSettingsSection">
@@ -1648,8 +1647,11 @@ button:focus-visible, [role="button"]:focus-visible, a:focus-visible, input:focu
           <span class="toggle-switch-track"><span class="toggle-switch-thumb"></span></span>
         </span>
       </label>
-      <p class="detail-export-hint" id="traceHeatmapHint">While using Trace Possible Source: purple at the tracer pin, fading to red then orange toward each matched report, then a yellow tail continuing ~5km further along the wind past the report -- brightening back toward orange wherever it crosses another report's trail.</p>
+      <p class="detail-export-hint" id="traceHeatmapHint">While using Trace Possible Source: how much smell from the traced source reached each area. Darker means more and stronger reports there; pale yellow is a single report's path or its tail downwind.</p>
     </div>
+
+
+
 
 
   </div>
@@ -2220,7 +2222,7 @@ function saveSettings() {
   try {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify({
       factory: factoryVisible, wildfire: wildfireVisible, traceButton: traceButtonVisible,
-      splines: splinesVisible, traceHeat: traceHeatmapEnabled, forecast: smellForecastVisible
+      splines: splinesVisible, traceHeat: traceHeatmapEnabled, forecast: smellForecastVisible, forecast2: smellForecastVisible
     }));
   } catch (e) {}
 }
@@ -2234,7 +2236,6 @@ function restoreSettings() {
   if (saved.traceHeat) setTraceHeatmapEnabled(true);
   if (saved.traceButton) setTraceButtonVisible(true);
   if (saved.factory) setFactoryLayer(true);
-  if (saved.forecast) setSmellForecast(true);
   if (saved.wildfire) setWildfireLayer(true, true); // silent: no alert popups at page load
 }
 
@@ -2475,6 +2476,77 @@ const windTrailCache = {};
 // of the duplicate traffic that was tripping Open-Meteo's rate limit.
 const weatherFetchInFlight = {};
 
+// ───────── Persistent client-side cache (localStorage) for wind data ─────────
+// Layer under weatherCache: memory first, then localStorage, then the network. Only data that cannot change much is
+// kept long: archive windows (start >= 7 days and end >= 2 days old) for 90 days; anything touching recent days or
+// forecast hours only for 15 min (and only where the caller allows it). Bounded by a byte budget with LRU eviction,
+// so localStorage can never fill up; every access is try/catch'd, so a blocked/full storage just means no cache.
+const WC_PREFIX = 'ttt_wc_v1:', WC_INDEX_KEY = 'ttt_wc_idx_v1';
+const WC_MAX_BYTES = 2500000, WC_PERM_TTL = 90 * 86400000, WC_RECENT_TTL = 15 * 60000;
+let wcIdx = null, wcIdxTimer = null;   // wcIdx: { key: { e: expiryMs, s: size, u: lastUsedMs } }
+function wcLoadIdx() {
+  if (wcIdx) return wcIdx;
+  try { wcIdx = JSON.parse(localStorage.getItem(WC_INDEX_KEY) || '{}') || {}; } catch (e) { wcIdx = {}; }
+  return wcIdx;
+}
+function wcSaveIdx(now) {
+  if (now) { try { localStorage.setItem(WC_INDEX_KEY, JSON.stringify(wcLoadIdx())); } catch (e) {} return; }
+  if (wcIdxTimer) return;
+  wcIdxTimer = setTimeout(() => { wcIdxTimer = null; wcSaveIdx(true); }, 2000);
+}
+function wcDrop(key) { try { localStorage.removeItem(WC_PREFIX + key); } catch (e) {} delete wcLoadIdx()[key]; }
+function wcTtl(isoStart, isoEnd, allowRecent) {
+  const day = 86400000, st = (Date.now() - Date.parse(isoStart)) / day, en = (Date.now() - Date.parse(isoEnd)) / day;
+  if (st >= 7 && en >= 2) return WC_PERM_TTL;
+  return allowRecent ? WC_RECENT_TTL : 0;
+}
+function wcGet(key) {
+  try {
+    const idx = wcLoadIdx(), m = idx[key];
+    if (!m) return null;
+    if (m.e < Date.now()) { wcDrop(key); wcSaveIdx(); return null; }
+    const raw = localStorage.getItem(WC_PREFIX + key);
+    if (!raw) { delete idx[key]; wcSaveIdx(); return null; }
+    m.u = Date.now(); wcSaveIdx();
+    return JSON.parse(raw);
+  } catch (e) { return null; }
+}
+function wcMakeRoom(bytes) {
+  const idx = wcLoadIdx();
+  let total = Object.values(idx).reduce((a, m) => a + (m.s || 0), 0);
+  if (total + bytes <= WC_MAX_BYTES) return;
+  Object.keys(idx).sort((x, y) => (idx[x].u || 0) - (idx[y].u || 0)).forEach(k => {
+    if (total + bytes <= WC_MAX_BYTES) return;
+    total -= idx[k].s || 0; wcDrop(k);
+  });
+}
+function wcPut(key, value, ttlMs) {
+  if (!ttlMs || !value) return;
+  try {
+    const raw = JSON.stringify(value);
+    if (raw.length > WC_MAX_BYTES / 4) return;
+    wcMakeRoom(raw.length);
+    try { localStorage.setItem(WC_PREFIX + key, raw); }
+    catch (e) { wcMakeRoom(WC_MAX_BYTES); localStorage.setItem(WC_PREFIX + key, raw); }   // quota: clear everything once, retry
+    wcLoadIdx()[key] = { e: Date.now() + ttlMs, s: raw.length, u: Date.now() };
+    wcSaveIdx();
+  } catch (e) { /* storage blocked or full: no caching */ }
+}
+function clearClientCache() {
+  try { Object.keys(localStorage).filter(k => k.indexOf('ttt_wc_') === 0 || k === 'ttt_fit_v1').forEach(k => localStorage.removeItem(k)); } catch (e) {}
+  wcIdx = {};
+}
+window.clearClientCache = clearClientCache;
+// housekeeping a few seconds after load: drop expired entries and any older cache versions
+setTimeout(() => {
+  try {
+    Object.keys(localStorage).filter(k => k.indexOf('ttt_wc_') === 0 && k.indexOf(WC_PREFIX) !== 0 && k !== WC_INDEX_KEY).forEach(k => localStorage.removeItem(k));
+    const idx = wcLoadIdx(), now = Date.now();
+    Object.keys(idx).forEach(k => { if (idx[k].e < now) wcDrop(k); });
+    wcSaveIdx(true);
+  } catch (e) {}
+}, 5000);
+
 // Simple concurrency limiter for Open-Meteo requests. generateAllBackgroundTrails
 // used to Promise.all() every visible report's historic-wind fetch at once —
 // fine for a handful of pins, but with dozens open at the same time Open-Meteo
@@ -2631,7 +2703,7 @@ const WILDFIRE_REFRESH_MS = 15 * 60 * 1000;
 // hoisted.
 let wildfireVisible = false;
 // Smell forecast overlay (Settings switch, off by default)
-let smellForecastVisible = false;
+let smellForecastVisible = true;   // always on: standing plumes from known chimneys + fresh reports
 let forecastSeq = 0, forecastTimer = null, forecastStatus = null;
 let wildfireLayer = null;
 let wildfireLastFetchedAt = 0;
@@ -2668,6 +2740,18 @@ const T = {
   popupDuration: { en: 'Duration',                      sr: 'Trajanje' },
 
   historical: { en: 'Historical Data', sr: 'Istorijski Podaci' },
+  whyTitle: { en: 'Why this source?', sr: 'Zašto ovaj izvor?' },
+  whyNone: { en: 'No known source within 40 km.', sr: 'Nema poznatog izvora u krugu od 40 km.' },
+  whyWindAt: { en: 'Wind at the source', sr: 'Vetar kod izvora' },
+  whyDirToSource: { en: 'Source lies towards', sr: 'Izvor je u smeru' },
+  whyFit: { en: 'Model fit', sr: 'Podudaranje modela' },
+  whyMiss: { en: 'puff misses by', sr: 'puf promašuje za' },
+  whyBand: { en: 'band', sr: 'traka' },
+  whyAttributed: { en: 'attributed', sr: 'pripisano' },
+  whyNotAttributed: { en: 'not attributed', sr: 'nije pripisano' },
+  whyCone: { en: 'no model data, cone rule used', sr: 'nema podataka modela, korišćeno pravilo konusa' },
+  whyNoWind: { en: 'wind data unavailable', sr: 'podaci o vetru nisu dostupni' },
+  whyPending: { en: 'Wind trail appears once the wind data is final (about 13 h after the report).', sr: 'Trag vetra se prikazuje kada podaci o vetru postanu konačni (oko 13 h posle prijave).' },
   elevation: { en: 'Elevation', sr: 'Nadmorska visina' },
   mixingLayer: { en: 'Mixing layer', sr: 'Sloj mešanja' },
   mix_shallow: { en: 'shallow', sr: 'plitak' },
@@ -2761,8 +2845,8 @@ const T = {
   settingsMapKeyBtn: { en:'Map key', sr:'Legenda mape' },
 
   // Settings switches for the map layers
-  factoryToggleLabel:   { en:'Factories & industrial sites', sr:'Fabrike i industrijski objekti' },
-  factoryToggleHint:    { en:'Show factories, power plants and landfills near you (OpenStreetMap data plus a hand-checked list). Off by default.', sr:'Prikaži fabrike, elektrane i deponije u vašoj blizini (podaci sa OpenStreetMap-a plus ručno proverena lista). Podrazumevano isključeno.' },
+  factoryToggleLabel:   { en:'More industrial sites', sr:'Ostali industrijski objekti' },
+  factoryToggleHint:    { en:'Also show other factories and landfills from OpenStreetMap. Major chimneys (cement plants, power stations) are always shown. Off by default.', sr:'Prikaži i ostale fabrike i deponije sa OpenStreetMap-a. Veliki dimnjaci (cementare, termoelektrane) se uvek prikazuju. Podrazumevano isključeno.' },
   wildfireToggleLabel:  { en:'Active wildfires', sr:'Aktivni požari' },
   wildfireToggleHint:   { en:'Show active wildfires detected by NASA satellite data (FIRMS) near you. Off by default.', sr:'Prikaži aktivne požare koje su otkrili NASA sateliti (FIRMS) u vašoj blizini. Podrazumevano isključeno.' },
   traceButtonToggleLabel: { en:'Trace Possible Source button', sr:'Dugme „Traži mogući izvor“' },
@@ -2790,8 +2874,8 @@ const T = {
 
   traceHeatmapLabel: { en:'Show heatmap when tracing possible source', sr:'Prikaži toplotnu mapu prilikom traženja mogućeg izvora' },
   traceHeatmapHint:  {
-    en:'While using Trace Possible Source: purple at the tracer pin, fading to red then orange toward each matched report, then a yellow tail continuing ~5km further along the wind past the report -- brightening back toward orange wherever it crosses another report\'s trail.',
-    sr:'Prilikom korišćenja funkcije Traži mogući izvor: ljubičasta boja kod oznake za traženje, prelazi u crvenu pa narandžastu ka svakoj podudarnoj prijavi, zatim žuti rep koji se nastavlja ~5km dalje niz vetar posle prijave -- ponovo posvetljava ka narandžastoj gde god preseca trag druge prijave.' },
+    en:'While using Trace Possible Source: how much smell from the traced source reached each area. Darker means more and stronger reports there, and corridors shared by several reports; pale yellow is a single report\'s path or its tail continuing downwind. Off: nothing is drawn, also when tapping a factory.',
+    sr:'Prilikom korišćenja funkcije Traži mogući izvor: koliko je mirisa iz traženog izvora stiglo do svake oblasti. Tamnije znači više i jačih prijava, kao i koridore koje deli više prijava; bledo žuto je putanja jedne prijave ili njen rep niz vetar. Isključeno: ništa se ne crta, ni pri dodiru fabrike.' },
 
 
 
@@ -2956,8 +3040,8 @@ const T = {
   splashQuotesToggleHint: { en:'Show a random air quote while the app loads. Turn off for a faster start. Applies next time you open the app.', sr:'Prikaži nasumičan citat o vazduhu dok se aplikacija učitava. Isključi za brže pokretanje. Važi od sledećeg otvaranja aplikacije.' },
   remindersToggleLabel: { en:'Reminders', sr:'Podsetnici' },
   remindersToggleHint: { en:'Show reminders to install the app, turn on wind alerts, and enable GPS or drop a pin.', sr:'Prikaži podsetnike za instalaciju aplikacije, uključivanje upozorenja o vetru i omogućavanje GPS-a ili postavljanje pina.' },
-  smellForecastToggleLabel: { en:'Smell forecast (next 3 hours)', sr:'Prognoza širenja mirisa (sledeća 3 sata)' },
-  smellForecastToggleHint: { en:'Estimates where the smell from reports made in the last 3 hours is likely to travel over the next 3 hours, using the hourly wind forecast. The shaded area widens because the exact path gets less certain over time. Near known chimneys (cement plants, power stations) it follows the wind at chimney height and learns from past reports, so it improves over time. This is an estimate, not a measurement. Off by default.', sr:'Procenjuje kuda će se miris iz prijava iz poslednja 3 sata verovatno kretati u naredna 3 sata, na osnovu satne prognoze vetra. Osenčena zona se širi jer putanja postaje manje sigurna kako vreme prolazi. U blizini poznatih dimnjaka (cementare, termoelektrane) prati vetar na visini dimnjaka i uči iz prethodnih prijava, pa se vremenom poboljšava. Ovo je procena, a ne merenje. Podrazumevano isključeno.' },
+  smellForecastToggleLabel: { en:'Smell forecast (next 6 hours)', sr:'Prognoza širenja mirisa (sledećih 6 sati)' },
+  smellForecastToggleHint: { en:'Estimates where the smell from reports made in the last 3 hours is likely to travel over the next 6 hours, using the hourly wind forecast. The shaded area widens because the exact path gets less certain over time; beyond about 30 km it is drawn fainter, because the model has only been checked up to that distance. Near known chimneys (cement plants, power stations) it follows the wind at chimney height and learns from past reports, so it improves over time. This is an estimate, not a measurement. On by default; it also shows standing plumes from known chimneys.', sr:'Procenjuje kuda će se miris iz prijava iz poslednja 3 sata verovatno kretati u narednih 6 sati, na osnovu satne prognoze vetra. Osenčena zona se širi jer putanja postaje manje sigurna kako vreme prolazi; posle oko 30 km je bleđa, jer je model proveravan samo do te udaljenosti. U blizini poznatih dimnjaka (cementare, termoelektrane) prati vetar na visini dimnjaka i uči iz prethodnih prijava, pa se vremenom poboljšava. Ovo je procena, a ne merenje. Podrazumevano uključeno; prikazuje i stalne perjanice iz poznatih dimnjaka.' },
   smellForecastStatusN: { en:'Showing the forecast for {n} recent report(s).', sr:'Prikazana je prognoza za {n} skorih prijava.' },
   smellForecastStatusNone: { en:'No smell reports in the last 3 hours, so there is nothing to forecast.', sr:'Nema prijava mirisa u poslednja 3 sata, pa nema šta da se prognozira.' },
   smellForecastStatusPlume: { en:'{name}: {inside} of {n} report(s) fall inside the plume. Wind at chimney height, turned {bias}°, band ±{sd}°.', sr:'{name}: {inside} od {n} prijava je unutar perjanice. Vetar na visini dimnjaka, zakrenut {bias}°, pojas ±{sd}°.' },
@@ -2966,6 +3050,7 @@ const T = {
   plumeBacktestRunning: { en:'Comparing variants on the last 90 days of reports…', sr:'Poredim varijante na prijavama iz poslednjih 90 dana…' },
   plumeBacktestNone: { en:'Not enough reports around a known chimney yet.', sr:'Još nema dovoljno prijava oko poznatog dimnjaka.' },
   plumeBacktestFail: { en:'The check could not run (wind data unavailable).', sr:'Provera nije uspela (podaci o vetru nisu dostupni).' },
+  trailAnchoredTip: { en:'From {name}: about {min} min, {km} km away, wind {w} km/h (path ends {miss} km from the report before the fit)', sr:'Od {name}: oko {min} min, {km} km daleko, vetar {w} km/h (putanja je pre ispravke {miss} km od prijave)' },
   smellForecastStatusLearn: { en:'Learned from {n} past episodes.', sr:'Naučeno iz {n} prethodnih epizoda.' },
   smellForecastStatusFallback: { en:'Wind forecast was unavailable for some reports, so their reported wind was used instead.', sr:'Prognoza vetra nije bila dostupna za neke prijave, pa je umesto nje korišćen prijavljeni vetar.' },
   mapKeyForecastTitle: { en:'Smell forecast', sr:'Prognoza mirisa' },
@@ -5136,6 +5221,11 @@ function drawFullTrail(it, tracerCoords, o = {}) {
         { ...common, fixedColor: color, baseOpacity: base * 0.4, dashArray: '2, 9' }));
     }
   }
+  if (!tracerCoords && it.trailResult?.anchored && it.trailResult.info) {
+    const i = it.trailResult.info;
+    const tip = t('trailAnchoredTip').replace('{name}', i.source).replace('{min}', i.travelMin).replace('{km}', i.distKm).replace('{w}', i.windKmh).replace('{miss}', i.missKm);
+    segments.forEach(seg => { try { seg.bindTooltip(tip, { sticky: true }); } catch (e) {} });
+  }
   return segments;
 }
 
@@ -5255,6 +5345,11 @@ function omForecastUrl(lat, lon, pastDays, forecastDays, withLevels) {
 function omArchiveUrl(lat, lon, sd, ed, withLevels) {
   return `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${sd}&end_date=${ed}&hourly=${OM_BASE_VARS}${withLevels ? OM_ARCHIVE_LEVEL_VARS : ''}&wind_speed_unit=kmh&timezone=UTC`;
 }
+// Older than ~7 days: Open-Meteo's stored high-resolution forecasts (same models and the same 80/120/180 m levels
+// as the recent data) instead of the coarse ERA5 reanalysis, which only has 100 m. ERA5 stays as the fallback.
+function omHistFcstUrl(lat, lon, sd, ed, withLevels) {
+  return `https://historical-forecast-api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&start_date=${sd}&end_date=${ed}&hourly=${OM_BASE_VARS}${withLevels ? OM_FORECAST_LEVEL_VARS : ''}&wind_speed_unit=kmh&timezone=UTC`;
+}
 // One hourly request with the 429 back-off the app already used. If the extended variable
 // list is rejected (HTTP 400) it retries with the plain 10 m list, so a variable that a
 // model doesn't offer can never take the whole wind feature down.
@@ -5269,6 +5364,12 @@ async function omFetchHourly(url, fallbackUrl) {
   if (r.status === 400 && fallbackUrl && fallbackUrl !== url) return omFetchHourly(fallbackUrl, null);
   if (!r.ok) return null;
   try { const d = await r.json(); return d.hourly || null; } catch (e) { return null; }
+}
+async function omFetchHistoric(lat, lon, sd, ed) {
+  const usable = h => h?.time?.length && h.wind_speed_10m?.some(v => v != null);
+  let h = await omFetchHourly(omHistFcstUrl(lat, lon, sd, ed, true), omHistFcstUrl(lat, lon, sd, ed, false));
+  if (!usable(h)) h = await omFetchHourly(omArchiveUrl(lat, lon, sd, ed, true), omArchiveUrl(lat, lon, sd, ed, false));
+  return h;
 }
 // Keeps only the hours in [fromMs, toMs] of an hourly object (all arrays sliced together).
 function trimHourlyToWindow(hourly, fromMs, toMs) {
@@ -5302,25 +5403,25 @@ if (windowEndAgeHours < TRAIL_MIN_HOURS) return null;
 // For recent data (6h–7d), cache is valid for the session since we only
 // enter this branch once the report is old enough to have settled data
 if (weatherCache[cacheKey]) return weatherCache[cacheKey];
+const wcMs = wcTtl(isoStart, isoEnd, false);   // archive windows only; recent trails are persisted in Supabase anyway
+if (wcMs) { const hit = wcGet(cacheKey); if (hit) { weatherCache[cacheKey] = hit; return hit; } }
 
   // Multiple reports at the same spot/hour would otherwise each fire their
   // own identical request while the first is still in flight — share it.
   if (weatherFetchInFlight[cacheKey]) return weatherFetchInFlight[cacheKey];
 
   const daysDiff=(Date.now()-new Date(isoStart))/86400000;
-  let url, urlBase;
+  let url, urlBase, sdOld, edOld;
   if(daysDiff<7){
     url = omForecastUrl(lat, lon, 7, 1, true);
     urlBase = omForecastUrl(lat, lon, 7, 1, false);
   } else {
-    const sd=isoStart.slice(0,10), ed=isoEnd.slice(0,10);
-    url = omArchiveUrl(lat, lon, sd, ed, true);
-    urlBase = omArchiveUrl(lat, lon, sd, ed, false);
+    sdOld = isoStart.slice(0,10); edOld = isoEnd.slice(0,10);
   }
 
   const doFetch = async () => {
-    const h = await omFetchHourly(url, urlBase);
-    if (h) weatherCache[cacheKey] = h;
+    const h = url ? await omFetchHourly(url, urlBase) : await omFetchHistoric(lat, lon, sdOld, edOld);
+    if (h) { weatherCache[cacheKey] = h; wcPut(cacheKey, h, wcMs); }
     return h;
   };
 
@@ -5344,10 +5445,12 @@ async function fetchForwardWind(lat, lon, isoStart, isoEnd) {
   lon = parseFloat(lon);
   const cacheKey = `fwd_${lat.toFixed(3)}_${lon.toFixed(3)}_${isoStart.slice(0,13)}`;
   if (weatherCache[cacheKey]) return weatherCache[cacheKey];
+  const wcMs = wcTtl(isoStart, isoEnd, true);
+  if (wcMs) { const hit = wcGet(cacheKey); if (hit) { weatherCache[cacheKey] = hit; return hit; } }
   if (weatherFetchInFlight[cacheKey]) return weatherFetchInFlight[cacheKey];
 
   const daysDiff = (Date.now() - new Date(isoStart)) / 86400000;
-  let url, urlBase;
+  let url, urlBase, sdOld, edOld;
   if (daysDiff < 7) {
     // forecast_days:2 (vs fetchHistoricWind's 1) so even a report made
     // this minute has forecasted hours past "now" to cover its forward
@@ -5355,14 +5458,12 @@ async function fetchForwardWind(lat, lon, isoStart, isoEnd) {
     url = omForecastUrl(lat, lon, 7, 2, true);
     urlBase = omForecastUrl(lat, lon, 7, 2, false);
   } else {
-    const sd = isoStart.slice(0, 10), ed = isoEnd.slice(0, 10);
-    url = omArchiveUrl(lat, lon, sd, ed, true);
-    urlBase = omArchiveUrl(lat, lon, sd, ed, false);
+    sdOld = isoStart.slice(0, 10); edOld = isoEnd.slice(0, 10);
   }
 
   const doFetch = async () => {
-    const h = await omFetchHourly(url, urlBase);
-    if (h) weatherCache[cacheKey] = h;
+    const h = url ? await omFetchHourly(url, urlBase) : await omFetchHistoric(lat, lon, sdOld, edOld);
+    if (h) { weatherCache[cacheKey] = h; wcPut(cacheKey, h, wcMs); }
     return h;
   };
 
@@ -5473,6 +5574,71 @@ steps.forEach(s => {
   return trail;
 }
 
+// Backward parcel path for a report: starts at the report point at report time and steps back in time, each step
+// moving UPWIND with an inverse-distance blend of the hourly 10 m wind at the report point and at up to 3 places
+// picked along the first-pass trail (snapped to 0.1 deg so nearby reports share requests). Returns raw trail
+// points ({lat, lon, time, spd}) at the same hourly times as `steps`, or null when there is no extra wind data.
+async function pathWindTrailFor(report, firstPass, steps, hourly, tR, tStart) {
+  if (!firstPass || firstPass.length < 4 || !steps.length) return null;
+  const lat0 = parseFloat(report.latitude), lon0 = parseFloat(report.longitude);
+  if (!isFinite(lat0) || !isFinite(lon0)) return null;
+  const snap = v => Math.round(v * 10) / 10;
+  const field = [{ lat: lat0, lon: lon0, hourly }];
+  const seen = new Set([snap(lat0) + '_' + snap(lon0)]);
+  const n = firstPass.length;
+  for (const k of [Math.floor(n / 3), Math.floor(2 * n / 3), n - 1]) {
+    const q = firstPass[k]; if (!q) continue;
+    const la = snap(q.lat), lo = snap(q.lon), key = la + '_' + lo;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const h = await fetchHistoricWind(la, lo, new Date(tStart).toISOString(), new Date(tR).toISOString()).catch(() => null);
+    if (h?.time?.length) field.push({ lat: la, lon: lo, hourly: h });
+  }
+  if (field.length < 2) return null;
+  const windHere = (t, la, lo) => {
+    let su = 0, sv = 0, sw = 0;
+    for (const f of field) {
+      const w = forecastWindAt(f.hourly, t, 'ground');
+      if (!w) continue;
+      const wt = 1 / ((getHaversineDistance(la, lo, f.lat, f.lon) + 3) ** 2);
+      su += w.u * wt; sv += w.v * wt; sw += wt;
+    }
+    return sw ? { u: su / sw, v: sv / sw } : null;
+  };
+  const stepMs = 10 * 60000;
+  let lat = lat0, lon = lon0, last = null;
+  const pts = [{ lat, lon, tMs: tR, spd: null }];
+  for (let t = tR; t > tStart + 1;) {
+    const dt = Math.min(stepMs, t - tStart);
+    const w = windHere(t - dt / 2, lat, lon) || last;
+    if (!w) break;
+    last = w;
+    const dh = dt / 3600000;
+    lat -= w.v * dh / 110.574;                                   // the air came from upwind
+    lon -= w.u * dh / (111.32 * Math.cos(lat * Math.PI / 180));
+    t -= dt;
+    pts.push({ lat, lon, tMs: t, spd: Math.hypot(w.u, w.v) });
+  }
+  if (pts.length < 3) return null;
+  const at = ts => {
+    for (let i = 1; i < pts.length; i++) {
+      if (pts[i].tMs <= ts) {
+        const a = pts[i - 1], c = pts[i], f = (a.tMs - ts) / ((a.tMs - c.tMs) || 1);
+        return { lat: a.lat + (c.lat - a.lat) * f, lon: a.lon + (c.lon - a.lon) * f, spd: c.spd };
+      }
+    }
+    return null;
+  };
+  const out = [firstPass[0]];
+  for (const st of steps) {
+    const q = at(st.ts); if (!q) break;
+    const prev = out[out.length - 1];
+    if (getHaversineDistance(prev.lat, prev.lon, q.lat, q.lon) < 0.05) continue;
+    out.push({ lat: q.lat, lon: q.lon, time: new Date(st.ts).toISOString(), spd: q.spd });
+  }
+  return out.length >= 3 ? out : null;
+}
+
 async function backfillPressure(reportId, avgPressure) {
   const result = await sb
     .from("air_reports")
@@ -5513,15 +5679,65 @@ async function backfillWindDirection(reportId, avgDirection) {
 // on the map. This is the single place that does the Open-Meteo fetch +
 // backtrack math — renderHistoricSplineTrailForReport (map line) and
 // getStationsAlongWindTrailForReport (station matching) both build on top of it.
-async function buildWindTrailForReport(report) {
+
+// ── Source-anchored path ──
+// For a report downwind of a known chimney: instead of walking back from the report with the wind at the
+// report's own place (which wanders and can overshoot the source), release puffs from the chimney every
+// 10 min over the previous 8 h, carry each one with the chimney-height wind and the learned turn, and keep
+// the release time whose puff ends closest to the report. The path is then nudged (linearly, zero at the
+// chimney, full at the report) so it ends exactly on the report. If even the best puff misses by more than
+// the band at that distance, the chimney does not explain the report at that moment and null is returned
+// (the regular wind trail is used instead). Returned in the same shape as buildWindTrailForReport.
+const ANCHOR_MAX_TRAVEL_H = 8, ANCHOR_STEP_MIN = 10;
+// false = map trails are the plain backward wind-history trails (like index_old). true = chimney->report path that is
+// forced through the chimney and bent onto the report (looks like every report comes from the factory).
+const DRAW_ANCHORED_TRAILS = false;
+async function buildAnchoredTrail(report, att) {
+  const b = att.b, lat = parseFloat(report.latitude), lon = parseFloat(report.longitude), tR = Date.parse(report.created_at);
+  if (!isFinite(lat) || !isFinite(lon) || !isFinite(tR)) return null;
+  const h = await burnerHourlyFor(b, tR);
+  if (!h?.time?.length) return null;
+  const fit = anchoredFitCore(b, h, lat, lon, tR);
+  if (!fit || !fit.ok) return null;          // no puff from this source reaches the report: not explained
+  const best = fit.best;
+  const sd = plumeBiasFor(b.n, plumeStability(tR, b.a, b.o), stackWindFromAt(h, tR)).sd;
+  const end = best.pts[best.pts.length - 1], total = Math.max(best.dist, 1e-6);
+  const dLat = lat - end.lat, dLon = lon - end.lon;
+  // report first, then back in time to the chimney (same order as the regular trail)
+  const rawTrail = best.pts.map(p => ({ lat: p.lat + dLat * (p.dist / total), lon: p.lon + dLon * (p.dist / total), time: new Date(p.tMs).toISOString(), spd: p.spd }))
+    .reverse();
+  rawTrail[0].spd = rawTrail[0].spd ?? best.pts[best.pts.length - 1].spd;
+  const travelMin = Math.round((tR - best.tr) / 60000);
+  const bandPts = best.pts.map(p => ({ lat: p.lat + dLat * (p.dist / total), lon: p.lon + dLon * (p.dist / total), dist: p.dist, dir: p.dir }));
+  return { rawTrail, spline: smoothPathChaikin(rawTrail, 2), calAt: plumeCal.at, anchored: true, bandPts, sd,
+    info: { source: b.n.replace(/\s*\(.*\)$/, ''), distKm: +getHaversineDistance(b.a, b.o, lat, lon).toFixed(1), travelMin, missKm: +best.miss.toFixed(1), windKmh: Math.round(end.spd || 0) } };
+}
+
+async function buildWindTrailForReport(report, opts = {}) {
 
   const reportTime = new Date(report.created_at);
   const reportAgeHours =
     (Date.now() - reportTime.getTime()) / 3600000;
 
-  // Not even TRAIL_MIN_HOURS of data could exist yet
-  if (reportAgeHours < TRAIL_MIN_HOURS) {
-    console.warn(`[wind-trail] report #${report.id}: too new (${reportAgeHours.toFixed(2)}h old, needs ${TRAIL_MIN_HOURS}h) — no wind trail yet, will fall back to nearest-station`);
+  // Map drawing (opts.anchored): a report downwind of a known chimney gets the path that runs from the chimney
+  // to the report (see buildAnchoredTrail), even when the report is too fresh for a backward wind trail.
+  const ckey = opts.anchored ? report.id + '_a' : report.id;
+  if (opts.anchored && DRAW_ANCHORED_TRAILS) {
+    const attA = reportSource(report);
+    if (attA) {
+      const c = windTrailCache[ckey];
+      if (c && c.calAt === plumeCal.at && reportAgeHours >= TRAIL_SETTLED_GATE_HOURS) return c;
+      let an = null;
+      try { an = await buildAnchoredTrail(report, attA); } catch (e) { console.warn('[anchored-trail]', e); }
+      if (an) { if (reportAgeHours >= TRAIL_SETTLED_GATE_HOURS) windTrailCache[ckey] = an; return an; }
+    }
+  }
+
+  // A wind history is only drawn once its data is final (TRAIL_SETTLED_GATE_HOURS): before that the trail would
+  // keep changing hour by hour as the wind data fills in and is revised, and it would be built from
+  // incomplete information. (The model path from a known chimney to a report, handled above, is a complete
+  // calculation and stays available for fresh reports.)
+  if (reportAgeHours < TRAIL_SETTLED_GATE_HOURS) {
     return null;
   }
 
@@ -5534,7 +5750,7 @@ async function buildWindTrailForReport(report) {
   // wind at chimney height and the turn learned from past reports (same model as the forecast),
   // not with the 10 m wind alone. In the backtest the 10 m wind kept 52 % of reports inside the
   // band, the full model 81 %.
-  const att = stackSourceFor(parseFloat(report.latitude), parseFloat(report.longitude), reportWindFrom(report));
+  const att = reportSource(report);
 
   // Only return the cached trail once it's the final, full-window version.
   // Growing trails are recomputed each call so newly-available hours show up. A chimney trail is
@@ -5584,7 +5800,7 @@ async function buildWindTrailForReport(report) {
       if (att) {
         // dir is where the air comes FROM; the learned bias turns the direction it travels
         // TO, so the way back toward the chimney is turned by the same amount.
-        const v = transportVecAt(hourly, i, 'stack');
+        const v = transportVecAt(hourly, i, burnerMode(att.b));
         if (v) {
           const from = (Math.atan2(-v.u, -v.v) * 180 / Math.PI + 360) % 360;
           const bias = plumeBiasFor(att.b.n, plumeStability(ts, parseFloat(report.latitude), parseFloat(report.longitude)), from).bias;
@@ -5647,7 +5863,7 @@ async function buildWindTrailForReport(report) {
     }
 
     steps.reverse(); // walk backwards from report time toward the source
-    const rawTrail = buildRawVectorTrail(
+    let rawTrail = buildRawVectorTrail(
       report.latitude,
       report.longitude,
       steps
@@ -5661,6 +5877,16 @@ async function buildWindTrailForReport(report) {
     for (let i = 1; i < rawTrail.length; i++) {
       rawTrail[i].time = new Date(steps[i - 1].ts).toISOString();
       rawTrail[i].spd = steps[i - 1].spd;
+    }
+
+    // Reports not tied to a known source: the 10 m wind at the report point alone is used for all 12 h, which
+    // is wrong once the air has moved tens of km (valley, plain, hills). Re-trace the same air parcel backwards
+    // with the wind sampled at a few places along its own path. Falls back to the fixed-point trail above.
+    if (!att) {
+      try {
+        const better = await pathWindTrailFor(report, rawTrail, steps, hourly, reportTime.getTime(), startTime.getTime());
+        if (better) rawTrail = better;
+      } catch (e) { console.warn('[wind-trail] path-wind refinement failed for report', report.id, e); }
     }
 
     const spline = smoothPathChaikin(rawTrail, 2);
@@ -5746,8 +5972,8 @@ async function buildExtendedRawTrailForStationMatch(report, maxHours) {
 // How far past a report the wind trail continues: tall chimneys keep carrying smell much
 // farther than a ground-level source, so reports downwind of one get a longer tail.
 function trailForwardLimits(report) {
-  const att = stackSourceFor(parseFloat(report.latitude), parseFloat(report.longitude), reportWindFrom(report));
-  return att ? { km: 60, hours: 8 } : { km: 25, hours: 4 };
+  const att = reportSource(report);
+  return (att && PLUME_STACK_KINDS.includes(att.b.k)) ? { km: 60, hours: 8 } : { km: 25, hours: 4 };
 }
 async function computeForwardWindExtension(report, maxKm = 5, maxHoursForward = 6) {
   const reportTime = new Date(report.created_at);
@@ -5759,8 +5985,8 @@ async function computeForwardWindExtension(report, maxKm = 5, maxHoursForward = 
   const hourly = await fetchForwardWind(snap(lat0), snap(lon0), reportTime.toISOString(), forwardEnd.toISOString());
   if (!hourly?.time) return [];
   // Chimney-height wind plus the learned correction for reports downwind of a known stack.
-  const att = stackSourceFor(lat0, lon0, reportWindFrom(report));
-  const mode = att ? 'stack' : 'ground';
+  const att = reportSource(report);
+  const mode = att ? burnerMode(att.b) : 'ground';
   const biasDeg = att ? plumeBiasFor(att.b.n, plumeStability(t0, lat0, lon0), stackWindFromAt(hourly, t0)).bias : 0;
   const path = advectParcel(lat0, lon0, t0, forwardEnd.getTime(), hourly, { mode, biasDeg, stepMin: 10 });
   const out = [];
@@ -6173,12 +6399,14 @@ async function generateAllBackgroundTrails(reports, tracerCoords = null) {
   const tier = trailTier(sortedReports.length);
   if (!tracerCoords || tier === 'full') sortedReports.forEach(report => drawReportCone(report, tracerCoords));
 
+  if (!tracerCoords) { await fitAttributeReports(sortedReports).catch(() => {}); if (mySeq !== trailGenSeq) return; }
+
 // PASS 2: Fetch historic wind trails concurrently — safe to parallelize now that
 // archival reports (>7 days) are served from the persisted historic_wind_json
 // column instead of hitting Open-Meteo every time. Only genuinely new/uncached
 // fetches go to the network, so rate-limit pressure stays low even running in parallel.
   const trailResults = await Promise.all(
-    sortedReports.map(report => buildWindTrailForReport(report))
+    sortedReports.map(report => buildWindTrailForReport(report, { anchored: !tracerCoords && DRAW_ANCHORED_TRAILS }))
   );
   if (mySeq !== trailGenSeq) return;
 
@@ -6199,7 +6427,7 @@ async function generateAllBackgroundTrails(reports, tracerCoords = null) {
     // than the display setting.
     let smoothedTrail;
     let rawPointsUsed;
-    if (tracerCoords) {
+    if (tracerCoords || trailResult.anchored) {
       smoothedTrail = trailResult.spline;
       rawPointsUsed = trailResult.rawTrail;
     } else {
@@ -6308,6 +6536,12 @@ async function generateAllBackgroundTrails(reports, tracerCoords = null) {
       ? drawFullTrail(it, tracerCoords)
       : drawLiteTrail(it, tracerCoords, featured.length, tier);
     bgTrailLayers.push(...segments);
+    if (tier === 'full' && !tracerCoords && it.trailResult?.anchored && it.trailResult.bandPts) {
+      // the uncertainty band of the chimney -> report path, in the trail pane so it follows the trails setting
+      const band = forecastBandPolygon(it.trailResult.bandPts, it.trailResult.sd, { pane: 'splinePane', fillColor: categoryColor(it.report.category) || '#c41e27', fillOpacity: 0.07 });
+      band.addTo(map);
+      bgTrailLayers.push(band);
+    }
     splineByReport[it.report.id] = segments;
   });
   trailInfo = trailsToRender.length > TRAIL_STATIC_MAX ? { shown: featured.length, total: trailsToRender.length } : null;
@@ -7194,7 +7428,7 @@ function renderBurnerMarkers() {
       .on('click', function () { traceFromPoint(b.a, b.o).then(() => { const p = this.getPopup(); if (p && p.isOpen()) p.update(); }); })
       .addTo(burnerLayer);
   });
-  if (factoryVisible) burnerLayer.addTo(map);
+  burnerLayer.addTo(map);   // major chimneys are always shown
 }
 
 let ttToastTimer = null;
@@ -7225,7 +7459,6 @@ async function setFactoryLayer(on) {
   } else {
     factoryVisible = false;
     ttToast(null);
-    if (burnerLayer && map.hasLayer(burnerLayer)) map.removeLayer(burnerLayer);
     if (factoryLayer && map.hasLayer(factoryLayer)) map.removeLayer(factoryLayer);
     if (btn) btn.classList.remove('active');
     syncSettingsToggles();
@@ -7937,6 +8170,49 @@ function buildReportStationSectionHtml(stationList, reportCreatedAt, reportId) {
   return `<div style="display:flex;flex-direction:column;margin-top:1px;">${avgSectionHtml}${header}${rows}</div>`;
 }
 
+// "Why this source?" block of the report popup: the wind at the nearest known source at the moment of the report
+// (10 m and the higher levels the model uses), where that source lies, and how far the puff misses the report.
+// Filled in after the popup opens (it may need wind data), then kept here so later popup rebuilds include it.
+const reportWhyHtmlCache = {};
+async function computeReportWhyHtml(report) {
+  const lat = parseFloat(report.latitude), lon = parseFloat(report.longitude), tR = Date.parse(report.created_at);
+  if (!isFinite(lat) || !isFinite(lon) || !isFinite(tR)) return '';
+  const wrap = body => `<div style="font-size:9px;color:var(--text-secondary);text-transform:uppercase;margin-bottom:1px;">${t('whyTitle')}</div>` +
+    `<div style="font-size:10px;color:var(--text-primary);line-height:1.35;">${body}</div><div style="height:1px;background:var(--border-color);margin:3px 0;"></div>`;
+  const ageH = (Date.now() - tR) / 3600000;
+  const pending = ageH < TRAIL_SETTLED_GATE_HOURS ? `<div style="color:var(--text-secondary);margin-top:2px;">${t('whyPending')}</div>` : '';
+  const cands = KNOWN_BURNERS.filter(b => getHaversineDistance(b.a, b.o, lat, lon) <= FIT_MAX_KM);
+  if (!cands.length) return wrap(t('whyNone') + pending);
+  await fitAttributeReports([report]).catch(() => {});
+  const fe = fitAttribCache[report.id], att = reportSource(report);
+  const near = fe && !fe.none ? fe : (fe && fe.near) || null;
+  const b = att ? att.b : (near ? near.b : cands.sort((x, y) => getHaversineDistance(x.a, x.o, lat, lon) - getHaversineDistance(y.a, y.o, lat, lon))[0]);
+  const name = b.n.replace(/\s*\(.*\)$/, '');
+  let h = null;
+  try { h = await burnerHourlyFor(b, tR); } catch (e) {}
+  let winds = '';
+  if (h?.time?.length) {
+    let bi = 0, bd = Infinity;
+    h.time.forEach((x, i) => { const dd = Math.abs(Date.parse(x + 'Z') - tR); if (dd < bd) { bd = dd; bi = i; } });
+    const parts = [];
+    [10, 80, 120, 180].forEach(lev => {
+      const v = windLevelVec(h, bi, lev);
+      if (v) parts.push(`${lev} m: <b>${Math.round((Math.atan2(-v.u, -v.v) * 180 / Math.PI + 360) % 360)}°</b> ${Math.round(Math.hypot(v.u, v.v))} km/h`);
+    });
+    winds = parts.length ? parts.join(' · ') : t('whyNoWind');
+  } else winds = t('whyNoWind');
+  const brg = Math.round(alertBearing(lat, lon, b.a, b.o));
+  let fit = '';
+  if (near) {
+    const verdict = att && fe && !fe.none ? t('whyAttributed') : t('whyNotAttributed');
+    fit = `<div>${t('whyFit')}: ${t('whyMiss')} <b>${near.miss.toFixed(1)} km</b> (${t('whyBand')} ±${near.width.toFixed(1)} km) → <b>${verdict}</b></div>`;
+  } else if (att) {
+    fit = `<div>${t('whyFit')}: ${t('whyCone')} → <b>${t('whyAttributed')}</b></div>`;
+  }
+  return wrap(`<div><b>${name}</b>, ${getHaversineDistance(b.a, b.o, lat, lon).toFixed(1)} km · ${t('whyDirToSource')} ${brg}°</div>` +
+    `<div>${t('whyWindAt')}: ${winds}</div>${fit}${pending}`);
+}
+
 // Builds the full report popup. stationSectionHtml is passed in separately
 // since it's resolved asynchronously (nearest-station lookup + a Supabase
 // query), while the rest of the popup can render immediately.
@@ -8013,6 +8289,7 @@ function buildReportPopupHtml(report, stationSectionHtml) {
     </div>
 
     <div style="height:1px;background:var(--border-color);margin:2px 0;"></div>
+    <div id="reportWhy-${report.id}">${reportWhyHtmlCache[report.id] || ''}</div>
     ${stationSectionHtml}
 
     ${report.comment ? `
@@ -8100,8 +8377,14 @@ setInterval(() => {
    widens with distance travelled because wind direction errors compound.
    Off by default; switched from Settings.
 ═══════════════════════════════════════════════════ */
-const FORECAST_AHEAD_H = 3;
+// Reports of the last 3 hours (FRESH_DRIFT_MAX_AGE_H) are carried 6 hours ahead (about 60 km at 10 km/h).
+// The model was checked against reports up to 30 km from the source (FORECAST_VALIDATED_KM); beyond that the
+// band keeps opening with the same cone but is drawn fainter, because that part is extrapolation.
+const FORECAST_AHEAD_H = 6;
 const FORECAST_STEP_MIN = 6;
+const FORECAST_VALIDATED_KM = 30;
+const PLUME_DRAW_CAP_KM = 25;
+const FORECAST_CHIP_IDX = Array.from({ length: FORECAST_AHEAD_H }, (_, i) => (i + 1) * 60 / FORECAST_STEP_MIN);   // +1h, +2h ...
 const FORECAST_MAX_REPORTS = 20;
 
 function setSmellForecast(on) {
@@ -8312,6 +8595,121 @@ function reportWindFrom(r) {
   return isFinite(v) ? v : null;
 }
 
+// ───────── Attribution by model fit (all known sources) ─────────
+// A report is linked to a known source when a puff released there (carried by the source-level wind and the learned
+// turn) can reach the report within the uncertainty band. This replaces the 10 m wind cone for reports the app has
+// wind data for; no category or source is singled out, every report near any known source is treated the same way.
+const burnerMode = b => PLUME_STACK_KINDS.includes(b.k) ? 'stack' : 'ground';
+// FIT_MAX_AGE_DAYS: model-fit attribution applies to every report (research tool, nothing is targeted), whatever its age.
+const FIT_MAX_KM = 40, FIT_MAX_AGE_DAYS = 36500, FIT_MAX_TRAVEL_H = 8, FIT_STEP_MIN = 10;
+const fitAttribCache = {};   // report.id -> { b, d, miss, width, norm, travelMin, calAt } | { none: true, near, calAt }
+// Hourly wind at a source, shared between reports: recent reports use one request per source and hour (past 7 days
+// plus forecast), older ones one archive request per source and day.
+function burnerHourlyFor(b, tR) {
+  if ((Date.now() - tR) / 86400000 < 5.5) { const iso = new Date().toISOString(); return fetchForwardWind(b.a, b.o, iso, iso); }
+  // Old reports share one request per source per 7-day block (block chosen from tR - 12 h, fetched 8 days long so
+  // the report's 12 h before and 1 h after always fit), instead of one per day.
+  const BLK = 7 * 86400000, bs = Math.floor((tR - 12 * 3600000) / BLK) * BLK;
+  const d0 = new Date(bs).toISOString().slice(0, 10), d1 = new Date(Math.min(bs + 8 * 86400000, Date.now())).toISOString().slice(0, 10);
+  return fetchForwardWind(b.a, b.o, d0 + 'T00:00:00.000Z', d1 + 'T23:00:00.000Z');
+}
+// Puffs released every 10 min over the previous 8 h; the one that ends closest to (lat, lon) at tR wins
+// (ties within 1 km: the most recent release). Pure function: hourly data in, fit out.
+function anchoredFitCore(b, h, lat, lon, tR, o = {}) {
+  const mode = burnerMode(b), sd = o.sd ?? PLUME_DEFAULT_SD_DEG;
+  const biasAt = o.biasAt || ((tr, from) => plumeBiasFor(b.n, plumeStability(tr, b.a, b.o), from).bias);
+  const cands = [];
+  for (let tr = tR - FIT_MAX_TRAVEL_H * 3600000; tr <= tR - 10 * 60000; tr += FIT_STEP_MIN * 60000) {
+    const pts = advectParcel(b.a, b.o, tr, tR, h, { mode, biasDeg: biasAt(tr, stackWindFromAt(h, tr)), stepMin: FIT_STEP_MIN });
+    if (pts.length < 2) continue;
+    const end = pts[pts.length - 1];
+    if (end.tMs < tR - 1) continue;            // ran out of wind data
+    cands.push({ tr, pts, miss: getHaversineDistance(end.lat, end.lon, lat, lon), dist: end.dist });
+  }
+  if (!cands.length) return null;
+  const minMiss = Math.min(...cands.map(c => c.miss));
+  const best = cands.filter(c => c.miss <= minMiss + 1).pop();
+  const width = forecastWidthKm(best.dist, sd, o.cap ?? PLUME_DRAW_CAP_KM);
+  return { best, miss: best.miss, width, norm: best.miss / Math.max(width, 2), ok: best.miss <= Math.max(2, width) };
+}
+// Fills fitAttribCache for all reports that have a known source within FIT_MAX_KM.
+// Where there is no wind data the cone rule (stackSourceFor) stays in charge.
+// Persisted results of the fit (settled reports only: their wind data is final, so the result cannot change until the
+// learned correction plumeCal.at or the source list changes, which invalidates the whole set).
+const FIT_LS_KEY = 'ttt_fit_v1', FIT_LS_MAX = 6000;
+let fitLsLoaded = false, fitLsMap = {}, fitLsCal = null, fitLsTimer = null;
+const fitEnc = e => { const f = x => x ? [x.b.n, +x.d.toFixed(2), +x.miss.toFixed(2), +x.width.toFixed(2), +x.norm.toFixed(3), x.travelMin] : null; return e.none ? { n: f(e.near) } : f(e); };
+function fitLsHydrate() {
+  if (fitLsLoaded) return;
+  fitLsLoaded = true; fitLsMap = {}; fitLsCal = plumeCal.at;
+  try {
+    const o = JSON.parse(localStorage.getItem(FIT_LS_KEY) || 'null');
+    if (!o || o.v !== 1 || o.cal !== plumeCal.at || o.nb !== KNOWN_BURNERS.length || !o.e) return;
+    const byName = {}; KNOWN_BURNERS.forEach(b => { byName[b.n] = b; });
+    const dec = a => { const b = a && byName[a[0]]; return b ? { b, d: a[1], miss: a[2], width: a[3], norm: a[4], travelMin: a[5], calAt: plumeCal.at } : null; };
+    Object.keys(o.e).forEach(id => {
+      const a = o.e[id], ent = Array.isArray(a) ? dec(a) : { none: true, near: dec(a && a.n), calAt: plumeCal.at };
+      if (!ent) return;
+      fitLsMap[id] = a;
+      if (!fitAttribCache[id] || fitAttribCache[id].calAt !== plumeCal.at) fitAttribCache[id] = ent;
+    });
+  } catch (e) { fitLsMap = {}; }
+}
+function fitLsPersist(reports) {
+  if (fitLsCal !== plumeCal.at) { fitLsMap = {}; fitLsCal = plumeCal.at; }
+  const gate = TRAIL_SETTLED_GATE_HOURS * 3600000;
+  let changed = false;
+  (reports || []).forEach(r => {
+    const e = fitAttribCache[r.id];
+    if (!e || e.calAt !== plumeCal.at || fitLsMap[r.id] !== undefined || Date.now() - Date.parse(r.created_at) < gate) return;
+    try { fitLsMap[r.id] = fitEnc(e); changed = true; } catch (err) {}
+  });
+  if (!changed || fitLsTimer) return;
+  fitLsTimer = setTimeout(() => {
+    fitLsTimer = null;
+    try {
+      let ids = Object.keys(fitLsMap);
+      if (ids.length > FIT_LS_MAX) { ids.sort((x, y) => x - y).slice(0, ids.length - FIT_LS_MAX).forEach(k => delete fitLsMap[k]); }
+      localStorage.setItem(FIT_LS_KEY, JSON.stringify({ v: 1, cal: fitLsCal, nb: KNOWN_BURNERS.length, e: fitLsMap }));
+    } catch (err) { /* quota: skip */ }
+  }, 1500);
+}
+async function fitAttributeReports(reports) {
+  fitLsHydrate();
+  const todo = (reports || []).filter(r => r && r.id != null && (Date.now() - Date.parse(r.created_at)) / 86400000 <= FIT_MAX_AGE_DAYS
+    && !(fitAttribCache[r.id] && fitAttribCache[r.id].calAt === plumeCal.at))
+    .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));   // newest first
+  for (let i = 0; i < todo.length; i += 6) {
+    await Promise.all(todo.slice(i, i + 6).map(async r => {
+      const lat = parseFloat(r.latitude), lon = parseFloat(r.longitude), tR = Date.parse(r.created_at);
+      if (!isFinite(lat) || !isFinite(lon) || !isFinite(tR)) return;
+      const cand = KNOWN_BURNERS.filter(b => getHaversineDistance(b.a, b.o, lat, lon) <= FIT_MAX_KM);
+      if (!cand.length) { fitAttribCache[r.id] = { none: true, calAt: plumeCal.at }; return; }
+      let best = null, near = null, anyData = false;
+      for (const b of cand) {
+        let h = null;
+        try { h = await burnerHourlyFor(b, tR); } catch (e) {}
+        if (!h?.time?.length) continue;
+        const f = anchoredFitCore(b, h, lat, lon, tR);
+        if (!f) continue;
+        anyData = true;
+        const entry = { b, d: getHaversineDistance(b.a, b.o, lat, lon), miss: f.miss, width: f.width, norm: f.norm, travelMin: Math.round((tR - f.best.tr) / 60000), calAt: plumeCal.at };
+        if (!near || f.norm < near.norm) near = entry;
+        if (f.ok && (!best || f.norm < best.norm)) best = entry;
+      }
+      if (!anyData) return;
+      fitAttribCache[r.id] = best || { none: true, near, calAt: plumeCal.at };
+    }));
+  }
+  fitLsPersist(reports);
+}
+// The source a report is attributed to: by model fit when that has been computed, otherwise by the old cone rule.
+function reportSource(report) {
+  const f = fitAttribCache[report.id];
+  if (f) return f.none ? null : { b: f.b, d: f.d, fit: f };
+  return stackSourceFor(parseFloat(report.latitude), parseFloat(report.longitude), reportWindFrom(report));
+}
+
 /* ---------- learned correction ---------- */
 function loadPlumeCal() {
   try {
@@ -8513,6 +8911,69 @@ function makePathWindFn(hourly, cells) {
 // Variants: no turn, day/night only, 4/8/12 sectors, sector shrinkage, the current model
 // (8 sectors + day/night), and the same with the mean of several models and wind along the path.
 // Run it from Settings or from the console: plumeBacktest().
+
+// ---- weather diagnostic helpers (backtest only) ----
+function omDiagUrl(lat, lon, full) {
+  return `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=temperature_2m,relative_humidity_2m,precipitation,cloud_cover,boundary_layer_height${full ? ',temperature_120m' : ''}&timezone=UTC&past_days=92&forecast_days=1`;
+}
+function diagAt(h, tMs) {
+  const t0 = Date.parse(h.time[0] + 'Z'), i = Math.round((tMs - t0) / 3600000);
+  if (!isFinite(t0) || i < 0 || i >= h.time.length) return null;
+  const g = (k, j) => h[k]?.[j];
+  const t2 = g('temperature_2m', i), t120 = g('temperature_120m', i);
+  let pr = 0, pn = 0;
+  for (let j = i - 2; j <= i; j++) { const v = g('precipitation', j); if (v != null) { pr += v; pn++; } }
+  return { dT: (t2 != null && t120 != null) ? t120 - t2 : null, blh: g('boundary_layer_height', i) ?? null, rh: g('relative_humidity_2m', i) ?? null, cloud: g('cloud_cover', i) ?? null, rain3h: pn ? pr : null };
+}
+// recs: [{src, bucket, hit, d, sp, night, dT, blh, rh, cloud, rain3h}] -> rows of "share inside the band" by
+// distance / wind speed / day-night / rain and by terciles of the weather variables. One vote per source and
+// 3-hour episode (reports of one episode share the weather), flagged '*' when a bin differs from the rest by
+// >= 2 standard errors. With ~25 bins one or two false flags are expected, so a flag is a hint, not proof.
+function plumeDiagRows(recs, scope) {
+  const groups = {};
+  recs.forEach(r => { (groups[r.src + '_' + r.bucket] = groups[r.src + '_' + r.bucket] || []).push(r); });
+  const units = Object.values(groups).map(g => {
+    const avg = key => { const v = g.map(r => r[key]).filter(x => x != null); return v.length ? v.reduce((a, c) => a + c, 0) / v.length : null; };
+    return { hit: g.filter(r => r.hit).length / g.length, w: g.length, d: avg('d'), sp: avg('sp'), night: g[0].night ? 1 : 0, dT: avg('dT'), blh: avg('blh'), rh: avg('rh'), cloud: avg('cloud'), rain3h: avg('rain3h') };
+  });
+  const quant = (key, q) => { const a = units.map(u => u[key]).filter(x => x != null).sort((x, y) => x - y); return a.length >= 12 ? a[Math.floor((a.length - 1) * q)] : null; };
+  const f1 = x => Math.round(x * 10) / 10;
+  const defs = [
+    ['distance from source', 'd', [['0-5 km', v => v < 5], ['5-10 km', v => v >= 5 && v < 10], ['10-20 km', v => v >= 10 && v < 20], ['20-30 km', v => v >= 20 && v < 30], ['30-45 km', v => v >= 30 && v < 45], ['45-60 km', v => v >= 45]]],
+    ['wind speed', 'sp', [['< 8 km/h', v => v < 8], ['8-15 km/h', v => v >= 8 && v < 15], ['>= 15 km/h', v => v >= 15]]],
+    ['time of day', 'night', [['day', v => v === 0], ['night', v => v === 1]]],
+    ['rain in last 3 h', 'rain3h', [['dry', v => v < 0.1], ['rain', v => v >= 0.1]]]
+  ];
+  [['temperature 120 m minus 2 m (C)', 'dT'], ['boundary layer height (m)', 'blh'], ['relative humidity (%)', 'rh'], ['cloud cover (%)', 'cloud']].forEach(([label, key]) => {
+    const q1 = quant(key, 1 / 3), q2 = quant(key, 2 / 3);
+    if (q1 == null || q2 == null || q1 === q2) return;
+    defs.push([label, key, [[`low (< ${f1(q1)})`, v => v < q1], [`mid (${f1(q1)} to ${f1(q2)})`, v => v >= q1 && v < q2], [`high (>= ${f1(q2)})`, v => v >= q2]]]);
+  });
+  const mean = a => a.reduce((x, y) => x + y, 0) / a.length;
+  const varOf = (a, m) => a.length > 1 ? a.reduce((x, y) => x + (y - m) ** 2, 0) / (a.length - 1) : 0;
+  const rows = [];
+  defs.forEach(([label, key, bins]) => bins.forEach(([bn, test]) => {
+    const inn = [], out = [];
+    units.forEach(u => { if (u[key] == null) return; (test(u[key]) ? inn : out).push(u.hit); });
+    if (inn.length < 8 || out.length < 8) return;
+    const p1 = mean(inn), p2 = mean(out), se = Math.sqrt(varOf(inn, p1) / inn.length + varOf(out, p2) / out.length);
+    rows.push({ scope, variable: label, bin: bn, episodes: inn.length, 'in band (%)': Math.round(100 * p1), 'vs rest (pp)': Math.round(100 * (p1 - p2)), flag: (se > 0 && Math.abs(p1 - p2) / se >= 2) ? '*' : '' });
+  }));
+  return rows;
+}
+function plumeFitSummary() {
+  return (plumeBacktest.lastFit || []).map(r => `Fit ${r.source} ${r.distance}: real ${r['fit, real reports (%)']}% vs other times ${r['fit, same place at other times (%)']}% (lift ${r['lift (x)']}x, n=${r.reports})`);
+}
+function plumeWindSummary() {
+  return (plumeBacktest.lastWind || []).map(r => `Wind ${r.source}: ${r['model wind']}: median ${r['median difference (deg)']}° off the typed wind, ${r['within 30 deg (%)']}% within 30° (n=${r['reports with typed wind']})`);
+}
+function plumeDiagSummary() {
+  const d = plumeBacktest.lastDiag || [];
+  if (!d.length) return [];
+  const flagged = d.filter(r => r.flag);
+  const head = `Weather check (${d[0].scope}): ${flagged.length ? flagged.length + ' bin(s) stand out' : 'nothing stands out'}.`;
+  return [head].concat(flagged.map(r => `${r.variable}: ${r.bin} -> ${r['in band (%)']}% in band (${r['vs rest (pp)'] > 0 ? '+' : ''}${r['vs rest (pp)']} pp vs the rest, ${r.episodes} episodes)`));
+}
 const sectorIndex = (deg, n) => Math.floor((((deg % 360) + 360) % 360 + 180 / n) / (360 / n)) % n;
 function makeBiasFn(items, o) {
   const all = items.length >= 5 ? summarizeByEpisode(items) : null;
@@ -8528,23 +8989,31 @@ function makeBiasFn(items, o) {
     return clampN(bias, -PLUME_MAX_BIAS_DEG, PLUME_MAX_BIAS_DEG);
   };
 }
-async function plumeBacktest() {
+async function plumeBacktest(opts = {}) {
+  // opts.models: also compare other wind models (3 extra requests per source; they did not help, so off by default)
+  const withModels = !!opts.models, diagRecs = [];
+  // opts.maxKm (e.g. 60): also take reports farther than 30 km, to check the model beyond the range it was built on.
+  const maxKm = opts.maxKm || PLUME_ATTRIB_MAX_KM, BT_CAP = opts.maxKm ? PLUME_DRAW_CAP_KM : 12;
   const since = new Date(Date.now() - PLUME_CAL_DAYS * 86400000).toISOString();
-  const { data, error } = await sb.from('air_reports').select('id,category,latitude,longitude,created_at,wind_direction,manual_wind_direction')
+  const { data, error } = await sb.from('air_reports').select('id,category,intensity,latitude,longitude,created_at,wind_direction,manual_wind_direction')
     .gte('created_at', since).neq('category', 'Clean Air').limit(5000);
   if (error || !data) throw (error || new Error('no reports'));
-  const rows = [], allMisses = [], allCats = {}, calmRows = [], FOLDS = 5, BUCKET_MS = 10800000;
+  const rows = [], fitRows = [], windRows = [], allInt = { s: 0, n: 0 }, allMisses = [], allCats = {}, calmRows = [], FOLDS = 5, BUCKET_MS = 10800000;
   let allNear = 0;
+  // Every known source with at least 20 reports 2.5-30 km around it is tested, not just one plant. Tall stacks use
+  // the chimney-height wind; other kinds (landfills ...) use the 10 m wind, so the same checks show whether the
+  // learned turn would help them too.
   for (const b of KNOWN_BURNERS) {
-    if (!PLUME_STACK_KINDS.includes(b.k)) continue;
-    const near = data.filter(r => { const d = getHaversineDistance(b.a, b.o, +r.latitude, +r.longitude); return d >= 2.5 && d <= PLUME_ATTRIB_MAX_KM; })
+    const MODE = PLUME_STACK_KINDS.includes(b.k) ? 'stack' : 'ground';
+    const label = b.n.replace(/\s*\(.*\)$/, '') + (MODE === 'ground' ? ' [10 m wind]' : '');
+    const near = data.filter(r => { const d = getHaversineDistance(b.a, b.o, +r.latitude, +r.longitude); return d >= 2.5 && d <= maxKm; })
       .sort((x, y) => Date.parse(x.created_at) - Date.parse(y.created_at));
     if (near.length < 20) continue;
-    near.forEach(r => { allCats[r.category || '?'] = (allCats[r.category || '?'] || 0) + 1; allNear++; });
+    near.forEach(r => { allCats[r.category || '?'] = (allCats[r.category || '?'] || 0) + 1; allNear++; const iv = +r.intensity; if (isFinite(iv)) { allInt.s += iv; allInt.n++; } });
     const hourly = await runWithOpenMeteoLimit(() => omFetchHourly(omForecastUrl(b.a, b.o, 92, 1, true), omForecastUrl(b.a, b.o, 92, 1, false)));
     if (!hourly?.time?.length) continue;
     const models = [hourly];
-    for (const m of PLUME_BT_MODELS) {
+    for (const m of (withModels ? PLUME_BT_MODELS : [])) {
       const h = await runWithOpenMeteoLimit(() => omFetchHourly(omForecastUrl(b.a, b.o, 92, 1, true) + '&models=' + m, omForecastUrl(b.a, b.o, 92, 1, false) + '&models=' + m));
       if (h?.time?.length) models.push(h);
     }
@@ -8566,10 +9035,10 @@ async function plumeBacktest() {
     const meanVec = (a, c) => (a && c) ? { u: (a.u + c.u) / 2, v: (a.v + c.v) / 2 } : (a || c);
     const cellAt = (t, la, lo, mode) => { const ch = cellHourly[cellKey(la, lo)]; return ch ? forecastWindAt(ch, t, mode) : null; };
     const WIND = {
-      stack: t => forecastWindAt(hourly, t, 'stack'),
-      ens: t => ensembleWindAt(models, t, 'stack'),
-      path: (t, la, lo) => { const a = forecastWindAt(hourly, t, 'stack'); return a ? meanVec(a, cellAt(t, la, lo, 'stack')) : null; },
-      ensPath: (t, la, lo) => { const a = ensembleWindAt(models, t, 'stack'); return a ? meanVec(a, cellAt(t, la, lo, 'stack')) : null; }
+      stack: t => forecastWindAt(hourly, t, MODE),
+      ens: t => ensembleWindAt(models, t, MODE),
+      path: (t, la, lo) => { const a = forecastWindAt(hourly, t, MODE); return a ? meanVec(a, cellAt(t, la, lo, MODE)) : null; },
+      ensPath: (t, la, lo) => { const a = ensembleWindAt(models, t, MODE); return a ? meanVec(a, cellAt(t, la, lo, MODE)) : null; }
     };
     // one report -> travel direction at the moment the smell was in the air; null if unusable
     const travel = (r, windFn) => {
@@ -8604,15 +9073,15 @@ async function plumeBacktest() {
           if (wf != null && alertAngleDiff(tv.brg, (wf + 180) % 360) > PLUME_ATTRIB_CONE_DEG) return;
           const err = Math.abs(circDiff(tv.brg, tv.to + (o ? bias(plumeStability(tv.tMid, b.a, b.o), tv.from) : 0)));
           errs.push(err);
-          det[x.i] = { id: x.r.id, cat: x.r.category, t: tv.tR, d: tv.d, err, sp: Math.hypot(windFn(tv.tMid, tv.lat, tv.lon)?.u || 0, windFn(tv.tMid, tv.lat, tv.lon)?.v || 0), stab: plumeStability(tv.tMid, b.a, b.o) };
-          hit[x.i] = err <= 90 && tv.d * Math.sin(err * Math.PI / 180) <= forecastWidthKm(tv.d, PLUME_DEFAULT_SD_DEG);
+          det[x.i] = { id: x.r.id, cat: x.r.category, int: +x.r.intensity, t: tv.tR, tMid: tv.tMid, d: tv.d, err, sp: Math.hypot(windFn(tv.tMid, tv.lat, tv.lon)?.u || 0, windFn(tv.tMid, tv.lat, tv.lon)?.v || 0), stab: plumeStability(tv.tMid, b.a, b.o) };
+          hit[x.i] = err <= 90 && tv.d * Math.sin(err * Math.PI / 180) <= forecastWidthKm(tv.d, PLUME_DEFAULT_SD_DEG, BT_CAP);
         });
       }
       return { hit, errs, det };
     };
     const nM = models.length, PREV = '8 sectors + day/night (previous model)', CUR = '8 sectors, weak shrinkage + path (current model)';
     const variants = [
-      ['no turn (chimney-height wind)', WIND.stack, null],
+      ['no turn (no correction)', WIND.stack, null],
       ['day/night only', WIND.stack, { stab: true }],
       ['4 sectors', WIND.stack, { sec: 4 }],
       ['8 sectors', WIND.stack, { sec: 8 }],
@@ -8623,9 +9092,10 @@ async function plumeBacktest() {
       [CUR, WIND.path, { sec: 8, k: 2 }],
       ['8 sectors, weak shrinkage + path + day/night', WIND.path, { stab: true, sec: 8, k: 2 }],
       ['8 sectors, default shrinkage + path', WIND.path, { sec: 8 }],
+      ...[-2, -1, 1, 2].map(off => [`wind time shifted ${off > 0 ? '+' : ''}${off} h`, (t, la, lo) => WIND.path(t + off * 3600000, la, lo), { sec: 8, k: 2 }]),
       [`8 sectors, weak shrinkage + mean of ${nM} model(s)`, WIND.ens, { sec: 8, k: 2 }],
       [`8 sectors, weak shrinkage + ${nM} model(s) + path`, WIND.ensPath, { sec: 8, k: 2 }]
-    ].map(([name, fn, o]) => ({ name, ...run(fn, o) }));
+    ].filter(v => withModels || !/model\(s\)/.test(v[0])).map(([name, fn, o]) => ({ name, ...run(fn, o) }));
     const ref = variants.find(v => v.name === CUR);
     // reports that fall OUTSIDE the band of the current model: how far the modelled plume axis from
     // the stack misses them (km), how far off the direction is, wind speed, day/night, category
@@ -8633,7 +9103,7 @@ async function plumeBacktest() {
       if (ref.hit[k]) return;
       const x = ref.det[k];
       allMisses.push({
-        source: b.n.replace(/\s*\(.*\)$/, ''), id: x.id, category: x.cat,
+        source: label, id: x.id, category: x.cat, intensity: isFinite(x.int) ? x.int : null,
         time: new Date(x.t).toLocaleString('sr-RS', { timeZone: 'Europe/Belgrade' }),
         'dist from stack (km)': +x.d.toFixed(1), 'direction error (deg)': Math.round(x.err),
         'axis misses by (km)': +(x.d * Math.sin(Math.min(90, x.err) * Math.PI / 180)).toFixed(1),
@@ -8648,7 +9118,7 @@ async function plumeBacktest() {
       keys.forEach(k => { if (ref.hit[k] === undefined) return; if (v.hit[k] && !ref.hit[k]) plus++; if (!v.hit[k] && ref.hit[k]) minus++; });
       const e = v.errs.slice().sort((x, y) => x - y);
       rows.push({
-        source: b.n.replace(/\s*\(.*\)$/, ''), variant: v.name, reports: n,
+        source: label, variant: v.name, reports: n,
         'in band (%)': Math.round(100 * p), '± (95%)': Math.round(196 * Math.sqrt(p * (1 - p) / n)),
         'within 25 deg (%)': Math.round(100 * e.filter(x => x <= 25).length / e.length),
         'median error (deg)': Math.round(e[Math.floor(e.length / 2)]),
@@ -8699,7 +9169,7 @@ async function plumeBacktest() {
         });
         return makeBiasFn(items, { sec: 8, k: 2 });
       };
-      const inBandOf = (err, d) => err <= 90 && d * Math.sin(err * Math.PI / 180) <= forecastWidthKm(d, PLUME_DEFAULT_SD_DEG);
+      const inBandOf = (err, d) => err <= 90 && d * Math.sin(err * Math.PI / 180) <= forecastWidthKm(d, PLUME_DEFAULT_SD_DEG, BT_CAP);
       const cfgs = [{ C: 6 }, { C: 8 }, { C: 10 }, { C: 8, split: true }].map(c => ({ ...c, nC: 0, aC: 0, bC: 0, up: 0, dn: 0, nAll: 0, aAll: 0, bAll: 0 }));
       for (let k = 0; k < FOLDS; k++) {
         const bias = learnBias(k), train = infs.filter(z => z.f !== k);
@@ -8718,20 +9188,107 @@ async function plumeBacktest() {
       cfgs.forEach(c => {
         const pr = priorOf(infs, c.C, false), R = pr ? +pr().R.toFixed(2) : null, mean = pr ? Math.round(pr().deg) : null;
         calmRows.push({
-          source: b.n.replace(/\s*\(.*\)$/, ''), rule: `wind < ${c.C} km/h -> learned bearing${c.split ? ' (day/night)' : ''}`,
+          source: label, rule: `wind < ${c.C} km/h -> learned bearing${c.split ? ' (day/night)' : ''}`,
           'calm reports': c.nC, 'wind model in band (%)': pct(c.aC, c.nC), 'learned bearing in band (%)': pct(c.bC, c.nC),
           'vs wind model': `+${c.up}/-${c.dn}`, 'all reports, now (%)': pct(c.aAll, c.nAll), 'all reports, with rule (%)': pct(c.bAll, c.nAll),
           'typical bearing (deg)': mean, 'concentration R (0-1)': R
         });
       });
     }
+
+    // ---- does attribution by fit mean anything? real reports vs the same place at other times ----
+    // For every report: does a puff from this source reach it within the band (fit)? The same question is asked
+    // for the same place 1 and 2 days earlier and later (placebo). If real reports fit much more often than the
+    // placebo, a fit is evidence; if not, it is chance. Placebo days share the weather regime, so this is a
+    // conservative test. The turn is learned on the other blocks, as everywhere else in this check.
+    {
+      const learnBiasFit = k => {
+        const items = [];
+        recs.filter(x => x.f !== k).forEach(x => {
+          const tv = travel(x.r, WIND.path);
+          if (!tv) return;
+          const resid = circDiff(tv.brg, tv.to);
+          if (Math.abs(resid) > 60) return;
+          items.push({ r: resid, tR: tv.tR, fromDeg: tv.from, bucket: Math.floor(tv.tR / BUCKET_MS), stab: plumeStability(tv.tMid, b.a, b.o) });
+        });
+        return makeBiasFn(items, { sec: 8, k: 2 });
+      };
+      const h0 = Date.parse(hourly.time[0] + 'Z') + FIT_MAX_TRAVEL_H * 3600000, h1 = Math.min(Date.now(), Date.parse(hourly.time[hourly.time.length - 1] + 'Z')) - 3600000;
+      const binOf = d => d < 10 ? '2.5-10 km' : d < 20 ? '10-20 km' : d < 30 ? '20-30 km' : d < 45 ? '30-45 km' : '45-60 km';
+      const bins = {}, add = (key, real, pl, plN) => { const z = bins[key] = bins[key] || { n: 0, real: 0, pl: 0, plN: 0 }; z.n++; z.real += real; z.pl += pl; z.plN += plN; };
+      for (let k = 0; k < FOLDS; k++) {
+        const bias = learnBiasFit(k), biasAt = (tr, from) => bias(plumeStability(tr, b.a, b.o), from);
+        recs.filter(x => x.f === k).forEach(x => {
+          const lat = +x.r.latitude, lon = +x.r.longitude, tR = Date.parse(x.r.created_at);
+          if (!isFinite(lat) || !isFinite(lon) || !isFinite(tR) || tR < h0 || tR > h1) return;
+          const fit = t => { const f = anchoredFitCore(b, hourly, lat, lon, t, { biasAt, cap: BT_CAP }); return f ? (f.ok ? 1 : 0) : null; };
+          const real = fit(tR);
+          if (real == null) return;
+          let pl = 0, plN = 0;
+          [-2, -1, 1, 2].forEach(dd => { const t = tR + dd * 86400000; if (t < h0 || t > h1) return; const v = fit(t); if (v != null) { pl += v; plN++; } });
+          if (!plN) return;
+          const d = getHaversineDistance(b.a, b.o, lat, lon), w = plN;
+          [binOf(d), 'all distances'].forEach(key => add(key, real, pl / plN, 1));
+        });
+      }
+      ['all distances', '2.5-10 km', '10-20 km', '20-30 km', '30-45 km', '45-60 km'].forEach(key => {
+        const z = bins[key];
+        if (!z || z.n < 8) return;
+        const pr = z.real / z.n, pp = z.pl / z.plN;
+        fitRows.push({ source: label, distance: key, reports: z.n, 'fit, real reports (%)': Math.round(100 * pr), 'fit, same place at other times (%)': Math.round(100 * pp),
+          'lift (x)': pp > 0 ? +(pr / pp).toFixed(1) : null });
+      });
+    }
+
+    // ---- is the wind history itself right? compare with the wind reporters typed in by hand ----
+    {
+      const man = near.filter(r => r.manual_wind_direction != null && isFinite(+r.manual_wind_direction));
+      if (man.length >= 8) {
+        const test = (name, fn) => {
+          const diffs = [];
+          man.forEach(r => {
+            const t = Date.parse(r.created_at), w = fn(t, +r.latitude, +r.longitude);
+            if (!w || Math.hypot(w.u, w.v) < 3) return;
+            diffs.push(Math.abs(circDiff(+r.manual_wind_direction, (Math.atan2(-w.u, -w.v) * 180 / Math.PI + 360) % 360)));
+          });
+          if (diffs.length < 8) return;
+          diffs.sort((x, y) => x - y);
+          windRows.push({ source: label, 'model wind': name, 'reports with typed wind': diffs.length, 'median difference (deg)': Math.round(diffs[Math.floor(diffs.length / 2)]),
+            'within 30 deg (%)': Math.round(100 * diffs.filter(x => x <= 30).length / diffs.length) });
+        };
+        test('10 m at the source', t => forecastWindAt(hourly, t, 'ground'));
+        test('source level at the source', t => forecastWindAt(hourly, t, MODE));
+        test('10 m at the report place', (t, la, lo) => { const c = cellHourly[cellKey(la, lo)]; return c ? forecastWindAt(c, t, 'ground') : null; });
+        for (const off of [-2, -1, 1, 2]) test(`10 m at the source, time shifted ${off > 0 ? '+' : ''}${off} h`, t => forecastWindAt(hourly, t + off * 3600000, 'ground'));
+      }
+    }
+
+    // ---- weather diagnostic: do the misses cluster in some weather? (wind direction is already modelled) ----
+    if (opts.diag !== false) {
+      const dh = await runWithOpenMeteoLimit(() => omFetchHourly(omDiagUrl(b.a, b.o, true), omDiagUrl(b.a, b.o, false)));
+      if (dh?.time?.length) Object.keys(ref.det).forEach(k => {
+        const x = ref.det[k], m = diagAt(dh, x.tMid);
+        if (m) diagRecs.push({ src: label, bucket: Math.floor(x.tMid / BUCKET_MS), hit: !!ref.hit[k], d: x.d, sp: x.sp, night: x.stab === 'stable', ...m });
+      });
+    }
   }
+  const diagRows = diagRecs.length ? plumeDiagRows(diagRecs, 'all sources') : [];
+  [...new Set(diagRecs.map(r => r.src))].forEach(src => {
+    const sub = diagRecs.filter(r => r.src === src);
+    if (new Set(diagRecs.map(r => r.src)).size > 1 && sub.length >= 60) diagRows.push(...plumeDiagRows(sub, src));
+  });
+  plumeBacktest.lastDiag = diagRows;
+  plumeBacktest.lastFit = fitRows;
+  plumeBacktest.lastWind = windRows;
+  if (fitRows.length) { console.log('Attribution by fit: real reports vs the same place at other times'); console.table(fitRows); }
+  if (windRows.length) { console.log('Wind history vs the wind typed in by reporters'); console.table(windRows); }
   console.table(rows);
+  if (diagRows.length) { console.log('Weather check (episodes; * = differs from the rest by >= 2 SE):'); console.table(diagRows); }
   if (calmRows.length) { console.log('Calm-wind check (cross-validated):'); console.table(calmRows); }
   plumeBacktest.lastCalm = calmRows;
   allMisses.sort((x, y) => y['axis misses by (km)'] - x['axis misses by (km)']);
   plumeBacktest.lastMisses = allMisses;
-  plumeBacktest.lastCats = { counts: allCats, total: allNear };
+  plumeBacktest.lastCats = { counts: allCats, total: allNear, intAvg: allInt.n ? allInt.s / allInt.n : null };
   if (allMisses.length) { console.log('Reports outside the band of the current model (worst first):'); console.table(allMisses); }
   return rows;
 }
@@ -8747,7 +9304,10 @@ function plumeMissSummary() {
     const all = base.counts[k] || 0;
     return `${k.replace(/\s*\(.*\)$/, '')} ${v}/${m.length} (${Math.round(100 * v / m.length)}%, ${base.total ? Math.round(100 * all / base.total) : '?'}% of all)`;
   }).join('; ');
-  return `Outside the band: ${m.length}. More than 60° off: ${far}, wind under 8 km/h: ${calm}, at night: ${night}. By category: ${top}. Full list: console, plumeBacktest.lastMisses.`;
+  const ints = m.map(x => x.intensity).filter(x => x != null), serious = ints.filter(x => x >= 7).length;
+  const bi = (plumeBacktest.lastCats || {}).intAvg;
+  const intTxt = ints.length ? ` Intensity of the misses: average ${(ints.reduce((a, c) => a + c, 0) / ints.length).toFixed(1)}/10${bi != null ? ` (all reports ${bi.toFixed(1)})` : ''}, ${serious} of ${ints.length} rated 7 or more.` : '';
+  return `Outside the band: ${m.length}. More than 60° off: ${far}, wind under 8 km/h: ${calm}, at night: ${night}. By category: ${top}.${intTxt} Full list: console, plumeBacktest.lastMisses.`;
 }
 // Plain-text lines for plumeBacktest.lastCalm.
 function plumeCalmSummary() {
@@ -8763,7 +9323,7 @@ async function runPlumeBacktestUi() {
     if (out) out.innerHTML = rows.length
       ? rows.map(r => ttEsc(`${r.source} · ${r.variant}: ${r['in band (%)']}% in band (±${r['± (95%)']}), ${r['within 25 deg (%)']}% ≤25°, median ${r['median error (deg)']}°, vs current ${r['vs current']}, n=${r.reports}`)).join('<br>')
       : ttEsc(t('plumeBacktestNone'));
-    if (out && rows.length) out.innerHTML += '<br><br>' + ttEsc(plumeMissSummary()) + '<br><br>' + plumeCalmSummary().map(ttEsc).join('<br>');
+    if (out && rows.length) out.innerHTML += '<br><br>' + ttEsc(plumeMissSummary()) + '<br><br>' + plumeCalmSummary().map(ttEsc).join('<br>') + '<br><br>' + plumeFitSummary().concat(plumeWindSummary()).map(ttEsc).join('<br>') + '<br><br>' + plumeDiagSummary().map(ttEsc).join('<br>');
   } catch (e) { if (out) out.textContent = t('plumeBacktestFail'); }
   if (btn) btn.disabled = false;
 }
@@ -8808,8 +9368,8 @@ async function recalibratePlumeModel(force) {
 
 // Half-width of the uncertainty band (km) after the smell has travelled D km. The measured
 // episode-to-episode scatter of the plume direction (sdDeg) opens the band like a cone.
-function forecastWidthKm(D, sdDeg) {
-  return Math.min(12, 0.25 + D * Math.tan((sdDeg || PLUME_DEFAULT_SD_DEG) * Math.PI / 180));
+function forecastWidthKm(D, sdDeg, capKm = 12) {
+  return Math.min(capKm, 0.25 + D * Math.tan((sdDeg || PLUME_DEFAULT_SD_DEG) * Math.PI / 180));
 }
 // Mean wind vector from what reporters/the app recorded, for when no forecast is available.
 function reportedWindVecOf(reports) {
@@ -8822,7 +9382,7 @@ function reportedWindVecOf(reports) {
 }
 
 // Returns { past:[{lat,lon}], future:[{lat,lon,dist,dir,tMs}] }.
-// future[0] is "now"; future[10], [20], [30] are +1h, +2h, +3h.
+// future[0] is "now"; future[FORECAST_CHIP_IDX[i]] is +(i+1) h.
 function buildForecastPath(report, hourly, o = {}) {
   const lat0 = parseFloat(report.latitude), lon0 = parseFloat(report.longitude);
   const t0 = new Date(report.created_at).getTime();
@@ -8843,13 +9403,24 @@ function forecastOffsetPoint(p, dxKm, dyKm) {
   return [p.lat + dyKm / 110.574, p.lon + dxKm / (111.32 * Math.cos(p.lat * Math.PI / 180))];
 }
 function forecastBandPolygon(pts, sdDeg, style) {
-  const left = [], right = [];
-  pts.forEach(p => {
-    const w = forecastWidthKm(p.dist, sdDeg), nx = -p.dir.y, ny = p.dir.x;
-    left.push(forecastOffsetPoint(p, nx * w, ny * w));
-    right.push(forecastOffsetPoint(p, -nx * w, -ny * w));
-  });
-  return L.polygon(left.concat(right.reverse()), Object.assign({ pane: 'forecastPane', stroke: false, interactive: false }, style));
+  const build = (arr, st) => {
+    const left = [], right = [];
+    arr.forEach(p => {
+      const w = forecastWidthKm(p.dist, sdDeg, PLUME_DRAW_CAP_KM), nx = -p.dir.y, ny = p.dir.x;
+      left.push(forecastOffsetPoint(p, nx * w, ny * w));
+      right.push(forecastOffsetPoint(p, -nx * w, -ny * w));
+    });
+    return L.polygon(left.concat(right.reverse()), Object.assign({ pane: 'forecastPane', stroke: false, interactive: false }, st));
+  };
+  // beyond the range the model was checked on, the same cone is drawn at half the opacity
+  const cut = pts.findIndex(p => p.dist > FORECAST_VALIDATED_KM);
+  const polys = [];
+  if (cut < 0) polys.push(build(pts, style));
+  else {
+    if (cut >= 1) polys.push(build(pts.slice(0, cut + 1), style));
+    if (pts.length - cut >= 2) polys.push(build(pts.slice(Math.max(0, cut - 1)), Object.assign({}, style, { fillOpacity: (style.fillOpacity || 0.1) * 0.5 })));
+  }
+  return L.layerGroup(polys);
 }
 function forecastChipMarker(p, col, hours) {
   return L.marker([p.lat, p.lon], {
@@ -8859,26 +9430,41 @@ function forecastChipMarker(p, col, hours) {
   });
 }
 
-// Wind at the chimney plus up to three places along the first-guess plume (12/24/36 km out), so the
-// forecast can follow wind that changes along the way. Each extra place is one cached request.
+// Wind at the chimney plus up to five places along the first-guess plume (12/24/36/48/60 km out), so the
+// forecast can follow wind that changes along the way. All extra places go in ONE cached request.
+// Several places in one Open-Meteo request; shares weatherCache keys with fetchForwardWind.
+async function fetchForwardWindMulti(coords) {
+  const iso = new Date().toISOString();
+  const key = c => `fwd_${c.lat.toFixed(3)}_${c.lon.toFixed(3)}_${iso.slice(0, 13)}`;
+  const missing = coords.filter(c => !weatherCache[key(c)]);
+  if (missing.length) {
+    const arr = await runWithOpenMeteoLimit(() => omFetchHourlyMulti(missing, 7, 2));
+    if (arr) missing.forEach((c, j) => { if (arr[j]?.time?.length) weatherCache[key(c)] = arr[j]; });
+  }
+  return coords.map(c => weatherCache[key(c)] || null);
+}
 async function buildWindField(b, sh) {
   const field = [{ lat: b.a, lon: b.o, hourly: sh }];
   if (!sh) return field;
   const now = Date.now(), iso = new Date().toISOString();
   const snap = v => Math.round(v * 20) / 20;
-  const path = advectParcel(b.a, b.o, now - 3 * 3600000, now + FORECAST_AHEAD_H * 3600000, sh, { mode: 'stack', stepMin: 12 });
-  const seen = new Set([`${snap(b.a)}_${snap(b.o)}`]);
-  for (const d of [12, 24, 36]) {
+  const path = advectParcel(b.a, b.o, now - 3 * 3600000, now + FORECAST_AHEAD_H * 3600000, sh, { mode: burnerMode(b), stepMin: 12 });
+  const seen = new Set([`${snap(b.a)}_${snap(b.o)}`]), want = [];
+  for (const d of [12, 24, 36, 48, 60]) {
     const q = path.find(x => x.dist >= d);
     if (!q) break;
     const la = snap(q.lat), lo = snap(q.lon), key = `${la}_${lo}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    try { const h = await fetchForwardWind(la, lo, iso, iso); if (h) field.push({ lat: la, lon: lo, hourly: h }); } catch (e) {}
+    want.push({ lat: la, lon: lo });
+  }
+  if (want.length) {
+    try { const hs = await fetchForwardWindMulti(want); want.forEach((c, j) => { if (hs[j]) field.push({ lat: c.lat, lon: c.lon, hourly: hs[j] }); }); } catch (e) {}
   }
   return field;
 }
 const PLUME_COLOR = '#d84315';
+const STANDING_PLUME_MAX_KM = 150;   // chimneys farther than this from the user / map centre are skipped (saves wind requests)
 async function renderSmellForecast() {
   if (!smellForecastVisible) return;
   const seq = ++forecastSeq;
@@ -8891,12 +9477,14 @@ async function renderSmellForecast() {
   });
   reports.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
   const used = reports.slice(0, FORECAST_MAX_REPORTS);
+  await fitAttributeReports(used).catch(() => {});    // which source (if any) can explain each report
+  if (seq !== forecastSeq || !smellForecastVisible) return;
 
   // Reports downwind of a known chimney are forecast as ONE plume that starts at the chimney
   // (wind at chimney height, learned correction); everything else is forecast from the report.
   const attrib = new Map();
   used.forEach(r => {
-    const a = stackSourceFor(parseFloat(r.latitude), parseFloat(r.longitude), reportWindFrom(r));
+    const a = reportSource(r);
     if (a) attrib.set(r.id, a);
   });
 
@@ -8910,6 +9498,11 @@ async function renderSmellForecast() {
     const a = attrib.get(r.id);
     if (a) srcUniq[a.b.n] = a.b; else uniq[keyOf(r)] = r;
   });
+  // Standing plumes: every known chimney near the user / map centre gets a plume even with no reports,
+  // so the picture is always there and is recomputed on every refresh.
+  const stackRef = (userCoords && isFinite(userCoords.lat)) ? { lat: userCoords.lat, lon: userCoords.lon } : { lat: map.getCenter().lat, lon: map.getCenter().lng };
+  const standing = KNOWN_BURNERS.filter(b => PLUME_STACK_KINDS.includes(b.k) && getHaversineDistance(b.a, b.o, stackRef.lat, stackRef.lon) <= STANDING_PLUME_MAX_KM);
+  standing.forEach(b => { srcUniq[b.n] = b; });
   await Promise.all([
     ...Object.keys(uniq).map(async k => {
       const r = uniq[k];
@@ -8928,9 +9521,30 @@ async function renderSmellForecast() {
 
   const bands = [], lines = [], marks = [];
   let drawn = 0, fallback = 0;
-  const plumes = [];
+  const plumes = [], dbg = [];
   const now = Date.now();
   const showAllChips = used.length <= 6;
+  const localTime = ms => new Date(ms).toLocaleTimeString('sr-RS', { timeZone: 'Europe/Belgrade', hour: '2-digit', minute: '2-digit' });
+  // For fresh reports that were NOT attributed to a chimney although one is within 40 km: why not.
+  used.forEach(r => {
+    if (attrib.has(r.id)) return;
+    const la = parseFloat(r.latitude), lo = parseFloat(r.longitude), fe = fitAttribCache[r.id];
+    if (fe?.near) {
+      const wf0 = reportWindFrom(r);
+      dbg.push({ id: r.id, category: r.category, time: localTime(Date.parse(r.created_at)), source: fe.near.b.n.replace(/\s*\(.*\)$/, ''),
+        'dist (km)': +fe.near.d.toFixed(1), 'reported wind from': wf0 == null ? null : Math.round(wf0), attributed: false,
+        reason: `no known source fits: the closest puff misses by ${fe.near.miss.toFixed(1)} km (band ${fe.near.width.toFixed(1)} km)` });
+      return;
+    }
+    let best = null;
+    KNOWN_BURNERS.forEach(b => { if (!PLUME_STACK_KINDS.includes(b.k)) return; const d = getHaversineDistance(b.a, b.o, la, lo); if (!best || d < best.d) best = { b, d }; });
+    if (!best || best.d > 40) return;
+    const wf = reportWindFrom(r), brg = alertBearing(best.b.a, best.b.o, la, lo), off = wf == null ? null : Math.round(alertAngleDiff(brg, (wf + 180) % 360));
+    dbg.push({ id: r.id, category: r.category, time: localTime(Date.parse(r.created_at)), source: best.b.n.replace(/\s*\(.*\)$/, ''),
+      'dist (km)': +best.d.toFixed(1), 'bearing stack->report': Math.round(brg), 'reported wind from': wf == null ? null : Math.round(wf),
+      'off downwind (deg)': off, attributed: false,
+      reason: best.d > PLUME_ATTRIB_MAX_KM ? `farther than ${PLUME_ATTRIB_MAX_KM} km` : (off == null ? 'no wind recorded' : (off > PLUME_ATTRIB_CONE_DEG ? `outside the ${PLUME_ATTRIB_CONE_DEG}° downwind cone` : '?')) });
+  });
 
   // ----- plumes from known chimneys -----
   const bySrc = {};
@@ -8956,7 +9570,7 @@ async function renderSmellForecast() {
     const endMs = now + FORECAST_AHEAD_H * 3600000;
     const puffs = rel.map(tr => ({
       tRelease: tr,
-      pts: advectParcel(b.a, b.o, tr, endMs, sh, { mode: 'stack', biasDeg: est.bias, stepMin: FORECAST_STEP_MIN, fallbackVec: fbVec, field: fieldBySrc[b.n] })
+      pts: advectParcel(b.a, b.o, tr, endMs, sh, { mode: burnerMode(b), biasDeg: est.bias, stepMin: FORECAST_STEP_MIN, fallbackVec: fbVec, field: fieldBySrc[b.n] })
     })).filter(p => p.pts.length > 1);
     if (!puffs.length) return;
 
@@ -8971,7 +9585,7 @@ async function renderSmellForecast() {
         pane: 'forecastPane', radius: newest ? 6 : 3, color: PLUME_COLOR, weight: 2, fillColor: PLUME_COLOR, fillOpacity: newest ? 0.25 : 0.6, interactive: false
       }));
       if (newest) {
-        [10, 20, 30].forEach((idx, n) => {
+        FORECAST_CHIP_IDX.forEach((idx, n) => {
           const p = pf.pts[idx];
           if (!p) return;
           marks.push(L.circleMarker([p.lat, p.lon], {
@@ -8989,14 +9603,57 @@ async function renderSmellForecast() {
       const la = parseFloat(r.latitude), lo = parseFloat(r.longitude), tR = Date.parse(r.created_at);
       if (getHaversineDistance(b.a, b.o, la, lo) < 2.5) return;
       n++;
-      const hit = puffs.some(pf => {
-        if (pf.tRelease > tR + 10 * 60000) return false;
+      let hit = false, minKm = Infinity;
+      puffs.forEach(pf => {
+        if (pf.tRelease > tR + 10 * 60000) return;
         const p = parcelPosAt(pf.pts, tR);
-        return p && getHaversineDistance(p.lat, p.lon, la, lo) <= forecastWidthKm(p.dist, est.sd);
+        if (!p) return;
+        const dk = getHaversineDistance(p.lat, p.lon, la, lo);
+        minKm = Math.min(minKm, dk);
+        if (dk <= forecastWidthKm(p.dist, est.sd, PLUME_DRAW_CAP_KM)) hit = true;
       });
       if (hit) inside++;
+      const wm = sh ? forecastWindAt(sh, tR, burnerMode(b)) : null, wf = reportWindFrom(r);
+      dbg.push({ id: r.id, category: r.category, time: localTime(tR), source: b.n.replace(/\s*\(.*\)$/, ''),
+        'dist (km)': +getHaversineDistance(b.a, b.o, la, lo).toFixed(1), 'bearing stack->report': Math.round(alertBearing(b.a, b.o, la, lo)),
+        'reported wind from': wf == null ? null : Math.round(wf),
+        'model wind at chimney from': wm ? Math.round((Math.atan2(-wm.u, -wm.v) * 180 / Math.PI + 360) % 360) : null,
+        'model wind km/h': wm ? Math.round(Math.hypot(wm.u, wm.v)) : null,
+        'off downwind (deg)': null, attributed: true,
+        reason: hit ? 'inside the drawn plume' : `outside the plume (nearest ${isFinite(minKm) ? minKm.toFixed(1) + ' km' : 'n/a'})` });
     });
     plumes.push({ name: b.n, n, inside, bias: Math.round(est.bias), sd: Math.round(est.sd), nHist: Math.round(est.nHist) });
+  });
+
+  // ----- standing plumes: chimneys with no fresh report downwind -----
+  // Same model (chimney-height wind, learned turn, learned spread), drawn fainter so a modelled
+  // plume is never mistaken for a confirmed report. Not a measurement of emissions.
+  standing.forEach(b => {
+    if (bySrc[b.n]) return;
+    const sh = srcHourly[b.n] || null;
+    if (!sh) return;
+    const est = plumeBiasEstimate(b, plumeStability(now, b.a, b.o), sh, [], now);
+    const endMs = now + FORECAST_AHEAD_H * 3600000;
+    const rel = [];
+    for (let tr = now - 3 * 3600000; tr < now - 5 * 60000; tr += 60 * 60000) rel.push(tr);
+    rel.push(now);
+    const puffs = rel.map(tr => ({ tRelease: tr,
+      pts: advectParcel(b.a, b.o, tr, endMs, sh, { mode: burnerMode(b), biasDeg: est.bias, stepMin: FORECAST_STEP_MIN, field: fieldBySrc[b.n] })
+    })).filter(p => p.pts.length > 1);
+    if (!puffs.length) return;
+    puffs.forEach((pf, k) => {
+      const newest = k === puffs.length - 1;
+      bands.push(forecastBandPolygon(pf.pts, est.sd, { fillColor: PLUME_COLOR, fillOpacity: newest ? 0.05 : 0.025 }));
+      if (!newest) return;
+      lines.push(L.polyline(pf.pts.map(p => [p.lat, p.lon]), { pane: 'forecastPane', color: PLUME_COLOR, weight: 2, opacity: 0.55, dashArray: '8 8', className: 'forecast-line', interactive: false }));
+      FORECAST_CHIP_IDX.forEach((idx, n) => {
+        const p = pf.pts[idx];
+        if (!p) return;
+        marks.push(L.circleMarker([p.lat, p.lon], { pane: 'forecastPane', radius: 3, color: '#fff', weight: 1, fillColor: PLUME_COLOR, fillOpacity: 0.8, interactive: false }));
+        marks.push(forecastChipMarker(p, PLUME_COLOR, n + 1));
+      });
+    });
+    plumes.push({ name: b.n, n: 0, inside: 0, bias: Math.round(est.bias), sd: Math.round(est.sd), nHist: Math.round(est.nHist) });
   });
 
   // ----- everything else: forecast from the report itself -----
@@ -9026,19 +9683,21 @@ async function renderSmellForecast() {
     marks.push(L.circleMarker([fut[0].lat, fut[0].lon], {
       pane: 'forecastPane', radius: 6, color: col, weight: 2, fillColor: col, fillOpacity: 0.25, interactive: false
     }));
-    [10, 20, 30].forEach((idx, n) => {
+    FORECAST_CHIP_IDX.forEach((idx, n) => {
       const p = fut[idx];
       if (!p) return;
       marks.push(L.circleMarker([p.lat, p.lon], {
         pane: 'forecastPane', radius: 3.5, color: '#fff', weight: 1, fillColor: col, fillOpacity: 1, interactive: false
       }));
-      if (showAllChips || n === 2) marks.push(forecastChipMarker(p, col, n + 1));
+      if (showAllChips || n === FORECAST_CHIP_IDX.length - 1) marks.push(forecastChipMarker(p, col, n + 1));
     });
   });
 
   smellForecastLayer.clearLayers();
   bands.concat(lines, marks).forEach(l => smellForecastLayer.addLayer(l));
-  forecastStatus = { n: drawn, fallback: fallback > 0, plumes };
+  // console.table(plumeTodayDebug): every fresh report near a chimney, attributed or not, and why
+  window.plumeTodayDebug = dbg;
+  forecastStatus = { n: drawn, fallback: fallback > 0, plumes };   // status text is no longer shown in Settings
   updateSmellForecastStatus();
 }
 
@@ -9077,6 +9736,12 @@ function renderPin(report, index = 0){
     // The selected report always shows its full wind history, animated,
     // whatever the trail setting or the bulk-trail tier is.
     showFocusTrail(report);
+
+    computeReportWhyHtml(report).then(html => {
+      reportWhyHtmlCache[report.id] = html;
+      const el = document.getElementById('reportWhy-' + report.id);
+      if (el) el.innerHTML = html;
+    }).catch(err => console.warn('why-block failed for report', report.id, err));
 
     // Refresh nearest-station data on every open, same pattern as the AQ
     // station markers themselves — the numbers shown are never older than
@@ -9563,54 +10228,56 @@ function thinHeatPoints(pts) {
   return [...best.values()];
 }
 
+// Heat = how much smell from this source reached each area, from three things (no tracer "hot spot": all trails
+// converge on the source by construction, so heat there would only say "this is where we looked"):
+//  1. the reports themselves, weighted by their intensity (1-10): the observed impact, the strongest layer;
+//  2. the corridor the smell travelled from the source to each report: faint, so only corridors shared by several
+//     reports build up;
+//  3. a short forward tail past each report, fading with distance and widening along the wind.
+const TRACE_HEAT_REPORT_RADIUS_KM = 3;
+const TRACE_HEAT_CORRIDOR_WEIGHT = 0.22;
+const TRACE_HEAT_TAIL_WEIGHT = 0.3;
 async function buildTraceHeatPoints(tracerCoords, matchedReports) {
   const points = [];
-
-  // Tracer pin -- highest weight, purple end of the gradient.
-  // A single point at full scale: only its very core reaches purple, and it
-  // falls off through red/orange quickly.
-  points.push([tracerCoords.lat, tracerCoords.lon, 4.2, true]);
 
   const trails = await Promise.all(matchedReports.map(r => renderHistoricSplineTrailForReport(r)));
   const forwardTails = await Promise.all(matchedReports.map(r => computeForwardWindExtension(r, TRAIL_FORWARD_KM, TRAIL_FORWARD_HOURS).catch(() => [])));
 
   matchedReports.forEach((report, idx) => {
+    const rLat = parseFloat(report.latitude), rLon = parseFloat(report.longitude);
+    if (isFinite(rLat) && isFinite(rLon)) {
+      const iv = Math.min(10, Math.max(1, parseFloat(report.intensity) || 5));
+      points.push([rLat, rLon, 0.4 + 1.1 * (iv / 10), false, TRACE_HEAT_REPORT_RADIUS_KM]);
+    }
+
     const trail = trails[idx];
     if (trail && trail.length >= 2) {
-      // Closest-approach point on this report's trail to the tracer --
-      // only the report→source portion matters for the heatmap; anything
-      // further back in the trail than that is past the source already.
+      // Only the report -> source portion (up to the closest approach to the source) is a corridor.
       let closestIdx = 0, closestDist = Infinity;
       trail.forEach((pt, i) => {
         const d = getHaversineDistance(pt.lat, pt.lon, tracerCoords.lat, tracerCoords.lon);
         if (d < closestDist) { closestDist = d; closestIdx = i; }
       });
-      const trailPts = [];
-      for (let i = 0; i <= closestIdx; i++) {
-        const t = closestIdx > 0 ? i / closestIdx : 1; // 0 at the report (orange), 1 at the source (red)
-        const weight = 1.4 + t * 2.0; // 1.4 (report end, orange) ramping to 3.4 (source end, red, just under the tracer's purple)
-        trailPts.push([trail[i].lat, trail[i].lon, weight * TRACE_HEAT_POINT_SCALE]);
-      }
-      thinHeatPoints(trailPts).forEach(p => points.push(p));
+      const corridor = [];
+      for (let i = 0; i <= closestIdx; i++) corridor.push([trail[i].lat, trail[i].lon, TRACE_HEAT_CORRIDOR_WEIGHT, false, TRACE_HEAT_REPORT_RADIUS_KM]);
+      thinHeatPoints(corridor).forEach(p => points.push(p));
     }
 
     const tail = forwardTails[idx];
     if (tail && tail.length) {
       const t0 = new Date(report.created_at).getTime();
-      let prevLat = parseFloat(report.latitude), prevLon = parseFloat(report.longitude), travelled = 0;
+      let prevLat = rLat, prevLon = rLon, travelled = 0;
       const tailPts = tail.map((pt) => {
         travelled += getHaversineDistance(prevLat, prevLon, pt.lat, pt.lon);
-        // Fades with distance travelled, to almost nothing at the end of the tail.
         const weight = Math.max(0.03, 1.0 - 0.97 * Math.min(1, travelled / TRAIL_FORWARD_KM));
         const hours = Math.max(0, (new Date(pt.time).getTime() - t0) / 3600000);
         const radius = Math.min(TRACE_HEAT_MAX_RADIUS_KM, TRACE_HEAT_RADIUS_KM + TRACE_HEAT_GROW_KM_PER_H * hours);
         const stretch = Math.min(TRACE_HEAT_PLUME_MAX_STRETCH, 1 + TRACE_HEAT_PLUME_STRETCH_PER_H * hours);
-        // Direction the smell is moving (geographic bearing, 0 = north, clockwise).
         const dy = pt.lat - prevLat;
         const dx = (pt.lon - prevLon) * Math.cos(prevLat * Math.PI / 180);
         const bearing = ((Math.atan2(dx, dy) * 180 / Math.PI) + 360) % 360;
         prevLat = pt.lat; prevLon = pt.lon;
-        return [pt.lat, pt.lon, weight * TRACE_HEAT_POINT_SCALE, false, radius, bearing, stretch];
+        return [pt.lat, pt.lon, weight * TRACE_HEAT_TAIL_WEIGHT, false, radius, bearing, stretch];
       });
       thinHeatPoints(tailPts).forEach(p => points.push(p));
     }
@@ -9619,25 +10286,45 @@ async function buildTraceHeatPoints(tracerCoords, matchedReports) {
   return points;
 }
 
+// Colour scale normalised to the data: the busiest ~2.5 km cell (with its neighbours) lands near the top of the
+// scale, so a few reports and hundreds of reports both read sensibly instead of saturating to one red.
+function traceHeatScaleMax(points) {
+  const dLat = TRACE_HEAT_CELL_KM / 111, cells = new Map();
+  points.forEach(p => {
+    const dLon = dLat / Math.max(0.2, Math.cos(p[0] * Math.PI / 180));
+    const key = Math.floor(p[0] / dLat) + ':' + Math.floor(p[1] / dLon);
+    cells.set(key, (cells.get(key) || 0) + (p[2] || 0));
+  });
+  let peak = 0;
+  cells.forEach((v, key) => {
+    const [a, b] = key.split(':').map(Number);
+    let sum = v;
+    for (let da = -1; da <= 1; da++) for (let db = -1; db <= 1; db++) if (da || db) sum += 0.5 * (cells.get((a + da) + ':' + (b + db)) || 0);
+    if (sum > peak) peak = sum;
+  });
+  return Math.max(2.5, peak / 1.4);
+}
+
 async function renderTraceHeatLayer(tracerCoords, matchedReports, force = false) {
   const points = await buildTraceHeatPoints(tracerCoords, matchedReports);
   if (traceHeatLayer) {
+    traceHeatLayer.options.max = traceHeatScaleMax(points);
     safeSetHeatData(traceHeatLayer, points);
   } else {
     traceHeatLayer = new L.GroundHeatLayer(points, {
       radiusKm: TRACE_HEAT_RADIUS_KM,
-      max: 4.2, // fixed scale so the tracer pin reliably reaches full purple regardless of how many reports are on screen
-      minOpacity: 0.05, // a high floor makes every overlapping dot add 25% alpha and saturate
-      ceiling: 0.78, // overlapping trails can pile up to deep red at most; only the tracer pin's core goes beyond
+      max: traceHeatScaleMax(points),
+      minOpacity: 0.05,
+      // Sequential yellow -> orange -> brown scale (ColorBrewer YlOrBr): low density stays pale and see-through,
+      // only the busiest areas get dark; red is no longer the default colour of everything near the source.
       gradient: {
-        0.05: '#fff59d', // pale yellow -- far end of the forward tail
-        0.20: '#ffca28', // yellow-orange -- tail approaching the report
-        0.35: '#f57c00', // orange -- at/near the report
-        0.55: '#e64a19', // red-orange -- partway back along the trail
-        0.70: '#d32f2f', // red -- approaching the source
-        0.80: '#b71c1c', // deep red -- the hottest the trail overlap gets
-        0.96: '#8e24aa', // purple -- only the core at the tracer pin
-        1.0: '#7b1fa2'
+        0.05: '#fff7bc', // pale yellow -- faint: a corridor or tail of a single report
+        0.25: '#fee391',
+        0.45: '#fec44f', // amber -- a report or an overlap of a few corridors
+        0.62: '#fe9929', // orange
+        0.78: '#ec7014', // dark orange -- several reports in the same area
+        0.90: '#cc4c02',
+        1.0: '#8c2d04'   // brown -- the busiest area
       }
     });
   }
@@ -9685,7 +10372,22 @@ async function filterPinsBySourceTrajectory(tracerCoords) {
   const activeReportsToDrawTrails = [];
   const results = [];
 
-  for (const [index, report] of timeFilteredData.entries()) {
+  // Tapping a known source (cement plant, power station, landfill ...): a report is listed only when the model
+  // attributes it to THIS source, i.e. a puff released here, carried by the source-level wind and the learned turn,
+  // reaches the report inside the uncertainty band, and no other known source explains it better (same rule as the
+  // attribution everywhere else). This replaces the loose trail envelope (up to ~14 km wide, 12 h back), which
+  // linked far more reports than the physics supports. Free taps on the map keep the trail envelope.
+  const poiSource = KNOWN_BURNERS.find(b => getHaversineDistance(b.a, b.o, tracerCoords.lat, tracerCoords.lon) <= 1.5);
+  if (poiSource) {
+    await fitAttributeReports(timeFilteredData).catch(() => {});
+    if (currentRequestId !== activeTraceRequestId) return;
+    timeFilteredData.forEach((report, index) => {
+      const a = reportSource(report);
+      results.push(a && a.b && a.b.n === poiSource.n ? { report, index } : null);
+    });
+  }
+
+  for (const [index, report] of (poiSource ? [] : timeFilteredData.entries())) {
     if (currentRequestId !== activeTraceRequestId) return;
 
     const reportAgeHours = (Date.now() - new Date(report.created_at).getTime()) / 3600000;
@@ -9737,12 +10439,9 @@ async function filterPinsBySourceTrajectory(tracerCoords) {
   lastTraceTotalInRange = timeFilteredData.length;
   // Refresh anything on screen that shows trace numbers.
   if (hhState && hhState.status !== 'loading' && document.getElementById('hhSheet')?.style.display === 'block') hhRenderSheet();
-  // With a big trace the individual lines are limited, so the heatmap
-  // becomes the overview -- shown automatically even if the setting is off.
-  // Also shown automatically when the trace was started by tapping a factory /
-  // burner / landfill pin, so those taps always show the spread heat.
-  const autoHeat = trailTier(activeReportsToDrawTrails.length) === 'top' || !!tracePoiActive;
-  if (traceHeatmapEnabled || autoHeat) renderTraceHeatLayer(tracerCoords, activeReportsToDrawTrails, autoHeat);
+  // The heatmap follows the Settings toggle only (also for traces started by tapping a factory / burner /
+  // landfill pin): off means it is never drawn.
+  if (traceHeatmapEnabled) renderTraceHeatLayer(tracerCoords, activeReportsToDrawTrails);
   else if (traceHeatLayer && map.hasLayer(traceHeatLayer)) map.removeLayer(traceHeatLayer);
 
   // Count the matched reports themselves -- reportMarkers is shared global
@@ -10631,6 +11330,9 @@ initTheme();
 // Apply saved settings (everything is off until the user switches it on),
 // then make the Settings switches reflect the real state.
 restoreSettings();
+renderBurnerMarkers();
+(function () { let sv = null; try { sv = JSON.parse(localStorage.getItem(SETTINGS_KEY) || 'null'); } catch (e) {}
+  setSmellForecast(!(sv && sv.forecast2 === false)); })();   // on unless the user switched it off
 syncSettingsToggles();
 window.addEventListener('pageshow', syncSettingsToggles);
 window.addEventListener('load', syncSettingsToggles);
