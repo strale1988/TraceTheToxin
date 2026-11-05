@@ -2740,18 +2740,6 @@ const T = {
   popupDuration: { en: 'Duration',                      sr: 'Trajanje' },
 
   historical: { en: 'Historical Data', sr: 'Istorijski Podaci' },
-  whyTitle: { en: 'Why this source?', sr: 'Zašto ovaj izvor?' },
-  whyNone: { en: 'No known source within 40 km.', sr: 'Nema poznatog izvora u krugu od 40 km.' },
-  whyWindAt: { en: 'Wind at the source', sr: 'Vetar kod izvora' },
-  whyDirToSource: { en: 'Source lies towards', sr: 'Izvor je u smeru' },
-  whyFit: { en: 'Model fit', sr: 'Podudaranje modela' },
-  whyMiss: { en: 'puff misses by', sr: 'puf promašuje za' },
-  whyBand: { en: 'band', sr: 'traka' },
-  whyAttributed: { en: 'attributed', sr: 'pripisano' },
-  whyNotAttributed: { en: 'not attributed', sr: 'nije pripisano' },
-  whyCone: { en: 'no model data, cone rule used', sr: 'nema podataka modela, korišćeno pravilo konusa' },
-  whyNoWind: { en: 'wind data unavailable', sr: 'podaci o vetru nisu dostupni' },
-  whyPending: { en: 'Wind trail appears once the wind data is final (about 13 h after the report).', sr: 'Trag vetra se prikazuje kada podaci o vetru postanu konačni (oko 13 h posle prijave).' },
   elevation: { en: 'Elevation', sr: 'Nadmorska visina' },
   mixingLayer: { en: 'Mixing layer', sr: 'Sloj mešanja' },
   mix_shallow: { en: 'shallow', sr: 'plitak' },
@@ -8170,49 +8158,6 @@ function buildReportStationSectionHtml(stationList, reportCreatedAt, reportId) {
   return `<div style="display:flex;flex-direction:column;margin-top:1px;">${avgSectionHtml}${header}${rows}</div>`;
 }
 
-// "Why this source?" block of the report popup: the wind at the nearest known source at the moment of the report
-// (10 m and the higher levels the model uses), where that source lies, and how far the puff misses the report.
-// Filled in after the popup opens (it may need wind data), then kept here so later popup rebuilds include it.
-const reportWhyHtmlCache = {};
-async function computeReportWhyHtml(report) {
-  const lat = parseFloat(report.latitude), lon = parseFloat(report.longitude), tR = Date.parse(report.created_at);
-  if (!isFinite(lat) || !isFinite(lon) || !isFinite(tR)) return '';
-  const wrap = body => `<div style="font-size:9px;color:var(--text-secondary);text-transform:uppercase;margin-bottom:1px;">${t('whyTitle')}</div>` +
-    `<div style="font-size:10px;color:var(--text-primary);line-height:1.35;">${body}</div><div style="height:1px;background:var(--border-color);margin:3px 0;"></div>`;
-  const ageH = (Date.now() - tR) / 3600000;
-  const pending = ageH < TRAIL_SETTLED_GATE_HOURS ? `<div style="color:var(--text-secondary);margin-top:2px;">${t('whyPending')}</div>` : '';
-  const cands = KNOWN_BURNERS.filter(b => getHaversineDistance(b.a, b.o, lat, lon) <= FIT_MAX_KM);
-  if (!cands.length) return wrap(t('whyNone') + pending);
-  await fitAttributeReports([report]).catch(() => {});
-  const fe = fitAttribCache[report.id], att = reportSource(report);
-  const near = fe && !fe.none ? fe : (fe && fe.near) || null;
-  const b = att ? att.b : (near ? near.b : cands.sort((x, y) => getHaversineDistance(x.a, x.o, lat, lon) - getHaversineDistance(y.a, y.o, lat, lon))[0]);
-  const name = b.n.replace(/\s*\(.*\)$/, '');
-  let h = null;
-  try { h = await burnerHourlyFor(b, tR); } catch (e) {}
-  let winds = '';
-  if (h?.time?.length) {
-    let bi = 0, bd = Infinity;
-    h.time.forEach((x, i) => { const dd = Math.abs(Date.parse(x + 'Z') - tR); if (dd < bd) { bd = dd; bi = i; } });
-    const parts = [];
-    [10, 80, 120, 180].forEach(lev => {
-      const v = windLevelVec(h, bi, lev);
-      if (v) parts.push(`${lev} m: <b>${Math.round((Math.atan2(-v.u, -v.v) * 180 / Math.PI + 360) % 360)}°</b> ${Math.round(Math.hypot(v.u, v.v))} km/h`);
-    });
-    winds = parts.length ? parts.join(' · ') : t('whyNoWind');
-  } else winds = t('whyNoWind');
-  const brg = Math.round(alertBearing(lat, lon, b.a, b.o));
-  let fit = '';
-  if (near) {
-    const verdict = att && fe && !fe.none ? t('whyAttributed') : t('whyNotAttributed');
-    fit = `<div>${t('whyFit')}: ${t('whyMiss')} <b>${near.miss.toFixed(1)} km</b> (${t('whyBand')} ±${near.width.toFixed(1)} km) → <b>${verdict}</b></div>`;
-  } else if (att) {
-    fit = `<div>${t('whyFit')}: ${t('whyCone')} → <b>${t('whyAttributed')}</b></div>`;
-  }
-  return wrap(`<div><b>${name}</b>, ${getHaversineDistance(b.a, b.o, lat, lon).toFixed(1)} km · ${t('whyDirToSource')} ${brg}°</div>` +
-    `<div>${t('whyWindAt')}: ${winds}</div>${fit}${pending}`);
-}
-
 // Builds the full report popup. stationSectionHtml is passed in separately
 // since it's resolved asynchronously (nearest-station lookup + a Supabase
 // query), while the rest of the popup can render immediately.
@@ -8288,8 +8233,6 @@ function buildReportPopupHtml(report, stationSectionHtml) {
       </span>
     </div>
 
-    <div style="height:1px;background:var(--border-color);margin:2px 0;"></div>
-    <div id="reportWhy-${report.id}">${reportWhyHtmlCache[report.id] || ''}</div>
     ${stationSectionHtml}
 
     ${report.comment ? `
@@ -9736,12 +9679,6 @@ function renderPin(report, index = 0){
     // The selected report always shows its full wind history, animated,
     // whatever the trail setting or the bulk-trail tier is.
     showFocusTrail(report);
-
-    computeReportWhyHtml(report).then(html => {
-      reportWhyHtmlCache[report.id] = html;
-      const el = document.getElementById('reportWhy-' + report.id);
-      if (el) el.innerHTML = html;
-    }).catch(err => console.warn('why-block failed for report', report.id, err));
 
     // Refresh nearest-station data on every open, same pattern as the AQ
     // station markers themselves — the numbers shown are never older than
