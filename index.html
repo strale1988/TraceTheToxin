@@ -361,6 +361,62 @@ button{
 }
 .popup-inner b{ color:var(--text-primary); }
 .popup-title{ font-size:14px; font-weight:700; margin-bottom:8px; color:var(--text-primary); }
+/* ═════ Unified popups: compact summary + full-screen details ═════ */
+.leaflet-popup-content{ max-height:min(46vh,360px) !important; max-width:calc(100vw - 48px) !important; overflow-wrap:anywhere; }
+.leaflet-popup-close-button{ width:34px !important; height:34px !important; font-size:24px !important; line-height:32px !important; padding:0 !important; text-align:center !important; z-index:2; }
+.leaflet-popup .pp-head{ padding-right:34px !important; }
+.leaflet-popup .pp-more{ display:none !important; }
+.leaflet-popup .pp-clamp{ display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+.leaflet-popup .pp [style*="font-size:9px"]{ font-size:11px !important; }
+.leaflet-popup .pp [style*="font-size:10px"]{ font-size:12px !important; }
+.leaflet-popup .pp [style*="font-size:11px"]{ font-size:13px !important; }
+.leaflet-popup .pp [style*="font-size:12px"]{ font-size:14px !important; }
+.pp-detail-btn{
+  width:100%; min-height:38px; margin-top:6px; padding:8px 10px; border-radius:8px; cursor:pointer;
+  background:transparent; color:var(--accent); border:1.5px solid var(--accent);
+  font-size:13px; font-weight:700; -webkit-tap-highlight-color:transparent; touch-action:manipulation;
+}
+.pp-detail-btn:active{ background:var(--accent); color:var(--accent-contrast); }
+.hh-open-btn{ min-height:40px; font-size:13px !important; }
+
+#ppDetail{
+  display:none; position:fixed; inset:0; z-index:10002; flex-direction:column;
+  background:var(--bg-app); color:var(--text-primary);
+  font-family:-apple-system,BlinkMacSystemFont,sans-serif;
+}
+#ppDetail.open{ display:flex; }
+.ppd-bar{
+  flex:0 0 auto; display:flex; align-items:center; gap:10px;
+  padding:calc(env(safe-area-inset-top,0px) + 8px) 10px 10px 8px; color:#fff; background:#546e7a;
+  box-shadow:0 2px 8px rgba(0,0,0,.35);
+}
+.ppd-back{
+  flex:0 0 auto; display:flex; align-items:center; gap:2px; min-height:40px; padding:0 14px 0 8px;
+  background:rgba(255,255,255,.2); color:#fff; border:none; border-radius:999px;
+  font-size:15px; font-weight:700; cursor:pointer; -webkit-tap-highlight-color:transparent;
+}
+.ppd-back svg{ width:20px; height:20px; stroke:#fff; fill:none; stroke-width:2.6; stroke-linecap:round; stroke-linejoin:round; }
+.ppd-back:active{ background:rgba(255,255,255,.35); }
+.ppd-titles{ flex:1; min-width:0; }
+.ppd-title{ font-size:17px; font-weight:800; line-height:1.2; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ppd-sub{ font-size:12px; opacity:.88; margin-top:1px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ppd-body{
+  flex:1 1 auto; overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain;
+  padding:0 14px calc(env(safe-area-inset-bottom,0px) + 24px);
+}
+#ppDetail .pp-full{ max-width:720px !important; min-width:0 !important; margin:0 auto; }
+#ppDetail .pp-full .pp-body{ padding:14px 2px 20px !important; gap:7px !important; }
+#ppDetail .pp-full [style*="font-size:8px"]{ font-size:11px !important; }
+#ppDetail .pp-full [style*="font-size:9px"]{ font-size:12px !important; }
+#ppDetail .pp-full [style*="font-size:10px"]{ font-size:13.5px !important; }
+#ppDetail .pp-full [style*="font-size:11px"]{ font-size:15px !important; }
+#ppDetail .pp-full [style*="font-size:12px"]{ font-size:16px !important; }
+#ppDetail .pp-full [style*="font-size:13px"]{ font-size:16px !important; }
+#ppDetail .pp-full .hh-open-btn{ min-height:46px; font-size:15px !important; border-radius:10px; margin-top:6px; }
+#ppDetail .pp-full a{ word-break:break-word; }
+#ppDetail .pp-full table{ font-size:13px !important; }
+#ppDetail .pp-full table *{ font-size:inherit; }
+
 
 .bg-trail-teal {
   pointer-events: none;
@@ -1441,6 +1497,13 @@ button:focus-visible, [role="button"]:focus-visible, a:focus-visible, input:focu
   <button type="button" class="loc-chip-btn" id="mapEmptyBtn" onclick="openMapFilter()"></button>
 </div>
 <div id="hhSheet" role="dialog" aria-live="polite"></div>
+<div id="ppDetail" role="dialog" aria-modal="true">
+  <div class="ppd-bar">
+    <button type="button" class="ppd-back" onclick="ppCloseDetail()" aria-label="Back"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg><span id="ppdBackTxt">Nazad</span></button>
+    <div class="ppd-titles"><div class="ppd-title" id="ppdTitle"></div><div class="ppd-sub" id="ppdSub"></div></div>
+  </div>
+  <div class="ppd-body" id="ppdBody"></div>
+</div>
 
 <button type="button" class="report-fab-btn" id="reportFabBtn" title="Report bad air" aria-label="Report bad air" onclick="reportFabTap()" disabled>
   <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -2959,7 +3022,12 @@ const T = {
   hhReportsInRange:   { en:'Nearby reports (map filter)', sr:'Obližnje prijave (filter mape)' },
   hhTracedReports:    { en:'Traced to this site', sr:'Povezano sa ovim objektom' },
   nearestSite:        { en:'Nearest known site', sr:'Najbliži poznati objekat' },
-  hhOpenBtn:          { en:'Details', sr:'Detalji' },
+  hhOpenBtn:          { en:'Satellite heat history', sr:'Satelitska istorija toplote' },
+  ppMore:             { en:'Details', sr:'Detalji' },
+  ppBack:             { en:'Back', sr:'Nazad' },
+  ppClose:            { en:'Close', sr:'Zatvori' },
+  ppCoords:           { en:'Location', sr:'Lokacija' },
+  popupWind:          { en:'Wind / pressure', sr:'Vetar / pritisak' },
   hhTitle:            { en:'Site details', sr:'Detalji lokacije' },
   hhSectReports:      { en:'Community reports', sr:'Prijave zajednice' },
   hhSectHeat:        { en:'Satellite heat detection', sr:'Satelitska toplotna detekcija' },
@@ -4892,28 +4960,107 @@ function formatStationTime(iso) {
   return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+
+/* ═══════════════════════════════════════════════════
+   UNIFIED POPUPS
+   Every map popup = colored header + a short summary for regular users.
+   Anything marked class="pp-more" is hidden in the small popup and shown
+   in the full-screen details view (button "Detalji"), which has a Back button.
+═══════════════════════════════════════════════════ */
+L.Popup.mergeOptions({ autoPanPaddingTopLeft: [16, 92], autoPanPaddingBottomRight: [16, 130], closeButton: true });
+
+function ppRow(label, value, more) {
+  return `<div class="${more ? 'pp-more' : ''}" style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+    <span style="font-size:9px;color:var(--text-secondary);text-transform:uppercase;">${label}</span>
+    <span style="font-size:11px;font-weight:600;color:var(--text-primary);text-align:right;">${value}</span>
+  </div>`;
+}
+function ppDivider(more) {
+  return `<div class="${more ? 'pp-more' : ''}" style="height:1px;background:var(--border-color);margin:3px 0;"></div>`;
+}
+function ppWrap(o) {
+  const sub = o.sub ? `<div style="font-size:10px;color:rgba(255,255,255,.88);">${ttEsc(o.sub)}</div>` : '';
+  return `<div class="popup-inner pp" data-pp-color="${ttEsc(o.color)}" data-pp-title="${ttEsc(o.title)}" data-pp-sub="${ttEsc(o.sub || '')}" style="padding:0;min-width:220px;max-width:${o.maxW || 460}px;font-family:sans-serif;">
+  <div class="pp-head" style="background:${o.color};padding:7px 10px;border-radius:6px 6px 0 0;">
+    <div style="font-size:12px;font-weight:700;color:#fff;">${ttEsc(o.title)}</div>${sub}
+  </div>
+  <div class="pp-body" style="padding:6px 10px 9px;display:flex;flex-direction:column;gap:3px;">
+    ${o.body}
+    <button type="button" class="pp-detail-btn" onclick="ppOpenDetail(this)">${t('ppMore')} ›</button>
+  </div>
+</div>`;
+}
+
+let ppSrc = null, ppObs = null, ppTimer = null, ppIsOpen = false;
+function ppRenderDetail() {
+  const pp = ppSrc && ppSrc.querySelector('.pp');
+  if (!pp) return;                                   // popup already gone: keep the last render
+  const body = document.getElementById('ppdBody');
+  const keep = body.scrollTop;
+  const clone = pp.cloneNode(true);
+  clone.classList.add('pp-full');
+  clone.querySelectorAll('.pp-head, .pp-detail-btn').forEach(n => n.remove());
+  document.querySelector('#ppDetail .ppd-bar').style.background = pp.dataset.ppColor || '#546e7a';
+  document.getElementById('ppdTitle').textContent = pp.dataset.ppTitle || '';
+  document.getElementById('ppdSub').textContent = pp.dataset.ppSub || '';
+  document.getElementById('ppdBackTxt').textContent = t('ppBack');
+  body.replaceChildren(clone);
+  body.scrollTop = keep;
+}
+function ppOpenDetail(btn) {
+  const content = btn.closest('.leaflet-popup-content');
+  if (!content) return;
+  ppSrc = content;
+  ppRenderDetail();
+  document.getElementById('ppdBody').scrollTop = 0;
+  document.getElementById('ppDetail').classList.add('open');
+  if (!ppIsOpen) { try { history.pushState({ ppDetail: 1 }, ''); } catch (e) {} }
+  ppIsOpen = true;
+  // late data (station list, hourly plume) lands in the popup -> mirror it here
+  if (ppObs) ppObs.disconnect();
+  ppObs = new MutationObserver(() => { clearTimeout(ppTimer); ppTimer = setTimeout(ppRenderDetail, 80); });
+  ppObs.observe(content, { childList: true, subtree: true, characterData: true });
+}
+function ppHide() {
+  if (ppObs) { ppObs.disconnect(); ppObs = null; }
+  ppIsOpen = false; ppSrc = null;
+  document.getElementById('ppDetail').classList.remove('open');
+}
+function ppCloseDetail() {
+  if (!ppIsOpen) return;
+  if (history.state && history.state.ppDetail) history.back();   // popstate hides it
+  else ppHide();
+}
+window.addEventListener('popstate', () => { if (ppIsOpen) ppHide(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && ppIsOpen) ppCloseDetail(); });
+// buttons inside the details view that open other panels (e.g. heat history) must leave the overlay first
+document.getElementById('ppDetail').addEventListener('click', e => {
+  if (e.target.closest('.hh-open-btn')) ppCloseDetail();
+}, true);
+
 function buildStationPopupHtml(station, reading) {
   const color = reading ? aqiColor(reading.category) : '#9e9e9e';
-
-  return `<div class="popup-inner" style="padding:0;min-width:220px;max-width:460px;font-family:sans-serif;">
-    <div style="background:${color};padding:4px 8px;border-radius:6px 6px 0 0;display:flex;flex-direction:column;align-items:flex-start;gap:1px;">
-      <span style="font-size:9px;color:rgba(255,255,255,.85);text-transform:uppercase;">${t('aqStationLabel')}</span>
-      <span style="font-size:11px;font-weight:700;color:white;">${station.name}</span>
-    </div>
-    <div style="padding:5px 8px;display:flex;flex-direction:column;gap:2px;">
-      ${reading ? `
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
-          <span style="font-size:10px;font-weight:700;" title="${aqiTierLabel(reading.category)}">${aqiTierLabel(reading.category) || '–'}</span>
-          <span style="font-size:9px;color:var(--text-secondary);">${t('aqUpdated')} ${formatStationTime(reading.recorded_at)}</span>
-        </div>
-        <div style="height:1px;background:var(--border-color);margin:2px 0;"></div>
-        ${pollutantSummaryRowHtml(reading)}
-      ` : `<span style="font-size:11px;color:var(--text-secondary);">${t('aqNoData')}</span>`}
-      ${station.precision === 'city' ? `
-        <div style="font-size:9px;color:var(--text-secondary);font-style:italic;margin-top:2px;">${t('aqApprox')}</div>
-      ` : ''}
-    </div>
-  </div>`;
+  const POLL = [['PM10','pm10'],['PM2.5','pm25'],['SO₂','so2'],['NO₂','no2'],['O₃','o3']];
+  const pollRows = reading ? POLL.map(([lbl, k]) => {
+    const v = reading[k], ok = v != null && !isNaN(v);
+    const tier = ok ? aqiTierLabel(pollutantValueTier(k, v)) : '';
+    return ppRow(lbl, ok ? `<span style="color:${pollutantValueColor(k, v)};font-weight:700;">${Number(v).toFixed(1)} µg/m³</span>${tier ? ` <span style="font-weight:400;color:var(--text-secondary);">· ${tier}</span>` : ''}` : '–', true);
+  }).join('') : '';
+  const body = `
+    ${reading ? `
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+        <span style="font-size:12px;font-weight:700;">${aqiTierLabel(reading.category) || '–'}</span>
+        <span style="font-size:10px;color:var(--text-secondary);">${t('aqUpdated')} ${formatStationTime(reading.recorded_at)}</span>
+      </div>
+      ${ppDivider()}
+      ${pollutantSummaryRowHtml(reading)}
+      ${ppDivider(true)}
+      ${pollRows}
+    ` : `<span style="font-size:11px;color:var(--text-secondary);">${t('aqNoData')}</span>`}
+    ${ppDivider(true)}
+    ${ppRow(t('ppCoords'), `${Number(station.lat).toFixed(4)}, ${Number(station.lon).toFixed(4)}`, true)}
+    ${station.precision === 'city' ? `<div style="font-size:10px;color:var(--text-secondary);font-style:italic;margin-top:2px;">${t('aqApprox')}</div>` : ''}`;
+  return ppWrap({ color, title: station.name, sub: t('aqStationLabel'), body });
 }
 
 async function loadAirQualityStations() {
@@ -5257,11 +5404,6 @@ async function showFocusTrail(report) {
     if (focusTrail.id !== report.id) return;   // popup closed/changed while fetching
   }
   const layers = drawFullTrail(it, tracer, { pane: 'focusTrailPane', animate: true, baseOpacity: 0.95, animClass: 'bg-trail-animated' });
-  // Trace mode skips cones for big sets; the selected report still gets its own.
-  if (tracer && trailStoreTier !== 'full') {
-    layers.push(...drawReportCone(report, tracer));
-    updateConeVisibilityForClustering();
-  }
   focusTrail.layers = layers;
   // the overlay replaces this report's regular line
   (splineByReport[report.id] || []).forEach(seg => seg.setStyle({ opacity: 0 }));
@@ -5349,7 +5491,7 @@ function moveDownwind(lat, lon, windFromDeg, distKm) {
 // turned (veered) compared with the 10 m wind, most of all after sunset. The forecast API
 // has 80/120/180 m; the archive (ERA5) only has 100 m. Everything downstream copes with
 // whichever of those levels are present (see transportVecAt).
-const OM_BASE_VARS = 'wind_speed_10m,wind_direction_10m,pressure_msl';
+const OM_BASE_VARS = 'wind_speed_10m,wind_direction_10m,pressure_msl,temperature_2m';
 const OM_FORECAST_LEVEL_VARS = ',wind_speed_80m,wind_direction_80m,wind_speed_120m,wind_direction_120m,wind_speed_180m,wind_direction_180m,boundary_layer_height';
 const OM_ARCHIVE_LEVEL_VARS = ',wind_speed_100m,wind_direction_100m';
 function omForecastUrl(lat, lon, pastDays, forecastDays, withLevels) {
@@ -6289,114 +6431,6 @@ function smoothTraceJoin(backLatLngs, tailPoints) {
   return { backSmoothed, forwardSmoothed };
 }
 
-// One report's dispersion cone (edge lines + 5 fading polygons). Returns the
-// layers it added so callers can also track/remove them separately.
-function drawReportCone(report, tracerCoords) {
-  const firstNew = bgTrailLayers.length;
-  const startLat = parseFloat(report.latitude);
-  const startLon = parseFloat(report.longitude);
-  const windDeg = parseFloat(report.manual_wind_direction ?? report.wind_direction);
-
-
-  const totalDistKm = 1.5;
-  const totalSegments = 5;
-  const stepDistKm = totalDistKm / totalSegments;
-  const expansionAngleDeg = 30;
-
-  const baseColor = categoryColor(report.category);
-  const upwindBearingRad = ((windDeg + 180) % 360) * Math.PI / 180;
-
-  const edges = { left: [], right: [] };
-
-  const coneClipDistKm = tracerCoords ? (() => {
-    const distToSource = getHaversineDistance(startLat, startLon, tracerCoords.lat, tracerCoords.lon);
-    return distToSource + 5.0;
-  })() : Infinity;
-
-  for (let i = 0; i < totalSegments; i++) {
-    const currentSegmentDistStart = i * stepDistKm;
-    const currentSegmentDistEnd = (i + 1) * stepDistKm;
-    if (currentSegmentDistStart >= coneClipDistKm) continue;
-
-    const pStart = moveUpwind(startLat, startLon, windDeg, currentSegmentDistStart);
-    const pEnd = moveUpwind(startLat, startLon, windDeg, currentSegmentDistEnd);
-
-    const widthStart = currentSegmentDistStart * Math.sin(expansionAngleDeg * Math.PI / 180);
-    const widthEnd = currentSegmentDistEnd * Math.sin(expansionAngleDeg * Math.PI / 180);
-
-    const leftAngle = upwindBearingRad - Math.PI / 2;
-    const rightAngle = upwindBearingRad + Math.PI / 2;
-
-    const cosStartLat = Math.cos(pStart.lat * Math.PI / 180);
-    const cosEndLat = Math.cos(pEnd.lat * Math.PI / 180);
-
-    const pStartLeftLat = pStart.lat + (Math.cos(leftAngle) * widthStart) / 111.32;
-    const pStartLeftLon = pStart.lon + (Math.sin(leftAngle) * widthStart) / (111.32 * cosStartLat);
-    const pStartRightLat = pStart.lat + (Math.cos(rightAngle) * widthStart) / 111.32;
-    const pStartRightLon = pStart.lon + (Math.sin(rightAngle) * widthStart) / (111.32 * cosStartLat);
-    const pEndLeftLat = pEnd.lat + (Math.cos(leftAngle) * widthEnd) / 111.32;
-    const pEndLeftLon = pEnd.lon + (Math.sin(leftAngle) * widthEnd) / (111.32 * cosEndLat);
-    const pEndRightLat = pEnd.lat + (Math.cos(rightAngle) * widthEnd) / 111.32;
-    const pEndRightLon = pEnd.lon + (Math.sin(rightAngle) * widthEnd) / (111.32 * cosEndLat);
-
-    const leftLine = L.polyline(edges.left, {
-      color: baseColor,
-      weight: 1,
-      opacity: 0.5,
-      className: `bg-trail-teal cone-report-${report.id}`,
-      interactive: false,
-      pane: 'conePane'
-    }).addTo(map);
-
-    const rightLine = L.polyline(edges.right, {
-      color: baseColor,
-      weight: 1,
-      opacity: 0.5,
-      className: `bg-trail-teal cone-report-${report.id}`,
-      interactive: false,
-      pane: 'conePane'
-    }).addTo(map);
-
-    bgTrailLayers.push(leftLine, rightLine);
-
-    // build continuous left/right boundary lines
-    if (i === 0) {
-      edges.left.push([pStartLeftLat, pStartLeftLon]);
-      edges.right.push([pStartRightLat, pStartRightLon]);
-    }
-
-    edges.left.push([pEndLeftLat, pEndLeftLon]);
-    edges.right.push([pEndRightLat, pEndRightLon]);
-
-
-    const segmentEnvelope = [
-      [pStartLeftLat, pStartLeftLon],
-      [pEndLeftLat, pEndLeftLon],
-      [pEndRightLat, pEndRightLon],
-      [pStartRightLat, pStartRightLon]
-    ];
-
-    const segmentFactor = i / totalSegments;
-    const segmentFillOpacity = 0.35 * (1.0 - segmentFactor);
-    const segmentStrokeOpacity = 0.15 * (1.0 - segmentFactor);
-
-    const coneSegment = L.polygon(segmentEnvelope, {
-      color: baseColor,
-      fillColor: baseColor,
-      weight: 1,
-      fillOpacity: segmentFillOpacity,
-      opacity: segmentStrokeOpacity,
-      className: `bg-trail-teal cone-report-${report.id}`,
-      interactive: false,
-      pane: 'conePane'
-    }).addTo(map);
-
-    bgTrailLayers.push(coneSegment);
-  }
-
-  return bgTrailLayers.slice(firstNew);
-}
-
 async function generateAllBackgroundTrails(reports, tracerCoords = null) {
   const mySeq = ++trailGenSeq;   // a newer call supersedes this one (checked after each await)
   lastTrailArgs = { reports, tracerCoords };
@@ -6410,7 +6444,6 @@ async function generateAllBackgroundTrails(reports, tracerCoords = null) {
   // more than a handful of trails they're skipped -- hundreds of overlapping
   // cones just bury the picture; the selected report still gets its own.
   const tier = trailTier(sortedReports.length);
-  if (!tracerCoords || tier === 'full') sortedReports.forEach(report => drawReportCone(report, tracerCoords));
 
   if (!tracerCoords) { await fitAttributeReports(sortedReports).catch(() => {}); if (mySeq !== trailGenSeq) return; }
 
@@ -6549,12 +6582,6 @@ async function generateAllBackgroundTrails(reports, tracerCoords = null) {
       ? drawFullTrail(it, tracerCoords)
       : drawLiteTrail(it, tracerCoords, featured.length, tier);
     bgTrailLayers.push(...segments);
-    if (tier === 'full' && !tracerCoords && it.trailResult?.anchored && it.trailResult.bandPts) {
-      // the uncertainty band of the chimney -> report path, in the trail pane so it follows the trails setting
-      const band = forecastBandPolygon(it.trailResult.bandPts, it.trailResult.sd, { pane: 'splinePane', fillColor: categoryColor(it.report.category) || '#c41e27', fillOpacity: 0.07 });
-      band.addTo(map);
-      bgTrailLayers.push(band);
-    }
     splineByReport[it.report.id] = segments;
   });
   trailInfo = trailsToRender.length > TRAIL_STATIC_MAX ? { shown: featured.length, total: trailsToRender.length } : null;
@@ -6743,40 +6770,17 @@ function buildWildfirePopupHtml(row) {
     const { lat, lon } = activeWizLocation();
     distanceKm = getHaversineDistance(lat, lon, flat, flon);
   }
-
-  const row_ = (labelKey, valueHtml) => `
-    <div style="display:flex;justify-content:space-between;align-items:center;">
-      <span style="font-size:9px;color:var(--text-secondary);text-transform:uppercase;">${t(labelKey)}</span>
-      <span style="font-size:11px;font-weight:600;color:var(--text-primary);white-space:nowrap;">${valueHtml}</span>
-    </div>`;
-  const divider = `<div style="height:1px;background:var(--border-color);margin:2px 0;"></div>`;
-
-  return `<div class="popup-inner" style="padding:0;min-width:220px;max-width:460px;font-family:sans-serif;">
-  <div style="background:${color};padding:4px 8px;border-radius:6px 6px 0 0;display:flex;flex-direction:column;align-items:flex-start;gap:1px;">
-    <span style="font-size:11px;font-weight:700;color:white;">
-      ${t('wildfirePopupTitle')}
-    </span>
-    <span style="font-size:9px;color:rgba(255,255,255,.8);">
-      ${row.acq_date || ''}${timeDisplay ? ` ${timeDisplay}` : ''}
-    </span>
-  </div>
-
-  <div style="padding:5px 8px;display:flex;flex-direction:column;gap:2px;">
-    ${row_('wildfireConfidence', label)}
-    ${!isNaN(brightness) ? row_('wildfireBrightness', `${brightness.toFixed(1)} K`) : ''}
-    ${!isNaN(frp) ? row_('wildfireFrp', `${frp.toFixed(1)} MW`) : ''}
-
-    ${(row.satellite || distanceKm != null) ? divider : ''}
-    ${row.satellite ? row_('wildfireSatellite', row.satellite) : ''}
-    ${distanceKm != null ? row_('wildfireDistance', `${distanceKm < 10 ? distanceKm.toFixed(1) : Math.round(distanceKm)} km`) : ''}
-
+  const body = `
+    ${ppRow(t('wildfireConfidence'), label)}
+    ${distanceKm != null ? ppRow(t('wildfireDistance'), `${distanceKm < 10 ? distanceKm.toFixed(1) : Math.round(distanceKm)} km`) : ''}
+    ${!isNaN(frp) ? ppRow(t('wildfireFrp'), `${frp.toFixed(1)} MW`) : ''}
+    ${!isNaN(brightness) ? ppRow(t('wildfireBrightness'), `${brightness.toFixed(1)} K`, true) : ''}
+    ${row.satellite ? ppRow(t('wildfireSatellite'), ttEsc(row.satellite), true) : ''}
+    ${!isNaN(flat) && !isNaN(flon) ? ppRow(t('ppCoords'), `${flat.toFixed(4)}, ${flon.toFixed(4)}`, true) : ''}
     ${hhPopupExtraHtml(flat, flon)}
-    ${divider}
-    <div style="font-size:10px;color:var(--text-secondary);font-style:italic;line-height:1.2;">
-      ${t('wildfireSource')}
-    </div>
-  </div>
-</div>`;
+    ${ppDivider(true)}
+    <div class="pp-more" style="font-size:10px;color:var(--text-secondary);font-style:italic;line-height:1.3;">${t('wildfireSource')}</div>`;
+  return ppWrap({ color, title: t('wildfirePopupTitle'), sub: `${row.acq_date || ''}${timeDisplay ? ' ' + timeDisplay : ''}`, body });
 }
 
 // Builds a "west,south,east,north" box (the format FIRMS' Area API expects)
@@ -7295,20 +7299,14 @@ function buildFactoryPopupHtml(idx) {
   const kindKey = f.k === 'landfill' ? 'factoryKindLandfill' : f.k === 'energy' ? 'factoryKindEnergy' : 'factoryKindWorks';
   const color = FACTORY_KIND_COLORS[f.k] || FACTORY_KIND_COLORS.works;
   const osmType = { n: 'node', w: 'way', r: 'relation' }[f.i[0]];
-  return `<div class="popup-inner" style="padding:0;min-width:220px;max-width:360px;font-family:sans-serif;">
-  <div style="background:${color};padding:5px 8px;border-radius:6px 6px 0 0;">
-    <div style="font-size:12px;font-weight:700;color:#fff;">${ttEsc(f.n || t('factoryUnnamed'))}</div>
-    <div style="font-size:9px;color:rgba(255,255,255,.85);">${t(kindKey)}</div>
-  </div>
-  <div style="padding:6px 8px;display:flex;flex-direction:column;gap:5px;">
-    ${f.d ? `<div style="font-size:11px;color:var(--text-primary);">${ttEsc(f.d)}</div>` : ''}
-    ${hourlyPlumePanelHtml(`factory-hourly-${idx}`, f)}
-    <button type="button" class="hh-open-btn" onclick="openHeatHistoryForFactory(${idx})">${t('hhOpenBtn')}</button>
+  const body = `
+    ${f.d ? `<div class="pp-clamp" style="font-size:11px;color:var(--text-primary);">${ttEsc(f.d)}</div>` : ''}
     ${nearbyReportsStatHtml(f.a, f.o)}
-    <a href="https://www.openstreetmap.org/${osmType}/${ttEsc(f.i.slice(1))}" target="_blank" rel="noopener" style="font-size:10px;color:var(--accent);">${t('factoryOsm')}</a>
-    <div style="font-size:10px;color:var(--text-secondary);font-style:italic;">${t('factorySource')}</div>
-  </div>
-</div>`;
+    <div class="pp-more">${hourlyPlumePanelHtml(`factory-hourly-${idx}`, f)}</div>
+    <button type="button" class="hh-open-btn pp-more" onclick="openHeatHistoryForFactory(${idx})">${t('hhOpenBtn')}</button>
+    <a class="pp-more" href="https://www.openstreetmap.org/${osmType}/${ttEsc(f.i.slice(1))}" target="_blank" rel="noopener" style="font-size:10px;color:var(--accent);">${t('factoryOsm')}</a>
+    <div class="pp-more" style="font-size:10px;color:var(--text-secondary);font-style:italic;">${t('factorySource')}</div>`;
+  return ppWrap({ color, title: f.n || t('factoryUnnamed'), sub: t(kindKey), maxW: 380, body });
 }
 
 // "man_made=works" in OSM covers everything from furniture makers to print
@@ -7376,11 +7374,17 @@ async function loadFactoryData(silent) {
    surveyed plant coordinate -- the heat-history radius (up to 3 km) still
    covers them, but the pin itself may be 1-2 km off. */
 const KNOWN_BURNERS = [
-  { n: 'Lafarge BFC cement plant (Beočin)', a: 45.20786, o: 19.70843, k: 'cement', approx: false,
-    stk: { baseAmsl: [81.5, 100], list: [{ h: 40.3, st: 'user', lbl: 'D3' }, { h: null, st: 'unknown', lbl: 'D1' }, { h: null, st: 'unknown', lbl: 'D2' }],
-           note: { en: 'D3 = rotary-kiln stack, 40.3 m above ground (supplied by the project owner, not yet checked against the permit). Ground at the plant is 81.5–100 m a.s.l. (owner-supplied range), so the stack top is about 121.8–140.3 m a.s.l. Wind is read in metres above ground, so the ground level does not change it. D1 (raw-material line) and D2 (coal mill) heights are unknown; the permit plan says kiln gas also goes through D1 for drying raw material, so while the raw mill runs the kiln gas may leave from D1, not D3. Plume rise is not included (exit temperature and velocity unknown).',
-                   sr: 'D3 = dimnjak rotacione peći, 40,3 m iznad tla (uneo vlasnik projekta, još nije proveren prema dozvoli). Teren u fabrici je 81,5–100 m n.v. (raspon koji je uneo vlasnik projekta), pa je vrh dimnjaka oko 121,8–140,3 m n.v. Vetar se čita u metrima iznad tla, pa visina terena na njega ne utiče. Visine D1 (linija sirovine) i D2 (mlin uglja) nisu poznate; prema planu monitoringa gas iz peći ide i kroz D1 radi sušenja sirovine, pa dok mlin sirovine radi gas iz peći može izlaziti kroz D1, a ne kroz D3. Izdizanje perjanice nije uračunato (temperatura i brzina izlaza nisu poznate).' },
-           src: [['Plan monitoringa emisija (Lafarge BFC)', 'https://www.ekourbapv.vojvodina.gov.rs/wp-content/uploads/2018/10/Prilog-I-1.3-Plan-vrsenja-monitoringa.pdf']] },
+  { n: 'Lafarge BFC cement plant (Beočin)', a: 45.207223, o: 19.707051, k: 'cement', approx: false,
+    stk: { baseAmsl: [81.5, 100],
+           list: [
+             { h: 40.3,  st: 'rep', lbl: 'D3', d: 4.0,  tC: [142.6, 143.1], v: [12.4, 13.8] },
+             { h: 50.0,  st: 'rep', lbl: 'D1', d: 3.25, tC: [124.5, 132.4], v: [17.1, 19.0] },
+             { h: 54.17, st: 'rep', lbl: 'D2', d: 1.45, tC: [116.2, 128.3], v: [5.9, 6.3],  use: false },
+             { h: 36,    st: 'rep', lbl: 'D4', d: 3.4,  tC: [305.4, 322.4], v: [10.5, 11.5], use: false }
+           ],
+           note: { en: 'Heights, inner diameters and gas temperature and speed come from the plant emission-measurement report (Aerolab no. 568/23-65, October 2025). D3 = rotary kiln, D1 = raw-material line, D2 = coal mill, D4 = clinker cooler. Wind is taken for D3 and D1 (the two stacks that carry kiln gas; the permit plan says kiln gas also dries raw material and leaves through D1); D2 and D4 are listed but not used. Equal weight is given to D3 and D1 (the split between them is unknown). Pin = D3 stack position from the report (about 130 m from the earlier pin). Ground at the plant is 81.5–100 m a.s.l. (owner-supplied range), stack top about 121.8–140.3 m a.s.l. for D3. Plume rise IS included (Briggs 1975, from the measured exit temperature and speed, midpoint of the measured range); wind is read at stack height + rise. Assumed: ambient air = model 2 m temperature, stable hours = sun below 3 deg with 0.02 K/m. Gas values are one measurement campaign, in gas conditions at the measuring plane.',
+                   sr: 'Visine, unutrašnji prečnici i temperatura i brzina gasa potiču iz izveštaja o merenju emisije fabrike (Aerolab br. 568/23-65, oktobar 2025). D3 = rotaciona peć, D1 = linija pripreme sirovine, D2 = mlin uglja, D4 = hladnjak klinkera. Vetar se uzima za D3 i D1 (dva dimnjaka kroz koje ide gas iz peći; prema planu iz dozvole gas iz peći suši i sirovinu i izlazi kroz D1); D2 i D4 su prikazani ali se ne koriste. D3 i D1 imaju isti težinski udeo (podela između njih nije poznata). Pin = položaj dimnjaka D3 iz izveštaja (oko 130 m od ranijeg pina). Teren u fabrici je 81,5–100 m n.v. (raspon koji je uneo vlasnik projekta), vrh dimnjaka D3 oko 121,8–140,3 m n.v. Izdizanje perjanice JE uračunato (Briggs 1975, iz izmerene temperature i brzine izlaza, sredina izmerenog raspona); vetar se čita na visini dimnjaka plus izdizanje. Pretpostavljeno: temperatura vazduha = modelska temperatura na 2 m, stabilni sati = Sunce ispod 3° uz 0,02 K/m. Vrednosti gasa su jedna merna kampanja, u uslovima gasa u mernoj ravni.' },
+           src: [['Aerolab, izveštaj br. 568/23-65 (21.10.2025)', null], ['Plan monitoringa emisija (Lafarge BFC)', 'https://www.ekourbapv.vojvodina.gov.rs/wp-content/uploads/2018/10/Prilog-I-1.3-Plan-vrsenja-monitoringa.pdf']] },
     fuel: { en: 'Cement kilns. Fossil fuel plus alternative fuels: waste tyres, biomass and processed waste-derived fuel (co-processing in Serbia since 2008–2010, per industry sources).',
             sr: 'Peći za cement. Fosilno gorivo plus alternativna goriva: otpadne gume, biomasa i gorivo dobijeno iz otpada (koprocesiranje u Srbiji od 2008–2010, prema izvorima iz industrije).' },
     src: [['Global Energy Monitor', 'https://www.gem.wiki/Holcim_BFC_Serbia_doo_Beocin_Cement_Plant']] },
@@ -7443,6 +7447,7 @@ function makeBurnerIcon() {
 }
 
 const STACK_STATUS_TXT = {
+  rep:      { en: 'plant emission-measurement report, Oct 2025', sr: 'izveštaj o merenju emisije fabrike, okt. 2025' },
   user:     { en: 'supplied by project owner, not independently verified', sr: 'uneo vlasnik projekta, nije nezavisno proveren' },
   doc:      { en: 'public source, not checked against the permit', sr: 'javni izvor, nije proveren prema dozvoli' },
   conflict: { en: 'public sources disagree', sr: 'izvori se ne slažu' },
@@ -7457,15 +7462,16 @@ function burnerStackHtml(b) {
   } else {
     rows = list.map(s => s.h == null
       ? `<div>${s.lbl ? ttEsc(s.lbl) + ': ' : ''}<span style="color:var(--text-secondary);">${ttEsc(STACK_STATUS_TXT.unknown[L])}</span></div>`
-      : `<div>${s.lbl ? ttEsc(s.lbl) + ': ' : ''}<strong>${s.h} m</strong> ${L === 'sr' ? 'iznad tla' : 'above ground'} <span style="color:var(--text-secondary);">(${ttEsc(STACK_STATUS_TXT[s.st][L])})</span></div>`).join('');
-    const known = list.filter(s => s.h != null);
-    if (b.stk.baseAmsl != null && known.length === 1) {
+      : `<div>${s.lbl ? ttEsc(s.lbl) + ': ' : ''}<strong>${s.h} m</strong> ${L === 'sr' ? 'iznad tla' : 'above ground'}${s.d ? ' · Ø ' + String(s.d).replace('.', L === 'sr' ? ',' : '.') + ' m' : ''}${s.tC ? ' · ' + Math.round(s.tC[0]) + '–' + Math.round(s.tC[1]) + ' °C, ' + s.v[0] + '–' + s.v[1] + ' m/s' : ''}${s.use === false ? ' · ' + (L === 'sr' ? 'ne koristi se za vetar' : 'not used for wind') : ''} <span style="color:var(--text-secondary);">(${ttEsc(STACK_STATUS_TXT[s.st][L])})</span></div>`).join('');
+    const known = list.filter(s => s.h != null && s.use !== false);
+    if (b.stk.baseAmsl != null && known.length) {
       const lo = [].concat(b.stk.baseAmsl)[0], hi = [].concat(b.stk.baseAmsl).slice(-1)[0], fmt = x => (+x.toFixed(1)).toString();
-      const gr = lo === hi ? fmt(lo) : fmt(lo) + '–' + fmt(hi), top = lo === hi ? fmt(lo + known[0].h) : fmt(lo + known[0].h) + '–' + fmt(hi + known[0].h);
-      rows += `<div>${L === 'sr' ? 'Teren' : 'Ground'}: ${gr} m a.s.l. · ${L === 'sr' ? 'vrh dimnjaka' : 'stack top'} ≈ ${top} m a.s.l.</div>`;
+      const gr = lo === hi ? fmt(lo) : fmt(lo) + '–' + fmt(hi);
+      const tops = known.map(k => (known.length > 1 && k.lbl ? k.lbl + ' ' : '') + (lo === hi ? fmt(lo + k.h) : fmt(lo + k.h) + '–' + fmt(hi + k.h))).join(' · ');
+      rows += `<div>${L === 'sr' ? 'Teren' : 'Ground'}: ${gr} m a.s.l. · ${L === 'sr' ? 'vrh dimnjaka' : 'stack top'} ≈ ${tops} m a.s.l.</div>`;
     }
   }
-  const srcs = (b.stk.src || []).map(([label, url]) => `<a href="${ttEsc(url)}" target="_blank" rel="noopener" style="color:var(--accent);">${ttEsc(label)}</a>`).join(' · ');
+  const srcs = (b.stk.src || []).map(([label, url]) => !url ? ttEsc(label) : `<a href="${ttEsc(url)}" target="_blank" rel="noopener" style="color:var(--accent);">${ttEsc(label)}</a>`).join(' · ');
   return `<div style="border:1px solid var(--border-color);border-radius:7px;padding:6px 8px;background:var(--bg-surface-alt);font-size:11px;color:var(--text-primary);line-height:1.35;">
     <div style="font-size:9px;color:var(--text-secondary);text-transform:uppercase;margin-bottom:2px;">${L === 'sr' ? 'Dimnjak' : 'Stack'}</div>
     ${rows}
@@ -7477,22 +7483,16 @@ function burnerStackHtml(b) {
 function buildBurnerPopupHtml(idx) {
   const b = KNOWN_BURNERS[idx];
   const srcs = b.src.map(([label, url]) => `<a href="${ttEsc(url)}" target="_blank" rel="noopener" style="color:var(--accent);">${ttEsc(label)}</a>`).join(' · ');
-  return `<div class="popup-inner" style="padding:0;min-width:230px;max-width:380px;font-family:sans-serif;">
-  <div style="background:#d84315;padding:5px 8px;border-radius:6px 6px 0 0;">
-    <div style="font-size:12px;font-weight:700;color:#fff;">${ttEsc(b.n)}</div>
-    <div style="font-size:9px;color:rgba(255,255,255,.85);">${t(BURNER_KIND_KEY[b.k])}</div>
-  </div>
-  <div style="padding:6px 8px;display:flex;flex-direction:column;gap:5px;">
+  const body = `
     <div style="font-size:9px;color:var(--text-secondary);text-transform:uppercase;">${t('burnerWhatBurns')}</div>
-    <div style="font-size:11px;color:var(--text-primary);line-height:1.35;">${ttEsc(b.fuel[lang] || b.fuel.en)}</div>
+    <div class="pp-clamp" style="font-size:11px;color:var(--text-primary);line-height:1.35;">${ttEsc(b.fuel[lang] || b.fuel.en)}</div>
     ${b.approx ? `<div style="font-size:10px;color:#ffb300;">${t('burnerApprox')}</div>` : ''}
-    ${burnerStackHtml(b)}
-    ${hourlyPlumePanelHtml(`burner-hourly-${idx}`, b)}
-    <button type="button" class="hh-open-btn" onclick="openHeatHistoryForBurner(${idx})">${t('hhOpenBtn')}</button>
     ${nearbyReportsStatHtml(b.a, b.o)}
-    <div style="font-size:10px;color:var(--text-secondary);">${t('burnerSources')}: ${srcs}</div>
-  </div>
-</div>`;
+    <div class="pp-more">${burnerStackHtml(b)}</div>
+    <div class="pp-more">${hourlyPlumePanelHtml(`burner-hourly-${idx}`, b)}</div>
+    <button type="button" class="hh-open-btn pp-more" onclick="openHeatHistoryForBurner(${idx})">${t('hhOpenBtn')}</button>
+    <div class="pp-more" style="font-size:10px;color:var(--text-secondary);">${t('burnerSources')}: ${srcs}</div>`;
+  return ppWrap({ color: '#d84315', title: b.n, sub: t(BURNER_KIND_KEY[b.k]), maxW: 380, body });
 }
 
 function renderBurnerMarkers() {
@@ -7574,12 +7574,12 @@ function hhPopupExtraHtml(flat, flon) {
   if (isNaN(flat) || isNaN(flon)) return '';
   const near = nearestFactory(flat, flon, 2);
   const nearHtml = near ? `
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+    <div class="pp-more" style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
       <span style="font-size:9px;color:var(--text-secondary);text-transform:uppercase;">${t('nearestSite')}</span>
       <span style="font-size:11px;font-weight:600;color:var(--text-primary);text-align:right;">${ttEsc(near.f.n || t('factoryUnnamed'))} · ${near.km < 10 ? near.km.toFixed(1) : Math.round(near.km)} km</span>
     </div>` : '';
   return `${nearHtml}
-    <button type="button" class="hh-open-btn" onclick="openHeatHistory(${flat},${flon},null)">${t('hhOpenBtn')}</button>`;
+    <button type="button" class="hh-open-btn pp-more" onclick="openHeatHistory(${flat},${flon},null)">${t('hhOpenBtn')}</button>`;
 }
 
 /* ─────────────── Heat history ─────────────── */
@@ -8202,7 +8202,7 @@ function buildReportStationSectionHtml(stationList, reportCreatedAt, reportId) {
     return `<div style="font-size:9px;color:var(--text-secondary);font-style:italic;margin-top:2px;">${t('stationDataLoading')}</div>`;
   }
   if (stationList === null || !stationList.length) {
-    return `<div style="font-size:9px;color:var(--text-secondary);font-style:italic;margin-top:2px;">${t('stationNoneNearby')}</div>`;
+    return `<div class="pp-more" style="font-size:9px;color:var(--text-secondary);font-style:italic;margin-top:2px;">${t('stationNoneNearby')}</div>`;
   }
 
   // Averaged reading across every matched station, at the time/place the
@@ -8247,7 +8247,7 @@ function buildReportStationSectionHtml(stationList, reportCreatedAt, reportId) {
       </div>`;
   }).join('');
 
-  return `<div style="display:flex;flex-direction:column;margin-top:1px;">${avgSectionHtml}${header}${rows}</div>`;
+  return `<div style="display:flex;flex-direction:column;margin-top:1px;">${avgSectionHtml}<div class="pp-more">${header}${rows}</div></div>`;
 }
 
 // Builds the full report popup. stationSectionHtml is passed in separately
@@ -8255,85 +8255,30 @@ function buildReportStationSectionHtml(stationList, reportCreatedAt, reportId) {
 // query), while the rest of the popup can render immediately.
 function buildReportPopupHtml(report, stationSectionHtml) {
   const formatDate = (dateStr) => {
-    if (!dateStr) return null;
+    if (!dateStr) return '';
     const d = new Date(dateStr);
     const pad = (n) => String(n).padStart(2, '0');
     return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
   };
-
-  const formattedDate = formatDate(report.created_at);
   const catCol = categoryColor(report.category);
   const card  = degToCardinal(report.wind_direction);
-
-  return `<div class="popup-inner" style="padding:0;min-width:220px;max-width:460px;font-family:sans-serif;">
-  <div style="background:${catCol};padding:4px 8px;border-radius:6px 6px 0 0;display:flex;flex-direction:column;align-items:flex-start;gap:1px;">
-    <span style="font-size:11px;font-weight:700;color:white;">
-      ${translateCategory(report.category)}
-    </span>
-    <span style="font-size:9px;color:rgba(255,255,255,.8);">
-      ${formattedDate}
-    </span>
-  </div>
-
-  <div style="padding:5px 8px;display:flex;flex-direction:column;gap:2px;">
-    <div style="display:flex;justify-content:space-between;align-items:center;">
-      <span style="font-size:9px;color:var(--text-secondary);text-transform:uppercase;">${t('popupInt')}</span>
-      <span style="font-size:11px;font-weight:600;color:var(--text-primary);">${report.intensity}/10</span>
-    </div>
-
-    <div style="display:flex;justify-content:space-between;align-items:center;">
-      <span style="font-size:9px;color:var(--text-secondary);text-transform:uppercase;">${t('popupDuration')}</span>
-      <span style="font-size:11px;font-weight:600;color:var(--text-primary);">${report.duration || 1}${t('hours')}</span>
-    </div>
-
-    <div style="height:1px;background:var(--border-color);margin:2px 0;"></div>
-
-    <div style="display:flex;justify-content:space-between;align-items:center;">
-      <span style="font-size:9px;color:var(--text-secondary);text-transform:uppercase;">${t('popupDir')}</span>
-      <span style="font-size:11px;font-weight:600;color:var(--text-primary);white-space:nowrap;">
-        ${report.manual_wind_direction != null ? report.manual_wind_direction + '°' : '–'}
-      </span>
-    </div>
-
-    <div style="display:flex;justify-content:space-between;align-items:center;">
-      <span style="font-size:9px;color:var(--text-secondary);" title="${t('historical')}">${t('historical')}</span>
-      <span style="font-size:10px;font-weight:400;color:var(--text-secondary);white-space:nowrap;">
-        ${report.wind_direction != null ? Math.round(report.wind_direction) + '°' + (card ? ` ${card}` : '') : '–'}
-      </span>
-    </div>
-
-    <div style="display:flex;justify-content:flex-end;align-items:center;margin-top:1px;">
-      <span style="font-size:10px;color:var(--text-secondary);white-space:nowrap;">
-        ${report.wind_speed != null ? report.wind_speed + ' km/h' : '–'} •
-        ${report.sea_level_pressure != null ? Number(report.sea_level_pressure).toFixed(1) + ' hPa' : '–'}
-      </span>
-    </div>
-
-    <div style="display:flex;justify-content:space-between;align-items:center;">
-      <span style="font-size:9px;color:var(--text-secondary);">${t('elevation')}</span>
-      <span style="font-size:10px;color:var(--text-secondary);white-space:nowrap;">
-        ${report.elevation != null ? Math.round(report.elevation) + ' m' : '–'}
-      </span>
-    </div>
-
-    <div style="display:flex;justify-content:space-between;align-items:center;">
-      <span style="font-size:9px;color:var(--text-secondary);">${t('mixingLayer')}</span>
-      <span style="font-size:10px;color:var(--text-secondary);white-space:nowrap;">
-        ${report.stability && report.stability.blh_m != null
-          ? Math.round(report.stability.blh_m) + ' m · ' + t('mix_' + (report.stability.cls || 'moderate')) + (report.stability.wet ? ' · ' + t('mixRain') : '')
-          : '–'}
-      </span>
-    </div>
-
+  const hasManual = report.manual_wind_direction != null;
+  const histVal = report.wind_direction != null ? Math.round(report.wind_direction) + '°' + (card ? ` ${card}` : '') : '–';
+  const mix = report.stability && report.stability.blh_m != null
+    ? Math.round(report.stability.blh_m) + ' m · ' + t('mix_' + (report.stability.cls || 'moderate')) + (report.stability.wet ? ' · ' + t('mixRain') : '')
+    : '–';
+  const body = `
+    ${ppRow(t('popupInt'), `${report.intensity}/10`)}
+    ${ppRow(t('popupDuration'), `${report.duration || 1}${t('hours')}`)}
+    ${ppDivider()}
+    ${hasManual ? ppRow(t('popupDir'), `${report.manual_wind_direction}°`) : ppRow(t('historical'), histVal)}
+    ${hasManual ? ppRow(t('historical'), histVal, true) : ''}
+    ${ppRow(t('popupWind') || 'Wind', `${report.wind_speed != null ? report.wind_speed + ' km/h' : '–'} • ${report.sea_level_pressure != null ? Number(report.sea_level_pressure).toFixed(1) + ' hPa' : '–'}`, true)}
+    ${ppRow(t('elevation'), report.elevation != null ? Math.round(report.elevation) + ' m' : '–', true)}
+    ${ppRow(t('mixingLayer'), mix, true)}
     ${stationSectionHtml}
-
-    ${report.comment ? `
-    <div style="height:1px;background:var(--border-color);margin:2px 0;"></div>
-    <div style="font-size:10px;color:var(--text-secondary);font-style:italic;line-height:1.2;">
-      ${report.comment}
-    </div>` : ''}
-  </div>
-</div>`;
+    ${report.comment ? `${ppDivider()}<div style="font-size:11px;color:var(--text-secondary);font-style:italic;line-height:1.3;">${ttEsc(report.comment)}</div>` : ''}`;
+  return ppWrap({ color: catCol, title: translateCategory(report.category), sub: formatDate(report.created_at), body });
 }
 
 /* ═══════════════════════════════════════════════════
@@ -8483,7 +8428,7 @@ const PLUME_ATTRIB_MAX_KM = 30;       // a report this close, and downwind, is a
 const PLUME_ATTRIB_CONE_DEG = 70;
 const PLUME_DEFAULT_SD_DEG = 25;      // measured episode-to-episode scatter of the plume direction
 const PLUME_MIN_SD_DEG = 15, PLUME_MAX_SD_DEG = 35, PLUME_MAX_BIAS_DEG = 35;
-const PLUME_CAL_KEY = 'ttt_plume_cal_v3';   // v3: stack-height wind per source (v2 was learned on the fixed 10-180 m blend)
+const PLUME_CAL_KEY = 'ttt_plume_cal_v4';   // v4: wind at effective height (stack + plume rise) where exit data exist; v2/v3 were learned on other wind definitions
 const PLUME_CAL_TTL_MS = 6 * 3600000;
 const PLUME_CAL_DAYS = 90;            // Open-Meteo forecast API serves up to 92 past days
 const PLUME_CAL_MIN_REPORTS = 8;
@@ -8513,6 +8458,9 @@ function windLevelVec(h, i, lev) {
 // Weighted vector blend of whichever levels the data has; missing levels are skipped and the
 // weights renormalised, so an hourly object with only 10 m wind still works.
 function transportVecAt(h, i, mode) {
+  if (typeof mode === 'string' && mode.startsWith('p:')) {
+    return stackPlumeVecAt(h, i, mode) || transportVecAt(h, i, 'ground');
+  }
   if (typeof mode === 'string' && mode.startsWith('h:')) {
     return stackHeightVecAt(h, i, mode) || transportVecAt(h, i, 'ground');
   }
@@ -8562,6 +8510,68 @@ function stackHeightVecAt(h, i, mode) {
   const levels = windProfileVecs(h, i);
   let su = 0, sv = 0, n = 0;
   hs.forEach(z => { const v = interpWindVecAtHeight(levels, z); if (v) { su += v.u; sv += v.v; n++; } });
+  return n ? { u: su / n, v: sv / n } : null;
+}
+// ── Plume rise (Briggs 1975, buoyant plume, final rise) and wind at the effective height ──
+// Mode 'p:<lat>,<lon>;<h>/<d>/<tC>/<v>;...' = per stack: height h (m AGL), inner diameter d (m), exit gas
+// temperature tC (deg C) and exit speed v (m/s), all measured. For every hour:
+//   F  = g * v * (d/2)^2 * (Ts - Ta) / Ts                     buoyancy flux, m4/s3
+//   neutral / unstable:  dh = 21.425 F^0.75 / u  (F < 55),  38.71 F^0.6 / u  (F >= 55)
+//   stable (night):      dh = 2.6 (F / (u s))^(1/3), the smaller of the two is used; s = g/Ta * dTheta/dz
+//   u = wind speed at the stack top (interpolated, m/s; the data are km/h), at least 1 m/s
+//   effective height = h + dh;  the wind is then read at that height (vector interpolation, ln z).
+// ASSUMED, not measured: ambient air = model 2 m temperature (15 C if the data have none);
+// stable hours = sun below 3 deg, with dTheta/dz = 0.02 K/m. Above the highest wind level the data have
+// (180 m forecast, 100 m archive) that top level is used, so the effective height is only a lower bound there.
+// Not modelled: momentum rise, building downwash, plume penetration of the mixing layer, plume bending-over.
+const PLUME_G = 9.81, PLUME_AMBIENT_C_ASSUMED = 15, PLUME_STABLE_DTHETA_DZ = 0.02, PLUME_MIN_WIND_MS = 1;
+const plumeSpecCache = new Map();
+function parsePlumeMode(mode) {
+  let spec = plumeSpecCache.get(mode);
+  if (spec) return spec;
+  const parts = String(mode).slice(2).split(';');
+  const ll = parts.shift().split(',').map(Number);
+  const stacks = parts.map(x => { const [hh, d, tC, v] = x.split('/').map(Number); return { h: hh, d, tC, v }; })
+    .filter(x => [x.h, x.d, x.tC, x.v].every(isFinite) && x.h > 0 && x.d > 0 && x.v > 0);
+  spec = { lat: ll[0], lon: ll[1], stacks };
+  plumeSpecCache.set(mode, spec);
+  return spec;
+}
+function briggsBuoyancyFlux(tC, vMs, dM, taK) {
+  const Ts = tC + 273.15;
+  if (!(Ts > taK)) return 0;                       // not warmer than the air: no buoyancy, no rise is claimed
+  return PLUME_G * vMs * Math.pow(dM / 2, 2) * (Ts - taK) / Ts;
+}
+function briggsPlumeRiseM(F, uMs, stable, taK) {
+  if (!(F > 0) || !(uMs > 0)) return 0;
+  const u = Math.max(uMs, PLUME_MIN_WIND_MS);
+  const neutral = F >= 55 ? 38.71 * Math.pow(F, 0.6) / u : 21.425 * Math.pow(F, 0.75) / u;
+  if (!stable) return neutral;
+  const s = PLUME_G / (taK || 288.15) * PLUME_STABLE_DTHETA_DZ;
+  return Math.min(neutral, 2.6 * Math.cbrt(F / (u * s)));
+}
+function plumeRiseDiag(h, i, mode) {
+  const spec = parsePlumeMode(mode), levels = windProfileVecs(h, i);
+  if (!spec.stacks.length || !levels.length) return null;
+  const tMs = h.time && h.time[i] ? Date.parse(h.time[i] + 'Z') : NaN;
+  const stable = isFinite(tMs) && isFinite(spec.lat) ? plumeStability(tMs, spec.lat, spec.lon) === 'stable' : false;
+  const taC = h.temperature_2m && h.temperature_2m[i] != null ? h.temperature_2m[i] : null;
+  const taK = (taC != null ? taC : PLUME_AMBIENT_C_ASSUMED) + 273.15, topZ = levels[levels.length - 1].z;
+  return {
+    stable, taAssumed: taC == null, topZ,
+    stacks: spec.stacks.map(st => {
+      const w0 = interpWindVecAtHeight(levels, st.h), uMs = Math.hypot(w0.u, w0.v) / 3.6;
+      const F = briggsBuoyancyFlux(st.tC, st.v, st.d, taK), dh = briggsPlumeRiseM(F, uMs, stable, taK), heff = st.h + dh;
+      return { h: st.h, F, uMs, dh, heff, clamped: heff > topZ };
+    })
+  };
+}
+function stackPlumeVecAt(h, i, mode) {
+  const diag = plumeRiseDiag(h, i, mode);
+  if (!diag) return null;
+  const levels = windProfileVecs(h, i);
+  let su = 0, sv = 0, n = 0;
+  diag.stacks.forEach(st => { const w = interpWindVecAtHeight(levels, st.heff); if (w) { su += w.u; sv += w.v; n++; } });
   return n ? { u: su / n, v: sv / n } : null;
 }
 function forecastHourComp(h, i, mode) { return transportVecAt(h, i, mode || 'ground'); }
@@ -8642,6 +8652,7 @@ function parcelPosAt(pts, tMs) {
 function hourlyPlumePanelHtml(id, source) {
   const hs = PLUME_STACK_KINDS.includes(source.k) ? stackHeightsOf(source) : [];
   const modeLabel = !PLUME_STACK_KINDS.includes(source.k) ? t('plumeHourlyGroundMode')
+    : burnerMode(source).startsWith('p:') ? (lang === 'sr' ? `Koristi vetar na efektivnoj visini = visina dimnjaka (${hs.join(', ')} m) + izdizanje perjanice (Briggs, procena).` : `Uses wind at the effective height = stack height (${hs.join(', ')} m) + plume rise (Briggs, estimate).`)
     : hs.length ? (lang === 'sr' ? `Koristi vetar interpolisan na visini dimnjaka (${hs.join(', ')} m iznad tla).` : `Uses wind interpolated to the stack height (${hs.join(', ')} m above ground).`)
     : t('plumeHourlyStackMode');
   return `<section id="${ttEsc(id)}" style="border:1px solid var(--border-color);border-radius:7px;padding:7px 8px;margin:2px 0;background:var(--bg-surface-alt);">
@@ -8692,6 +8703,29 @@ function hourlyWindHeightCell(hourly, tMs, level, label) {
   const d = plumeTowardName(bearing);
   const full = `${lang === 'sr' ? 'Ka ' : 'Toward '}${t(d.key)}, ${speed.toFixed(1)} km/h`;
   return `<div title="${ttEsc(full)}" style="min-width:0;border:1px solid var(--border-color);border-radius:5px;padding:4px 3px;background:var(--bg-surface);"><div style="font-size:9px;color:var(--text-secondary);">${label}</div><div style="font-size:13px;line-height:1.2;font-weight:700;color:var(--text-primary);">${d.arrow} <span style="font-size:10px;">${d.short[lang] || d.short.en}</span></div><div style="font-size:9px;color:var(--text-secondary);white-space:nowrap;">${speed.toFixed(1)} km/h</div></div>`;
+}
+
+function hourlyEffectiveHeightHtml(source, hourly, startMs) {
+  const mode = burnerMode(source);
+  if (!mode.startsWith('p:') || !hourly.time || !hourly.time.length) return '';
+  const L = lang === 'sr' ? 'sr' : 'en', ms = hourly.time.map(x => Date.parse(x + 'Z')), lbls = (source.stk.list || []).filter(x => x.use !== false && x.h > 0).map(x => x.lbl);
+  const rows = [];
+  let anyAssumedT = false, anyStable = false, anyClamped = false;
+  for (let hour = 1; hour <= FORECAST_AHEAD_H; hour++) {
+    const target = startMs + hour * 3600000;
+    let i = 0; while (i < ms.length - 1 && ms[i + 1] <= target) i++;
+    const d = plumeRiseDiag(hourly, i, mode);
+    const slot = new Date(target).toLocaleTimeString(L === 'sr' ? 'sr-RS' : 'en-GB', { hour: '2-digit', minute: '2-digit' });
+    if (!d) { rows.push(`<tr style="border-top:1px solid var(--border-color);"><td style="padding:3px;white-space:nowrap;">+${hour} h · ${slot}</td><td colspan="${lbls.length}" style="padding:3px;color:var(--text-secondary);">${L === 'sr' ? 'nema podataka o vetru' : 'no wind data'}</td></tr>`); continue; }
+    anyAssumedT = anyAssumedT || d.taAssumed; anyStable = anyStable || d.stable;
+    const cells = d.stacks.map(st => { anyClamped = anyClamped || st.clamped; return `<td style="padding:3px;white-space:nowrap;"><strong style="color:var(--text-primary);">${st.clamped ? '≥ ' + d.topZ : Math.round(st.heff / 5) * 5} m</strong> <span style="color:var(--text-secondary);">(${st.h}+${st.clamped ? '…' : Math.round(st.dh)})</span></td>`; }).join('');
+    rows.push(`<tr style="border-top:1px solid var(--border-color);"><td style="padding:3px;white-space:nowrap;color:var(--text-primary);">+${hour} h · ${slot}${d.stable ? ' ☾' : ''}</td>${cells}</tr>`);
+  }
+  const notes = [L === 'sr' ? 'Efektivna visina = visina dimnjaka + izdizanje (Briggs 1975). To je procena, ne merenje.' : 'Effective height = stack height + rise (Briggs 1975). An estimate, not a measurement.'];
+  if (anyClamped) notes.push(L === 'sr' ? `„≥“: iznad najvišeg nivoa vetra u podacima; koristi se vetar tog nivoa.` : `“≥”: above the highest wind level in the data; that level's wind is used.`);
+  if (anyStable) notes.push(L === 'sr' ? '☾ = noć (stabilno): pretpostavljen gradijent 0,02 K/m.' : '☾ = night (stable): assumed gradient 0.02 K/m.');
+  if (anyAssumedT) notes.push(L === 'sr' ? 'Podaci nemaju temperaturu vazduha: pretpostavljeno 15 °C.' : 'The data have no air temperature: 15 °C assumed.');
+  return `<section style="margin-top:8px;padding-top:6px;border-top:1px solid var(--border-color);"><div style="font-size:10px;font-weight:700;color:var(--text-primary);margin-bottom:3px;">${L === 'sr' ? 'Efektivna visina emisije po satu' : 'Effective release height by hour'}</div><table style="width:100%;border-collapse:collapse;font-size:10px;"><thead><tr style="color:var(--text-secondary);text-align:left;"><th style="padding:2px 3px;font-weight:600;">${L === 'sr' ? 'Vreme' : 'Time'}</th>${lbls.map(x => `<th style="padding:2px 3px;font-weight:600;">${ttEsc(x || '')}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table><div style="font-size:9px;color:var(--text-secondary);margin-top:4px;line-height:1.3;">${notes.map(ttEsc).join(' ')}</div></section>`;
 }
 
 function hourlyWindHeightRows(hourly, startMs) {
@@ -8761,7 +8795,7 @@ async function loadHourlyPlumeForPopup(source, host, isCurated) {
       mode, biasDeg: bias, stepMin: FORECAST_STEP_MIN, field
     });
     if (path.length < 2) throw new Error('empty plume path');
-    host.innerHTML = hourlyPlumeRows(path, now) + hourlyWindHeightRows(hourly, now);
+    host.innerHTML = hourlyPlumeRows(path, now) + hourlyEffectiveHeightHtml(source, hourly, now) + hourlyWindHeightRows(hourly, now);
   } catch (e) {
     if (host.isConnected) host.textContent = t('plumeHourlyUnavailable');
   }
@@ -8807,11 +8841,17 @@ function reportWindFrom(r) {
 // A report is linked to a known source when a puff released there (carried by the source-level wind and the learned
 // turn) can reach the report within the uncertainty band. This replaces the 10 m wind cone for reports the app has
 // wind data for; no category or source is singled out, every report near any known source is treated the same way.
-const stackHeightsOf = b => ((b && b.stk && b.stk.list) || []).map(s => s.h).filter(h => isFinite(h) && h > 0);
+const stackHeightsOf = b => ((b && b.stk && b.stk.list) || []).filter(s => s.use !== false).map(s => s.h).filter(h => h != null && isFinite(h) && h > 0);
 const burnerMode = b => {
   if (!PLUME_STACK_KINDS.includes(b.k)) return 'ground';
   const hs = stackHeightsOf(b);
-  return hs.length ? 'h:' + hs.join(',') : 'stack';
+  if (!hs.length) return 'stack';
+  const used = b.stk.list.filter(s => s.use !== false && s.h > 0);
+  const mid = r => Math.round((r[0] + r[1]) / 2 * 10) / 10;
+  if (used.every(s => s.d > 0 && s.tC && s.v)) {
+    return 'p:' + b.a + ',' + b.o + ';' + used.map(s => [s.h, s.d, mid(s.tC), mid(s.v)].join('/')).join(';');
+  }
+  return 'h:' + hs.join(',');
 };
 // FIT_MAX_AGE_DAYS: model-fit attribution applies to every report (research tool, nothing is targeted), whatever its age.
 const FIT_MAX_KM = 40, FIT_MAX_AGE_DAYS = 36500, FIT_MAX_TRAVEL_H = 8, FIT_STEP_MIN = 10;
@@ -9706,10 +9746,10 @@ async function renderSmellForecast() {
   const snap = v => Math.round(v * 20) / 20;
   const keyOf = r => `${snap(parseFloat(r.latitude)).toFixed(2)}_${snap(parseFloat(r.longitude)).toFixed(2)}`;
   const nowIso = new Date().toISOString();
-  const hourlyByKey = {}, uniq = {}, srcHourly = {}, srcUniq = {};
+  const srcHourly = {}, srcUniq = {};
   used.forEach(r => {
     const a = attrib.get(r.id);
-    if (a) srcUniq[a.b.n] = a.b; else uniq[keyOf(r)] = r;
+    if (a) srcUniq[a.b.n] = a.b;
   });
   // Standing plumes: every known chimney near the user / map centre gets a plume even with no reports,
   // so the picture is always there and is recomputed on every refresh.
@@ -9717,11 +9757,6 @@ async function renderSmellForecast() {
   const standing = KNOWN_BURNERS.filter(b => PLUME_STACK_KINDS.includes(b.k) && getHaversineDistance(b.a, b.o, stackRef.lat, stackRef.lon) <= STANDING_PLUME_MAX_KM);
   standing.forEach(b => { srcUniq[b.n] = b; });
   await Promise.all([
-    ...Object.keys(uniq).map(async k => {
-      const r = uniq[k];
-      try { hourlyByKey[k] = await fetchForwardWind(snap(parseFloat(r.latitude)), snap(parseFloat(r.longitude)), nowIso, nowIso); }
-      catch (e) { hourlyByKey[k] = null; }
-    }),
     ...Object.values(srcUniq).map(async b => {
       try { srcHourly[b.n] = await fetchForwardWind(b.a, b.o, nowIso, nowIso); }
       catch (e) { srcHourly[b.n] = null; }
@@ -9867,43 +9902,6 @@ async function renderSmellForecast() {
       });
     });
     plumes.push({ name: b.n, n: 0, inside: 0, bias: Math.round(est.bias), sd: Math.round(est.sd), nHist: Math.round(est.nHist) });
-  });
-
-  // ----- everything else: forecast from the report itself -----
-  used.forEach(r => {
-    if (attrib.has(r.id)) return;
-    const hourly = hourlyByKey[keyOf(r)] || null;
-    const path = buildForecastPath(r, hourly, { mode: 'ground' });
-    if (!path) return;
-    if (!hourly) fallback++;
-    drawn++;
-
-    const col = categoryColor(r.category) || '#c41e27';
-    const ageH = (now - new Date(r.created_at).getTime()) / 3600000;
-    const fillOp = Math.max(0.08, 0.2 - ageH * 0.035);   // older reports fade a little
-    const fut = path.future;
-
-    bands.push(forecastBandPolygon(fut, PLUME_DEFAULT_SD_DEG, { fillColor: col, fillOpacity: fillOp }));
-    // Already travelled (faint) and most likely path ahead (animated dashes)
-    lines.push(L.polyline(path.past.map(p => [p.lat, p.lon]), {
-      pane: 'forecastPane', color: col, weight: 2, opacity: 0.45, dashArray: '2 6', interactive: false
-    }));
-    lines.push(L.polyline(fut.map(p => [p.lat, p.lon]), {
-      pane: 'forecastPane', color: col, weight: 3, opacity: 0.9, dashArray: '8 8',
-      className: 'forecast-line', interactive: false
-    }));
-    // Estimated position now, then +1h / +2h / +3h
-    marks.push(L.circleMarker([fut[0].lat, fut[0].lon], {
-      pane: 'forecastPane', radius: 6, color: col, weight: 2, fillColor: col, fillOpacity: 0.25, interactive: false
-    }));
-    FORECAST_CHIP_IDX.forEach((idx, n) => {
-      const p = fut[idx];
-      if (!p) return;
-      marks.push(L.circleMarker([p.lat, p.lon], {
-        pane: 'forecastPane', radius: 3.5, color: '#fff', weight: 1, fillColor: col, fillOpacity: 1, interactive: false
-      }));
-      if (showAllChips || n === FORECAST_CHIP_IDX.length - 1) marks.push(forecastChipMarker(p, col, n + 1));
-    });
   });
 
   smellForecastLayer.clearLayers();
