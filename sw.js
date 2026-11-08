@@ -1,6 +1,6 @@
 /* TraceTheToxin service worker: installability, offline shell, push alerts. */
-const CACHE = 'ttt-shell-v1';
-const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'image/TraceTheToxin.png'];
+const CACHE = 'ttt-shell-v2';
+const SHELL = ['./', 'index.html', 'app-core.js', 'app-core.css', 'mobile-shell.js', 'mobile-shell.css', 'manifest.webmanifest', 'image/TraceTheToxin.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(

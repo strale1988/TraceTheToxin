@@ -1,0 +1,1308 @@
+*{ margin:0; padding:0; box-sizing:border-box; }
+
+button, [onclick], [role="button"]{
+  -webkit-user-select:none;
+  user-select:none;
+  -webkit-touch-callout:none;
+}
+
+:root{
+  --bg-app:#111111;
+  --bg-surface:#181818;
+  --bg-surface-alt:#262626;
+  --border-color:#292929;
+  --border-color-strong:#3a3a3a;
+  --text-primary:#ffffff;
+  --text-secondary:#bbbbbb;
+  --text-muted:#888888;
+  --accent:#00a7b5;
+  --accent-contrast:#ffffff;
+  --danger:#ff4b4b;
+  --danger-strong:#7a1f1f;
+  --icon-tint-filter: brightness(0) invert(1);
+  --floating-bg: rgba(20,20,20,.88);
+  --floating-border: #3a3a3a;
+  --floating-shadow: rgba(0,0,0,.55);
+  --map-tile-filter: grayscale(1) invert(1) brightness(0.85) contrast(0.9);
+  --radius-sm:6px; --radius-md:8px; --radius-lg:10px; --radius-xl:14px; --radius-pill:20px;
+  --fs-9:9px; --fs-10:10px; --fs-11:11px; --fs-12:12px; --fs-12-5:12.5px; --fs-13:13px;
+  --fs-14:14px; --fs-15:15px; --fs-16:16px; --fs-18:18px; --fs-19:19px; --fs-20:20px; --fs-22:22px;
+  --fw-medium:500; --fw-semibold:600; --fw-bold:700; --fw-heavy:800;
+}
+html[data-theme="light"]{
+  --bg-app:#f4f4f2;
+  --bg-surface:#ffffff;
+  --bg-surface-alt:#ececeb;
+  --border-color:#e2e2e0;
+  --border-color-strong:#ddd;
+  --text-primary:#1a1a1a;
+  --text-secondary:#555;
+  --text-muted:#888;
+  --accent:#00838f;
+  --accent-contrast:#ffffff;
+  --icon-tint-filter: brightness(0) invert(32%);
+  --floating-bg: rgba(255,255,255,.92);
+  --floating-border: #e2e2e0;
+  --floating-shadow: rgba(0,0,0,.18);
+  --map-tile-filter: grayscale(1) brightness(1.08) contrast(0.92);
+  /* Live-measured height of #legendBar (see syncLegendBarHeight()) so every
+     floating map control can anchor itself above it, however tall it gets. */
+  --legend-bar-h: 100px;
+}
+.leaflet-control-container .leaflet-top.leaflet-left{
+  top:calc(env(safe-area-inset-top, 0px) + 78px) !important;
+  left:10px !important;
+  margin:0 !important;
+}
+.leaflet-control-container .leaflet-bottom.leaflet-right{
+  top:auto !important;
+  bottom:calc(var(--legend-bar-h) + 40px) !important;
+  right:12px !important;
+  margin:0 !important;
+  transform:none;
+}
+.leaflet-control-container .leaflet-bottom.leaflet-right .leaflet-control{
+  margin:0 !important;
+}
+.leaflet-control-container .leaflet-bottom.leaflet-left{
+  bottom:calc(var(--legend-bar-h) + 4px) !important;
+  left:10px !important;
+  margin:0 !important;
+}
+.leaflet-tile-pane{ filter:var(--map-tile-filter); }
+
+body{
+  font-family:-apple-system,BlinkMacSystemFont,sans-serif;
+  background:var(--bg-app);
+  color:var(--text-primary);
+  height: 100svh;
+  overflow:hidden;
+}
+
+/* ═══════════════════════════════════════════════════
+   PULL-TO-REFRESH (custom, anchored to the header)
+   Body has overflow:hidden so the browser's native overscroll
+   pull-to-refresh never fires -- this reproduces that gesture
+   specifically when the pull starts on the top bar itself.
+═══════════════════════════════════════════════════ */
+
+header{
+  position:fixed;
+  top:0;
+  left:0;
+  right:0;
+  z-index:500;
+  padding:calc(10px + env(safe-area-inset-top, 0px)) 14px 10px;
+  background:var(--floating-bg);
+  border-bottom:1px solid var(--floating-border);
+  border-radius:0 0 20px 20px;
+  box-shadow:0 4px 18px var(--floating-shadow);
+  transform:translateY(0);
+  touch-action:pan-y;
+}
+header.animate{ transition:transform .2s ease; }
+
+.header-top{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+}
+
+header h1{ font-size:var(--fs-19); }
+header p{ font-size:var(--fs-11); opacity:.7; margin-top:2px; }
+
+.subtitle-row{
+  display:flex;
+  align-items:baseline;
+  gap:6px;
+  flex-wrap:wrap;
+}
+.header-report-count{
+  font-size:var(--fs-11);
+  font-weight:var(--fw-semibold);
+  color:var(--accent);
+  white-space:nowrap;
+}
+
+.trail-limit-chip{
+  display:flex; align-items:center; flex-wrap:wrap; gap:6px;
+  margin-top:4px; font-size:var(--fs-11); color:var(--text-secondary);
+}
+.trail-limit-chip button{
+  border:1px solid var(--border-color-strong); background:var(--bg-surface-alt); color:var(--text-primary);
+  border-radius:999px; padding:2px 10px; font-size:var(--fs-11); font-weight:var(--fw-semibold);
+  cursor:pointer; -webkit-tap-highlight-color:transparent;
+}
+
+.right-controls{
+  display:flex;
+  gap:8px;
+  align-items:center;
+  flex-shrink:0;
+}
+
+.help-icon-btn{
+  background:var(--bg-surface-alt);
+  color:var(--text-secondary);
+  border:none;
+  border-radius:50%;
+  width:36px;
+  height:36px;
+  padding:0;
+  font-size:var(--fs-14);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  cursor:pointer;
+  box-shadow:0 1px 3px var(--floating-shadow);
+  transition:transform .12s ease, background .15s ease;
+  -webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;
+}
+.help-icon-btn:active{ background:var(--border-color-strong); transform:scale(.9); }
+.help-icon-btn .icon-img{ filter:var(--icon-tint-filter); }
+
+#map {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.filter-label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px 4px 14px;
+  background: var(--bg-surface);
+  font-size: var(--fs-11);
+  font-weight: bold;
+}
+
+.filter-title {
+  color: var(--text-muted);
+  letter-spacing: .3px;
+  text-transform: uppercase;
+  font-size: var(--fs-10);
+}
+
+#reportCount {
+  color: var(--text-secondary);
+  font-size: var(--fs-12);
+  text-align: right;
+  width: 80px;
+}
+
+.filter-select-row {
+  background: var(--bg-surface);
+  padding: 0 12px 14px 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+input[type=number]::-webkit-inner-spin-button, 
+input[type=number]::-webkit-outer-spin-button { 
+  -webkit-appearance: none; 
+  margin: 0; 
+}
+
+.select-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  /* flex-basis:100% forces the date picker onto its own full-width row
+     whenever there isn't room beside both CSV buttons, instead of the row
+     staying nowrap and the buttons getting pushed off past the edge of
+     the screen (which is what was actually happening on narrow phones --
+     the row wasn't "missing", it was rendering off-screen because nothing
+     in it could shrink or wrap). */
+  flex: 1 1 100%;
+  min-width: 140px;
+}
+
+/* The two export buttons share the row below the date picker on narrow
+   screens instead of each keeping a fixed, non-shrinking padding. */
+.filter-select-row .export-btn{
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+input[type="text"], input[type="number"], input[type="time"]{
+  width:100%;
+  padding:11px 10px;
+  border:none;
+  border-radius:var(--radius-md);
+  background:var(--bg-surface-alt);
+  color:var(--text-primary);
+  font-size:var(--fs-13);
+}
+
+button{
+  padding:12px;
+  border:none;
+  border-radius:var(--radius-md);
+  cursor:pointer;
+  font-weight:bold;
+  font-size:var(--fs-13);
+  -webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;
+}
+
+.report-btn{ background:var(--danger); color:white; width:100%; transition:opacity .2s; }
+.report-btn:disabled{ opacity:.35; cursor:not-allowed; }
+.export-btn{ background:var(--accent); color:white; width:100%; }
+
+.legend{
+  display:flex;
+  gap:8px;
+  font-size:10px;
+  align-items:center;
+  flex-wrap:wrap;
+  opacity:.8;
+}
+.legend-item{ display:flex; align-items:center; gap:3px; }
+.legend-dot{ width:9px; height:9px; border-radius:50%; display:inline-block; flex-shrink:0; }
+
+.leaflet-popup-content-wrapper{
+  border-radius:10px !important;
+  padding:0 !important;
+  overflow:hidden;
+  min-width:200px;
+  background: var(--floating-bg) !important;
+  box-shadow: 0 3px 14px var(--floating-shadow);
+}
+.leaflet-popup-content{
+  margin:0 !important;
+  width:auto !important;
+  max-height:70vh;
+  overflow-y:auto;
+  overflow-x:hidden;
+  -webkit-overflow-scrolling:touch;
+}
+.leaflet-popup-tip{
+  background: var(--floating-bg) !important;
+  box-shadow: 0 3px 14px var(--floating-shadow);
+}
+.leaflet-popup-close-button{
+  color: var(--text-secondary) !important;
+  font-size: 18px !important;
+}
+.leaflet-popup-close-button:hover{ color: var(--text-primary) !important; }
+
+.popup-inner{
+  font-family:-apple-system,BlinkMacSystemFont,sans-serif;
+  font-size:13px;
+  line-height:1.65;
+  color:var(--text-primary);
+  padding:12px 14px;
+  min-width:200px;
+}
+.popup-inner b{ color:var(--text-primary); }
+.popup-title{ font-size:14px; font-weight:700; margin-bottom:8px; color:var(--text-primary); }
+/* ═════ Unified popups: compact summary + full-screen details ═════ */
+.leaflet-popup-content{ max-height:min(60vh,460px) !important; max-width:calc(100vw - 48px) !important; overflow-wrap:anywhere; }
+.leaflet-popup-close-button{ width:34px !important; height:34px !important; font-size:24px !important; line-height:32px !important; padding:0 !important; text-align:center !important; z-index:2; }
+.leaflet-popup .pp-head{ padding-right:34px !important; }
+/* One compact width on every device: no inline min/max-width from ppWrap can widen it, nothing scrolls sideways */
+.leaflet-popup .pp{ min-width:0 !important; max-width:min(320px, calc(100vw - 56px)) !important; box-sizing:border-box; }
+.leaflet-popup .pp, .leaflet-popup .pp *{ overflow-wrap:anywhere; }
+.leaflet-popup .pp div[style*="flex-wrap:nowrap"], #ppDetail .pp-full div[style*="flex-wrap:nowrap"]{ flex-wrap:wrap !important; overflow-x:visible !important; }
+.leaflet-popup .pp-body > *{ min-width:0; }
+.leaflet-popup .pp-more{ display:none !important; }
+.leaflet-popup .pp-clamp{ display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+.leaflet-popup .pp [style*="font-size:9px"]{ font-size:11px !important; }
+.leaflet-popup .pp [style*="font-size:10px"]{ font-size:12px !important; }
+.leaflet-popup .pp [style*="font-size:11px"]{ font-size:13px !important; }
+.leaflet-popup .pp [style*="font-size:12px"]{ font-size:14px !important; }
+.pp-detail-btn{
+  width:100%; min-height:38px; margin-top:6px; padding:8px 10px; border-radius:8px; cursor:pointer;
+  background:transparent; color:var(--accent); border:1.5px solid var(--accent);
+  font-size:13px; font-weight:700; -webkit-tap-highlight-color:transparent; touch-action:manipulation;
+}
+.pp-detail-btn:active{ background:var(--accent); color:var(--accent-contrast); }
+/* Factory / chimney popups (index and science alike): name, type, nearby-report count, one "N of M confirmed" line and the
+   Detalji button. Everything else (what is burned, wind-match card, stack data, hourly wind, buttons) is in Detalji.
+   The popup never turns into a scroll area, so data that arrives after the click cannot make a scrollbar appear. */
+.leaflet-popup .pp.pp-compact .pp-more,
+.leaflet-popup .pp.pp-compact .pp-desc,
+.leaflet-popup .pp.pp-compact .src-stat{ display:none !important; }
+.leaflet-popup-content:has(.pp-compact){ max-height:none !important; overflow:visible !important; height:auto !important; }
+.hh-open-btn{ min-height:40px; font-size:13px !important; }
+
+#ppDetail{
+  display:none; position:fixed; inset:0; z-index:10002; flex-direction:column;
+  background:var(--bg-app); color:var(--text-primary);
+  font-family:-apple-system,BlinkMacSystemFont,sans-serif;
+}
+#ppDetail.open{ display:flex; }
+.ppd-bar{
+  flex:0 0 auto; display:flex; align-items:center; gap:10px;
+  padding:calc(env(safe-area-inset-top,0px) + 8px) 10px 10px 8px; color:#fff; background:#546e7a;
+  box-shadow:0 2px 8px rgba(0,0,0,.35);
+}
+.ppd-back{
+  flex:0 0 auto; display:flex; align-items:center; gap:2px; min-height:40px; padding:0 14px 0 8px;
+  background:rgba(255,255,255,.2); color:#fff; border:none; border-radius:999px;
+  font-size:15px; font-weight:700; cursor:pointer; -webkit-tap-highlight-color:transparent;
+}
+.ppd-back svg{ width:20px; height:20px; stroke:#fff; fill:none; stroke-width:2.6; stroke-linecap:round; stroke-linejoin:round; }
+.ppd-back:active{ background:rgba(255,255,255,.35); }
+.ppd-titles{ flex:1; min-width:0; }
+.ppd-title{ font-size:17px; font-weight:800; line-height:1.2; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ppd-sub{ font-size:12px; opacity:.88; margin-top:1px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ppd-body{
+  flex:1 1 auto; overflow-y:auto; overflow-x:hidden; -webkit-overflow-scrolling:touch; overscroll-behavior:contain;
+  padding:0 14px calc(env(safe-area-inset-bottom,0px) + 24px);
+}
+#ppDetail .pp-full{ max-width:720px !important; min-width:0 !important; margin:0 auto; }
+#ppDetail .pp-full .pp-body{ padding:14px 2px 20px !important; gap:7px !important; }
+#ppDetail .pp-full [style*="font-size:8px"]{ font-size:11px !important; }
+#ppDetail .pp-full [style*="font-size:9px"]{ font-size:12px !important; }
+#ppDetail .pp-full [style*="font-size:10px"]{ font-size:13.5px !important; }
+#ppDetail .pp-full [style*="font-size:11px"]{ font-size:15px !important; }
+#ppDetail .pp-full [style*="font-size:12px"]{ font-size:16px !important; }
+#ppDetail .pp-full [style*="font-size:13px"]{ font-size:16px !important; }
+#ppDetail .pp-full .hh-open-btn{ min-height:46px; font-size:15px !important; border-radius:10px; margin-top:6px; }
+#ppDetail .pp-full a{ word-break:break-word; }
+#ppDetail .pp-full table{ font-size:13px !important; max-width:100%; }
+#ppDetail .pp-full{ overflow-wrap:anywhere; }
+#ppDetail .pp-full table *{ font-size:inherit; }
+
+
+.bg-trail-teal {
+  pointer-events: none;
+}
+
+/* Paused while the map is moving (see 'map-moving' in the map setup) and for
+   people who ask for reduced motion. */
+.map-moving .leaflet-pane *{ animation-play-state:paused !important; }
+@media (prefers-reduced-motion: reduce){
+  .bg-trail-animated, .bg-trail-animated-forward, .trace-pulse-spline, .trace-pulse-spline-forward, .trace-pulse-circle path,
+  .drift-puff, .drift-ring, .wildfire-pulse-ring{ animation:none !important; }
+}
+@keyframes marchDots {
+  from { stroke-dashoffset: 0; }
+  to   { stroke-dashoffset: 22; }
+}
+.bg-trail-animated path,
+.bg-trail-animated {
+  animation: marchDots 0.6s linear infinite;
+}
+/* The selected report's trail is drawn report -> source, so marchDots moves the dashes from the
+   source toward the report, i.e. the way the wind blew. The continuation past the report is drawn
+   in the other direction (report -> onward), so its dashes run the opposite way round to keep
+   following the wind. */
+@keyframes marchDotsReverse {
+  from { stroke-dashoffset: 22; }
+  to   { stroke-dashoffset: 0; }
+}
+.bg-trail-animated-forward path,
+.bg-trail-animated-forward {
+  animation: marchDotsReverse 0.6s linear infinite;
+}
+
+/* Trace Possible Source: a breathing ripple on the source point, and a
+   flowing-dash animation along each matched report's trail -- together
+   giving the impression of something spreading outward from the source to
+   the reports (and a little further, per the trail's own buffer past the
+   traced point). */
+@keyframes tracePulseBreathe {
+  0%, 100% { opacity: 0.12; }
+  50%      { opacity: 0.4; }
+}
+.trace-pulse-circle path {
+  animation: tracePulseBreathe 1.6s ease-in-out infinite;
+}
+@keyframes traceFlowDash {
+  from { stroke-dashoffset: 0; }
+  to   { stroke-dashoffset: 22; }
+}
+.trace-pulse-spline path,
+.trace-pulse-spline {
+  animation: traceFlowDash 0.9s linear infinite;
+}
+/* Forward tail (past the report) continues the same outward spread, so its
+   dash flow runs the opposite direction from the backtrail above --
+   otherwise it reads as flowing backward, toward the report, instead of
+   continuing on past it. */
+@keyframes traceFlowDashReverse {
+  from { stroke-dashoffset: 22; }
+  to   { stroke-dashoffset: 0; }
+}
+.trace-pulse-spline-forward path,
+.trace-pulse-spline-forward {
+  animation: traceFlowDashReverse 0.9s linear infinite;
+}
+
+/* Wildfire markers: icons/fire.png tinted per-fire via a CSS mask (same
+   background-color + mask-image technique used for the category wizard
+   tiles). The flame itself is always drawn upright/straight -- direction
+   is communicated separately by the wind arrow below it, not by tilting
+   the flame. Icon size (bigger = higher radiative power = a more serious
+   fire) is static, set once in makeWildfireIcon(). */
+/* Expanding "radar ping" pulse: a red ring that grows outward from behind
+   the icon and fades out as it grows, then repeats -- rather than the
+   marker itself scaling in place. Reused (at different sizes) behind both
+   the individual fire icon and the cluster badge, so a group of fires
+   still visibly "pulses" even once merged into a single count badge. */
+@keyframes wildfirePulseRing {
+  0%   { transform:translate(-50%,-50%) scale(0.55); opacity:0.65; }
+  100% { transform:translate(-50%,-50%) scale(2.4);  opacity:0;    }
+}
+.wildfire-pulse-ring{
+  position:absolute; left:50%; top:50%;
+  width:100%; height:100%;
+  border-radius:50%;
+  background:#ff3b30;
+  transform:translate(-50%,-50%) scale(0.55);
+  animation:wildfirePulseRing 1.8s ease-out infinite;
+  pointer-events:none;
+  z-index:0;
+}
+.wildfire-icon-wrap{ position:relative; width:100%; height:100%; }
+.wildfire-icon-circle{
+  position:relative; z-index:1;
+  width:100%; height:100%;
+  border-radius:50%;
+  border:2.5px solid #fff;
+  box-shadow:0 2px 6px rgba(0,0,0,.35);
+  display:flex; align-items:center; justify-content:center;
+  overflow:hidden;
+}
+.wildfire-icon .wildfire-flame{
+  width:62%; height:62%;
+  -webkit-mask-size:contain; mask-size:contain;
+  -webkit-mask-repeat:no-repeat; mask-repeat:no-repeat;
+  -webkit-mask-position:center; mask-position:center;
+  background-color:#fff;
+}
+/* Wind arrow: just the triangular head, drawn outside the icon's circle
+   (not overlapping the flame) at a radius of icon-radius + gap, in its own
+   oversized, absolutely-centered SVG layer. Rotation is baked into the
+   SVG's <g transform> (see makeWildfireIcon()/makeWildfireClusterGroup()),
+   same "add 180° to the meteorological wind direction" convention used by
+   the GPS arrow and wind compass elsewhere, so it points where the wind is
+   blowing TO. */
+.wildfire-wind-arrow{
+  position:absolute; left:50%; top:50%;
+  transform:translate(-50%,-50%);
+  overflow:visible;
+  pointer-events:none;
+  z-index:2;
+}
+
+/* ═══════════════════════════════════════════════════
+   WILDFIRE MARKER CLUSTERING -- same badge-on-circle
+   pattern as report clustering, tinted fire-orange so
+   the two cluster types stay visually distinct too.
+═══════════════════════════════════════════════════ */
+.wildfire-cluster-icon{ background:transparent; border:none; }
+.wildfire-cluster-icon-wrap{ position:relative; width:100%; height:100%; }
+.wildfire-cluster-badge{
+  position:relative; z-index:1;
+  width:100%; height:100%; border-radius:50%;
+  background:#e8531e;
+  color:#fff;
+  display:flex; align-items:center; justify-content:center;
+  font-weight:var(--fw-bold);
+  font-size:13px;
+  border:3px solid #fff;
+  box-shadow:0 2px 6px rgba(0,0,0,.35);
+}
+  
+.generic-modal-overlay{
+  position:fixed; inset:0;
+  background:rgba(0,0,0,.75);
+  display:flex; align-items:center; justify-content:center;
+  z-index:9999;
+  padding:20px;
+  -webkit-overflow-scrolling:touch;
+}
+.generic-modal{
+  background:var(--bg-surface); color:var(--text-primary);
+  border-radius:18px;
+  padding:24px 20px;
+  max-width:340px; width:100%;
+  text-align:center;
+  box-shadow:0 16px 48px var(--floating-shadow);
+  max-height:85vh; overflow-y:auto;
+  pointer-events:all;
+}
+.generic-modal h2{ font-size:18px; font-weight:700; margin-bottom:12px; }
+.generic-modal p{ font-size:13px; line-height:1.6; color:var(--text-secondary); margin-bottom:12px; text-align:left; }
+.generic-modal-close{
+  background:var(--bg-surface-alt); color:var(--text-primary);
+  border:1px solid var(--border-color-strong); border-radius:10px;
+  padding:12px 20px;
+  font-size:14px; font-weight:600;
+  cursor:pointer; width:100%;
+  -webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;
+  min-height:44px;
+}
+.generic-modal-close:active{ background:var(--border-color-strong); }
+
+
+/* ==========================================================================
+   FLATPICKR CUSTOM THEME OVERRIDES
+   Every colour comes from the app's theme variables, so the calendar (and its
+   arrow icons) switches between dark and light with the rest of the app.
+   ========================================================================== */
+.flatpickr-calendar {
+  background: var(--bg-surface) !important;
+  border: 1px solid var(--border-color-strong) !important;
+  box-shadow: 0 12px 32px var(--floating-shadow) !important;
+  border-radius: 12px !important;
+  font-family: inherit !important;
+}
+.flatpickr-calendar.arrowTop:before, .flatpickr-calendar.arrowTop:after { border-bottom-color: var(--bg-surface) !important; }
+.flatpickr-calendar.arrowBottom:before, .flatpickr-calendar.arrowBottom:after { border-top-color: var(--bg-surface) !important; }
+
+/* Header styling (Month & Year selectors) */
+.flatpickr-months .flatpickr-month {
+  background: transparent !important;
+  color: var(--text-primary) !important;
+  fill: var(--text-primary) !important;
+}
+.flatpickr-months .flatpickr-prev-month,
+.flatpickr-months .flatpickr-next-month {
+  color: var(--text-primary) !important;
+  fill: var(--text-primary) !important;
+}
+/* The prev/next arrows are SVGs: tint them with the theme text colour */
+.flatpickr-months .flatpickr-prev-month svg,
+.flatpickr-months .flatpickr-next-month svg,
+.flatpickr-months .flatpickr-prev-month svg path,
+.flatpickr-months .flatpickr-next-month svg path { fill: var(--text-primary) !important; }
+.flatpickr-months .flatpickr-prev-month:hover,
+.flatpickr-months .flatpickr-next-month:hover { background: var(--bg-surface-alt) !important; }
+.flatpickr-months .flatpickr-prev-month:hover svg,
+.flatpickr-months .flatpickr-next-month:hover svg,
+.flatpickr-months .flatpickr-prev-month:hover svg path,
+.flatpickr-months .flatpickr-next-month:hover svg path { fill: var(--accent) !important; }
+.flatpickr-current-month .flatpickr-monthDropdown-months,
+.flatpickr-current-month .flatpickr-monthDropdown-months .flatpickr-monthDropdown-month {
+  background: var(--bg-surface) !important;
+  color: var(--text-primary) !important;
+}
+.flatpickr-current-month input.cur-year { color: var(--text-primary) !important; }
+.numInputWrapper span { border-color: var(--border-color-strong) !important; }
+.flatpickr-current-month .numInputWrapper span.arrowUp:after { border-bottom-color: var(--text-primary) !important; }
+.flatpickr-current-month .numInputWrapper span.arrowDown:after { border-top-color: var(--text-primary) !important; }
+
+/* Weekday column headers */
+span.flatpickr-weekday {
+  background: transparent !important;
+  color: var(--text-muted) !important;
+  font-weight: bold !important;
+}
+
+.flatpickr-day { color: var(--text-primary) !important; }
+.flatpickr-day.today { border-color: var(--text-muted) !important; }
+.flatpickr-day:hover,
+.flatpickr-day.prevMonthDay:hover,
+.flatpickr-day.nextMonthDay:hover {
+  background: var(--bg-surface-alt) !important;
+  border-color: var(--bg-surface-alt) !important;
+  color: var(--text-primary) !important;
+}
+
+/* Days outside the current month scope */
+.flatpickr-day.prevMonthDay,
+.flatpickr-day.nextMonthDay {
+  color: var(--text-muted) !important;
+  opacity: .55;
+}
+.flatpickr-day.flatpickr-disabled, .flatpickr-day.flatpickr-disabled:hover { color: var(--text-muted) !important; opacity: .4; }
+
+/* Selected active range styling (matches the app's accent) */
+.flatpickr-day.selected,
+.flatpickr-day.startRange,
+.flatpickr-day.endRange,
+.flatpickr-day.selected.inRange,
+.flatpickr-day.startRange.inRange,
+.flatpickr-day.endRange.inRange,
+.flatpickr-day.selected:focus,
+.flatpickr-day.startRange:focus,
+.flatpickr-day.endRange:focus,
+.flatpickr-day.selected:hover,
+.flatpickr-day.startRange:hover,
+.flatpickr-day.endRange:hover {
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+  color: var(--accent-contrast) !important;
+  opacity: 1;
+}
+
+/* Between-dates range highlighting */
+.flatpickr-day.inRange,
+.flatpickr-day.prevMonthDay.inRange,
+.flatpickr-day.nextMonthDay.inRange,
+.flatpickr-day.today.inRange,
+.flatpickr-day.prevMonthDay.today.inRange,
+.flatpickr-day.nextMonthDay.today.inRange {
+  background: var(--accent) !important;
+  border-color: transparent !important;
+  border-radius: 0 !important;
+  color: var(--accent-contrast) !important;
+  opacity: 1;
+}
+/* flatpickr paints the gaps between range days with a hard-coded blue-grey shadow */
+.flatpickr-day.inRange { box-shadow: -5px 0 0 var(--accent), 5px 0 0 var(--accent) !important; }
+.flatpickr-day.selected.startRange + .endRange:not(:nth-child(7n+1)),
+.flatpickr-day.startRange.startRange + .endRange:not(:nth-child(7n+1)),
+.flatpickr-day.endRange.startRange + .endRange:not(:nth-child(7n+1)) { box-shadow: -10px 0 0 var(--accent) !important; }
+
+
+/* ═══════════════════════════════════════════════════
+   SPLASHSCREEN LOADER
+═══════════════════════════════════════════════════ */
+#splashScreen{
+  position:fixed; inset:0; z-index:10001;
+  background:var(--bg-app);
+  opacity:1; visibility:visible;
+  transition:opacity .5s ease, visibility 0s linear 0s;
+}
+/* Fade out, then drop out of rendering entirely and stop the pulsing rings */
+#splashScreen.splash-hidden{ opacity:0; visibility:hidden; pointer-events:none; transition:opacity .5s ease, visibility 0s linear .5s; }
+#splashScreen.splash-hidden *{ animation-play-state:paused !important; }
+/* Logo is pinned to the exact centre of the screen; slogan + quote hang below it */
+.splash-spinner-wrap{
+  position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+  width:86px; height:86px;
+  display:flex; align-items:center; justify-content:center;
+}
+.splash-logo{
+  position:relative; z-index:1;
+  width:86px; height:86px;
+  object-fit:contain; border-radius:24px;
+}
+.splash-halo{
+  position:absolute; top:50%; left:50%;
+  width:86px; height:86px; border-radius:50%;
+  background:var(--accent);
+  transform:translate(-50%,-50%) scale(.7);
+  opacity:.45;
+  animation:splash-halo-pulse 1.8s ease-out infinite;
+}
+.splash-halo-2{ animation-delay:.9s; }
+@keyframes splash-halo-pulse{
+  0%{ transform:translate(-50%,-50%) scale(.7); opacity:.45; }
+  70%{ transform:translate(-50%,-50%) scale(1.55); opacity:0; }
+  100%{ opacity:0; }
+}
+.splash-below{
+  position:absolute; left:0; right:0; top:calc(50% + 43px + 46px);
+  padding:0 28px calc(env(safe-area-inset-bottom, 0px) + 16px);
+  display:flex; flex-direction:column; align-items:center; text-align:center;
+}
+.splash-slogan{
+  color:var(--text-primary); font-size:19px; font-weight:700; letter-spacing:.2px;
+  animation:splash-rise .7s ease both .1s;
+}
+@keyframes splash-rise{ from{ opacity:0; transform:translateY(8px); } to{ opacity:1; transform:translateY(0); } }
+.splash-quote{
+  margin-top:16px; max-width:320px;
+  color:var(--text-primary); font-size:13px; font-style:italic; line-height:1.5; opacity:.7;
+  animation:splash-fade 1s ease both .6s;
+}
+.splash-quote-by{ display:block; margin-top:4px; font-style:normal; font-size:12px; opacity:.8; }
+@keyframes splash-fade{ from{ opacity:0; } to{ opacity:.7; } }
+
+/* ═══════════════════════════════════════════════════
+   BOTTOM LEGEND BAR (rounded top corners, docked bottom)
+═══════════════════════════════════════════════════ */
+#legendBar{
+  position:fixed; left:0; right:0; bottom:0; z-index:400;
+  background:var(--bg-surface);
+  border-top:1px solid var(--border-color);
+  border-radius:18px 18px 0 0;
+  box-shadow:0 -4px 16px var(--floating-shadow);
+  padding:10px 16px calc(10px + env(safe-area-inset-bottom, 0px));
+  display:flex; flex-direction:column; gap:6px;
+}
+.legend-row{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.legend-item{ display:flex; align-items:center; gap:4px; }
+.legend-dot{ width:8px; height:8px; border-radius:50%; flex-shrink:0; display:inline-block; }
+.legend-row .leg{ color:var(--text-secondary); font-size:var(--fs-10); }
+
+/* ═══════════════════════════════════════════════════
+   CIRCULAR FLOATING BUTTONS (right side)
+═══════════════════════════════════════════════════ */
+.bottomright-stack{
+  display:flex; flex-direction:column; align-items:center; gap:10px;
+  position:fixed; right:12px; z-index:420;
+}
+#traceSourceBtn{ position:fixed; bottom:calc(var(--legend-bar-h) + 94px); right:12px; }
+#pinMapBtn{ position:fixed; bottom:calc(var(--legend-bar-h) + 148px); right:12px; }
+#mapFilterBtn{ position:fixed; bottom:calc(var(--legend-bar-h) + 202px); right:12px; }
+#wildfireBtn{ position:fixed; bottom:calc(var(--legend-bar-h) + 322px); right:12px; }
+.wildfire-btn{
+  background:var(--floating-bg);
+  border:1px solid var(--floating-border);
+  border-radius:50%;
+  width:44px; height:44px;
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer;
+  box-shadow:0 2px 8px var(--floating-shadow);
+  transition:background .15s ease, transform .12s ease, box-shadow .15s ease;
+  user-select:none;
+  -webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;
+}
+.wildfire-btn:active{ transform:scale(.9); }
+.wildfire-btn.active{ background:#d84315; border-color:#d84315; }
+.wildfire-btn .icon-img{ filter:var(--icon-tint-filter); }
+.wildfire-btn.active .icon-img{ filter:none; }
+.map-filter-btn{
+  background:var(--floating-bg);
+  border:1px solid var(--floating-border);
+  border-radius:50%;
+  width:44px; height:44px;
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer; font-size:22px;
+  box-shadow:0 2px 8px var(--floating-shadow);
+  transition:background .15s ease, transform .12s ease, box-shadow .15s ease;
+  user-select:none;
+  -webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;
+}
+.map-filter-btn:active{ transform:scale(.9); }
+.map-filter-btn.active{ background:#f5a623; border-color:#f5a623; }
+.map-filter-btn .icon-img{ filter:var(--icon-tint-filter); }
+.map-filter-btn.active .icon-img{ filter:none; }
+.pin-map-btn{
+  background:var(--floating-bg);
+  border:1px solid var(--floating-border);
+  border-radius:50%;
+  width:44px; height:44px;
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer; font-size:22px;
+  box-shadow:0 2px 8px var(--floating-shadow);
+  transition:background .15s ease, transform .12s ease, box-shadow .15s ease;
+  user-select:none;
+  -webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;
+}
+.pin-map-btn:active{ transform:scale(.9); }
+.pin-map-btn.active{ background:#f5a623; border-color:#f5a623; }
+.pin-map-btn .icon-img{ filter:var(--icon-tint-filter); }
+.pin-map-btn.active .icon-img{ filter:none; }
+
+.trace-source-btn{
+  background:var(--floating-bg);
+  border:1px solid var(--floating-border);
+  border-radius:50%;
+  width:44px; height:44px;
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer; font-size:22px;
+  box-shadow:0 2px 8px var(--floating-shadow);
+  transition:background .15s ease, transform .12s ease;
+  user-select:none;
+  -webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;
+}
+.trace-source-btn:active{ transform:scale(.9); }
+.trace-source-btn.active{ background:var(--danger); border-color:var(--danger); }
+.trace-source-btn .icon-img{ filter:var(--icon-tint-filter); }
+
+/* ═══════════════════════════════════════════════════
+   REPORT MARKER CLUSTERING
+═══════════════════════════════════════════════════ */
+.report-cluster-icon{ background:transparent; border:none; }
+.report-cluster-badge{
+  width:100%; height:100%; border-radius:50%;
+  background:var(--accent, #0ea5b5);
+  color:#fff;
+  text-align:center;
+  font-weight:var(--fw-bold);
+  font-size:13px;
+  border:3px solid #fff;
+  box-shadow:0 2px 6px rgba(0,0,0,.35);
+}
+/* Report pins/clusters vanish for the duration of the zoom gesture, then
+   reappear already resolved into their new clustered/spiderfied layout --
+   avoids everything visibly jumping around mid-zoom. */
+#map.zooming-hide-reports .report-pin-icon,
+#map.zooming-hide-reports .report-cluster-icon,
+#map.zooming-hide-reports .marker-cluster{
+  opacity:0 !important;
+  transition:none !important;
+}
+
+/* Solo/focus mode (setTrailFocus): smooth fade when a report's trail
+   dims/undims as other popups open and close, rather than an abrupt cut. */
+.leaflet-splinePane-pane path{
+  transition: stroke-opacity .25s ease;
+}
+.report-pin-icon{
+  transition: opacity .25s ease;
+}
+
+/* ═══════════════════════════════════════════════════
+   WIND COMPASS WIDGET (fixed corner badge)
+   Shows the live wind reading fetched once at app start:
+   an arrow (rotated to point where the wind is blowing
+   TOWARD, same convention as the report-pin icons and the
+   wizard's compass dial), plus the raw degrees and cardinal
+   direction the wind is blowing FROM underneath.
+═══════════════════════════════════════════════════ */
+#windCompassWidget{
+  position:fixed;
+  top:calc(env(safe-area-inset-top, 0px) + 72px);
+  right:12px;
+  z-index:410;
+  background:var(--floating-bg);
+  border:1px solid var(--floating-border);
+  border-radius:var(--radius-lg);
+  box-shadow:0 2px 8px var(--floating-shadow);
+  padding:6px 10px 7px;
+  display:none;
+  flex-direction:column;
+  align-items:center;
+  gap:1px;
+  min-width:52px;
+  -webkit-tap-highlight-color:transparent;
+}
+#windCompassWidget.visible{ display:flex; }
+#windCompassWidget .wind-compass-deg{
+  font-size:var(--fs-11); font-weight:var(--fw-bold); color:var(--text-primary); margin-top:1px;
+}
+#windCompassWidget .wind-compass-dir{
+  font-size:var(--fs-9); font-weight:var(--fw-medium); color:var(--text-muted); text-transform:uppercase;
+}
+.trace-source-btn.active .icon-img{ filter:none; }
+
+/* ═══════════════════════════════════════════════════
+   REPORT FAB (red circular +)
+═══════════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════════
+   REPORT WIZARD (full-screen, step based, no dropdowns)
+═══════════════════════════════════════════════════ */
+.wiz-overlay{
+  position:fixed; inset:0; z-index:9999;
+  background:var(--bg-app);
+  display:flex; flex-direction:column;
+}
+.wiz-header{ display:flex; align-items:center; gap:10px; padding:calc(14px + env(safe-area-inset-top,0px)) 16px 14px; flex:0 0 auto; }
+.wiz-back-btn, .wiz-close-btn{
+  width:34px; height:34px; border-radius:50%;
+  background:var(--bg-surface-alt); border:none; color:var(--text-primary);
+  font-size:var(--fs-18); display:flex; align-items:center; justify-content:center; cursor:pointer;
+  -webkit-tap-highlight-color:transparent; touch-action:manipulation;
+}
+.wiz-progress{ flex:1; display:flex; gap:4px; }
+.wiz-progress span{ height:4px; flex:1; border-radius:2px; background:var(--border-color-strong); }
+.wiz-progress span.done{ background:var(--danger); }
+.wiz-body{ flex:1; overflow-y:auto; padding:4px 20px 20px; }
+.wiz-step-label{ color:var(--text-secondary); font-size:var(--fs-13); margin:0 0 4px; }
+.wiz-step-title{ font-size:var(--fs-20); font-weight:var(--fw-semibold); margin:0 0 18px; color:var(--text-primary); }
+.wiz-grid{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }
+.wiz-tile{
+  border:1px solid transparent; border-radius:14px; padding:16px 6px;
+  display:flex; flex-direction:column; align-items:center; gap:10px;
+  cursor:pointer; text-align:center; color:#fff;
+  -webkit-tap-highlight-color:transparent; touch-action:manipulation;
+}
+.wiz-tile:active{ filter:brightness(0.9); }
+.wiz-tile-icon{ width:34px; height:34px; }
+.wiz-tile span{ font-size:var(--fs-12-5); line-height:1.25; }
+.wiz-details-row{ margin:0 0 16px; }
+.wiz-anon-note{ display:flex; gap:8px; align-items:flex-start; font-size:var(--fs-12); line-height:1.4; color:var(--text-secondary); margin:0 0 14px; }
+.wiz-anon-note svg{ width:14px; height:14px; flex-shrink:0; margin-top:1px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+.wiz-details-row label{ display:block; font-size:var(--fs-13); color:var(--text-secondary); margin:0 0 6px; }
+.wiz-details-two-col{ display:flex; gap:8px; }
+.wiz-details-two-col .wiz-details-row{ flex:1; }
+.wiz-details-three-col{ display:flex; gap:8px; }
+.wiz-details-three-col .wiz-details-row{ flex:1; min-width:0; }
+.wiz-details-three-col input{ height:44px; padding-top:0; padding-bottom:0; }
+.wiz-details-three-col input[type="number"]{ text-align:center; }
+.wind-compass-wrap{ display:flex; flex-direction:column; align-items:center; gap:8px; padding:10px 0 4px; }
+.wind-compass-dial{ display:block; touch-action:none; }
+.wind-compass-dial .compass-label-text{ fill:var(--text-secondary); font-size:15px; font-weight:var(--fw-semibold); user-select:none; }
+.compass-dir-letter{
+  display:inline-flex; align-items:center; justify-content:center;
+  min-width:32px; padding:6px 12px; border-radius:var(--radius-md);
+  background:var(--bg-surface-alt); color:var(--text-secondary);
+  font-size:var(--fs-13); font-weight:var(--fw-semibold);
+}
+.wiz-submit-btn{
+  width:100%; background:var(--danger); color:#fff; border:none;
+  border-radius:var(--radius-xl); padding:16px; font-size:var(--fs-16); font-weight:var(--fw-semibold); cursor:pointer;
+}
+.wiz-submit-btn:disabled{ opacity:.5; }
+.wiz-intensity-value{
+  font-size:40px; font-weight:var(--fw-heavy); text-align:center; margin:8px 0 4px;
+}
+.wiz-intensity-label{ text-align:center; color:var(--text-secondary); font-size:var(--fs-13); margin-bottom:18px; min-height:1.4em; line-height:1.4em; }
+.wiz-intensity-label.is-empty{ visibility:hidden; }
+.wiz-intensity-slider{
+  width:100%; -webkit-appearance:none; appearance:none;
+  height:8px; border-radius:4px; background:var(--bg-surface-alt); outline:none;
+}
+.wiz-intensity-slider::-webkit-slider-thumb{
+  -webkit-appearance:none; width:26px; height:26px; border-radius:50%;
+  background:var(--danger); cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,.4);
+}
+.wiz-intensity-slider::-moz-range-thumb{
+  width:26px; height:26px; border-radius:50%; border:none;
+  background:var(--danger); cursor:pointer;
+}
+.wiz-cooldown-notice{
+  background:var(--bg-surface-alt); border-left:3px solid var(--danger);
+  border-radius:6px; padding:12px 14px; font-size:var(--fs-13); color:var(--text-secondary); margin-top:12px;
+}
+
+/* ═══════════════════════════════════════════════════
+   SETTINGS MODAL (fullscreen)
+═══════════════════════════════════════════════════ */
+.fullscreen-modal-overlay{
+  position:fixed; top:0; left:0; right:0;
+  /* Not inset:0/height:100% -- on mobile browsers those size to the large
+     viewport (as if the address bar were hidden), so with the address bar
+     actually showing, the bottom of the modal sat behind the browser's own
+     chrome and was unreachable no matter how far you scrolled inside it.
+     100svh matches what body{} already uses for the same reason. */
+  height:100svh;
+  z-index:9999; background:var(--bg-app);
+  display:flex; flex-direction:column; /* header keeps its natural height; body gets the rest */
+}
+.fullscreen-modal-header{
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+  padding:calc(14px + env(safe-area-inset-top,0px)) 16px 14px 16px;
+  border-bottom:1px solid var(--border-color);
+  flex-shrink:0;
+}
+.fullscreen-modal-header h2{ font-size:var(--fs-16); font-weight:var(--fw-bold); margin:0; flex:1; min-width:0; }
+.fullscreen-modal-close{
+  background:var(--bg-surface-alt); color:var(--text-primary); border:none; border-radius:50%;
+  width:36px; height:36px; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center; font-size:var(--fs-18); cursor:pointer;
+  transition:transform .12s ease, background .15s ease;
+  -webkit-tap-highlight-color:transparent; touch-action:manipulation;
+}
+.fullscreen-modal-close:active{ background:var(--border-color-strong); transform:scale(.9); }
+.fullscreen-modal-close .icon-img{ width:18px; height:18px; filter:var(--icon-tint-filter); }
+.fullscreen-modal-body{
+  flex:1 1 auto;
+  /* THE fix: a flex item's default min-height is auto, meaning it refuses
+     to shrink smaller than its content -- so overflow-y:auto never actually
+     kicks in and the last section (filter + CSV buttons) just extends past
+     the visible area with no way to reach it. This is the standard, JS-free
+     fix for that exact bug; the previous approach worked around it with
+     absolute positioning + a JS-measured header-height offset instead,
+     which depended on that measurement running (and being correct) before
+     every single open/resize -- a real race-condition surface, and very
+     likely why this kept coming back intermittently. */
+  min-height:0;
+  overflow-y:auto; overflow-x:hidden; -webkit-overflow-scrolling:touch; touch-action:pan-y; overscroll-behavior:contain;
+  /* Bumped from 24px -> 40px: on some phones env(safe-area-inset-bottom)
+     resolves to 0 even though there's a home-indicator bar, which left the
+     last section (the date filter + CSV row) sitting flush against the
+     very edge of the screen -- reachable if you scrolled exactly far
+     enough, but easy to mistake for "the scroll stops before it". This
+     extra fixed buffer makes sure there's always visible room past it. */
+  padding:16px 16px calc(40px + env(safe-area-inset-bottom,0px));
+  display:flex; flex-direction:column; gap:16px;
+}
+.detail-section{ background:var(--bg-surface); border:1px solid var(--border-color); border-radius:var(--radius-xl); padding:14px; flex-shrink:0; }
+.detail-section-title{ font-size:var(--fs-10); font-weight:var(--fw-bold); letter-spacing:.4px; text-transform:uppercase; color:var(--text-muted); margin-bottom:10px; }
+.detail-export-hint{ font-size:var(--fs-12); color:var(--text-secondary); margin:8px 0 0; line-height:1.4; }
+.icon-img{ width:20px; height:20px; object-fit:contain; vertical-align:middle; }
+.icon-tint{ filter:var(--icon-tint-filter); }
+.ui-ico{ width:11px; height:11px; vertical-align:-1px; margin-right:4px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+.icon-img-inline{ width:16px; height:16px; margin:0 4px -3px 0; filter:var(--icon-tint-filter); }
+
+.settings-btn{
+  background:var(--bg-surface-alt); color:var(--text-primary); border:none; border-radius:var(--radius-xl);
+  display:flex; align-items:center; justify-content:center; gap:6px;
+  padding:12px; font-size:var(--fs-13); font-weight:var(--fw-semibold); cursor:pointer;
+  transition:background .15s ease, transform .1s ease;
+  -webkit-tap-highlight-color:transparent; touch-action:manipulation;
+}
+.settings-btn:active{ background:var(--border-color-strong); transform:scale(.98); }
+
+.theme-segment{ display:flex; background:var(--bg-surface-alt); border-radius:var(--radius-md); padding:3px; gap:3px; }
+.theme-segment-btn{
+  flex:1; border:none; background:transparent; color:var(--text-secondary);
+  font-size:var(--fs-12-5); font-weight:var(--fw-bold); padding:8px 6px; border-radius:var(--radius-sm);
+  cursor:pointer; -webkit-tap-highlight-color:transparent; touch-action:manipulation;
+  transition:background .15s, color .15s;
+}
+.theme-segment-btn.active{ background:var(--bg-surface); color:var(--text-primary); box-shadow:0 1px 4px var(--floating-shadow); }
+
+.settings-toggle-row{
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+  background:var(--bg-surface-alt); border-radius:var(--radius-xl); padding:12px 14px; margin-top:8px;
+  font-size:var(--fs-13); font-weight:var(--fw-semibold); color:var(--text-primary);
+  cursor:pointer; -webkit-tap-highlight-color:transparent; touch-action:manipulation;
+}
+.toggle-switch{ position:relative; display:inline-block; width:42px; height:24px; flex-shrink:0; }
+.toggle-switch input{ position:absolute; inset:0; opacity:0; margin:0; cursor:pointer; }
+.toggle-switch-track{ position:absolute; inset:0; background:var(--border-color-strong); border-radius:999px; transition:background .15s ease; }
+.toggle-switch-thumb{ position:absolute; top:2px; left:2px; width:20px; height:20px; border-radius:50%; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.3); transition:transform .15s ease; }
+.toggle-switch input:checked + .toggle-switch-track{ background:var(--accent); }
+.toggle-switch input:checked + .toggle-switch-track .toggle-switch-thumb{ transform:translateX(18px); }
+
+/* ── Factories layer + satellite heat history ── */
+#factoryBtn{ position:fixed; bottom:calc(var(--legend-bar-h) + 376px); right:12px; }
+.factory-btn{
+  background:var(--floating-bg); border:1px solid var(--floating-border); border-radius:50%;
+  width:44px; height:44px; display:flex; align-items:center; justify-content:center;
+  cursor:pointer; box-shadow:0 2px 8px var(--floating-shadow);
+  transition:background .15s ease, transform .12s ease, box-shadow .15s ease;
+  user-select:none; -webkit-tap-highlight-color:transparent; touch-action:manipulation;
+  color:var(--text-primary);
+}
+.factory-btn:active{ transform:scale(.9); }
+.factory-btn.active{ background:#546e7a; border-color:#546e7a; color:#fff; }
+.factory-btn.loading{ opacity:.6; }
+.factory-btn .icon-img{ filter:var(--icon-tint-filter); }
+.factory-btn.active .icon-img{ filter:none; }
+.factory-pin-wrap{ background:none; border:none; }
+.factory-pin{ width:24px; height:24px; border-radius:6px; display:flex; align-items:center; justify-content:center; border:2px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,.5); }
+.factory-pin img{ width:14px; height:14px; filter:brightness(0) invert(1); }
+.factory-pin.noimg::after, .burner-pin.noimg::after{ content:'\1F3ED'; font-size:13px; }
+.factory-cluster-wrap{ background:none; border:none; }
+.factory-cluster{ width:30px; height:30px; border-radius:8px; background:#455a64; color:#fff; border:2px solid #fff; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; box-shadow:0 1px 5px rgba(0,0,0,.5); }
+.hh-open-btn{
+  width:100%; padding:6px 8px; border:none; border-radius:6px; cursor:pointer;
+  background:var(--accent); color:var(--accent-contrast); font-size:11px; font-weight:700;
+  margin-top:2px;
+}
+.burner-pin{ width:34px; height:34px; border-radius:9px; background:#d84315; border:2px solid #fff; display:flex; align-items:center; justify-content:center; box-shadow:0 0 0 3px rgba(216,67,21,.35), 0 2px 8px rgba(0,0,0,.6); }
+.burner-pin img{ width:20px; height:20px; filter:brightness(0) invert(1); }
+#ttToast{ display:none; position:fixed; top:calc(env(safe-area-inset-top, 0px) + 84px); left:50%; transform:translateX(-50%); z-index:1000; max-width:calc(100vw - 24px); background:var(--bg-surface); color:var(--text-primary); border:1px solid var(--border-color-strong); border-radius:999px; padding:8px 14px; font-size:12px; box-shadow:0 2px 10px var(--floating-shadow); text-align:center; }
+/* Global, non-blocking progress indicator for longer data and calculation tasks. */
+#workStatus{
+  display:none; position:fixed; top:calc(env(safe-area-inset-top,0px) + 126px); left:50%; transform:translateX(-50%);
+  z-index:460; width:min(340px,calc(100vw - 28px)); padding:9px 12px 10px;
+  background:var(--floating-bg); color:var(--text-primary); border:1px solid var(--floating-border);
+  border-radius:12px; box-shadow:0 4px 16px var(--floating-shadow); pointer-events:none;
+  backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
+}
+#workStatus.visible{display:block;}
+#workStatus .work-status-top{display:flex; align-items:center; gap:9px; min-width:0;}
+#workStatus .work-spinner{width:15px;height:15px;flex:0 0 15px;border:2px solid var(--border-color-strong);border-top-color:var(--accent);border-radius:50%;animation:workStatusSpin .8s linear infinite;}
+#workStatus .work-status-label{font-size:12px;line-height:1.35;min-width:0;flex:1;color:var(--text-primary);}
+#workStatus .work-status-count{font-size:10px;color:var(--text-secondary);font-variant-numeric:tabular-nums;white-space:nowrap;}
+#workStatus .work-status-track{height:3px;margin-top:8px;background:var(--bg-surface-alt);border-radius:99px;overflow:hidden;}
+#workStatus .work-status-bar{height:100%;width:35%;background:var(--accent);border-radius:99px;transition:width .15s ease;}
+#workStatus.indeterminate .work-status-bar{width:35%;animation:workStatusProgress 1.25s ease-in-out infinite;}
+@keyframes workStatusSpin{to{transform:rotate(360deg);}}
+@keyframes workStatusProgress{0%{transform:translateX(-110%)}100%{transform:translateX(310%)}}
+@media(prefers-reduced-motion:reduce){#workStatus .work-spinner,#workStatus.indeterminate .work-status-bar{animation:none!important}#workStatus .work-spinner{border-top-color:var(--accent);border-right-color:var(--accent)}}
+
+#hhSheet{
+  display:none; position:fixed; left:8px; right:8px; z-index:900;
+  bottom:calc(var(--legend-bar-h) + 8px);
+  max-height:52vh; overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain;
+  background:var(--bg-surface); color:var(--text-primary);
+  border:1px solid var(--border-color-strong); border-radius:16px;
+  box-shadow:0 6px 24px var(--floating-shadow);
+  padding:0; max-width:520px; margin:0 auto;
+}
+.hh-head{ position:sticky; top:0; z-index:2; display:flex; align-items:center; gap:8px; padding:10px 10px 8px 14px; background:var(--bg-surface); border-bottom:1px solid var(--border-color); }
+.hh-head-main{ flex:1; min-width:0; }
+.hh-body{ padding:8px 14px 14px; }
+#hhSheet.collapsed .hh-body{ display:none; }
+#hhSheet.collapsed .hh-head{ border-bottom:none; }
+#hhSheet.collapsed .hh-min svg{ transform:rotate(180deg); }
+.hh-title{ font-size:14px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.hh-muted{ font-size:11px; color:var(--text-secondary); }
+.hh-x, .hh-min{ background:var(--bg-surface-alt); color:var(--text-primary); border:none; border-radius:50%; width:32px; height:32px; cursor:pointer; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:13px; -webkit-tap-highlight-color:transparent; }
+.hh-min svg{ width:16px; height:16px; transition:transform .15s ease; }
+.hh-chips{ display:flex; align-items:center; flex-wrap:wrap; gap:6px; margin:0 0 8px; }
+.hh-chip{ border:1px solid var(--border-color-strong); background:var(--bg-surface-alt); color:var(--text-primary); border-radius:999px; padding:6px 12px; font-size:12px; cursor:pointer; min-height:32px; }
+.hh-chip:disabled{ opacity:.45; cursor:default; }
+.hh-chip.on{ background:var(--accent); border-color:var(--accent); color:var(--accent-contrast); font-weight:700; }
+.hh-progress{ height:6px; background:var(--bg-surface-alt); border-radius:3px; overflow:hidden; margin:10px 0 6px; }
+.hh-progress-bar{ height:100%; background:var(--accent); transition:width .2s ease; }
+.hh-stats{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:6px 0 10px; }
+.hh-stat{ background:var(--bg-surface-alt); border-radius:10px; padding:8px 10px; }
+.hh-stat-v{ font-size:20px; font-weight:800; line-height:1.1; }
+.hh-of{ font-size:12px; font-weight:500; color:var(--text-secondary); }
+.hh-stat-l{ font-size:10px; color:var(--text-secondary); text-transform:uppercase; margin-top:2px; }
+.hh-stat-s{ font-size:10px; color:var(--text-secondary); margin-top:2px; }
+.hh-sect{ font-size:10px; color:var(--text-secondary); text-transform:uppercase; margin-bottom:4px; }
+.hh-bars{ display:flex; align-items:flex-end; gap:2px; height:46px; }
+.hh-bar-col{ flex:1; height:100%; display:flex; align-items:flex-end; }
+.hh-bar{ width:100%; background:#d84315; border-radius:2px 2px 0 0; }
+.hh-bar-traced{ width:100%; background:#8e24aa; border-radius:2px 2px 0 0; }
+.hh-bar-reports{ width:100%; background:#00acc1; border-radius:2px 2px 0 0; }
+.hh-bar-labels{ display:flex; justify-content:space-between; font-size:9px; color:var(--text-muted); margin-top:2px; }
+/* Stacked comparison charts: every row shares the same columns, so a bar in
+   one row sits directly above/below the same day (or month) in the others. */
+.hh-cmp{ margin:4px 0 8px; }
+.hh-cmp-cap{ display:flex; align-items:center; gap:5px; font-size:10px; color:var(--text-secondary); text-transform:uppercase; margin:7px 0 2px; }
+.hh-cmp-cap i{ display:inline-block; width:8px; height:8px; border-radius:2px; flex-shrink:0; }
+.hh-cmp .hh-bars{ height:34px; border-bottom:1px solid var(--border-color-strong); }
+.hh-cmp .hh-bar-col{ position:relative; cursor:pointer; border-radius:2px; -webkit-tap-highlight-color:transparent; }
+.hh-cmp .hh-bar-col.sel{ background:rgba(128,128,128,.24); }
+.hh-cmp .hh-bar-n{ position:absolute; left:0; right:0; text-align:center; font-size:9px; font-weight:700; line-height:1; color:var(--text-primary); pointer-events:none; }
+.hh-cmp-axis{ display:flex; gap:2px; font-size:9px; color:var(--text-muted); margin-top:2px; }
+.hh-cmp-axis span{ flex:1; text-align:center; }
+.hh-cmp-axis.ends{ justify-content:space-between; }
+.hh-cmp-axis.ends span{ flex:none; }
+.hh-bar-reports.manual, .hh-bar-traced.manual{ background:#9aa0a6; opacity:.8; }
+.hh-cmp-note{ display:flex; align-items:center; gap:5px; font-size:10px; color:var(--text-secondary); margin-top:5px; }
+.hh-cmp-note i{ display:inline-block; width:8px; height:8px; border-radius:2px; background:#9aa0a6; flex-shrink:0; }
+.hh-cmp-nav{ display:flex; align-items:center; gap:6px; margin:2px 0 4px; }
+.hh-cmp-nav .hh-cmp-month{ flex:1; text-align:center; font-size:12px; font-weight:700; }
+.hh-cmp-nav button, .hh-zoom{ border:1px solid var(--border-color-strong); background:var(--bg-surface-alt); color:var(--text-primary); border-radius:999px; padding:3px 11px; font-size:11px; font-weight:600; cursor:pointer; min-height:26px; -webkit-tap-highlight-color:transparent; }
+.hh-cmp-nav button:disabled{ opacity:.4; cursor:default; }
+.hh-zoom{ margin-left:6px; }
+.hh-cmp-read{ font-size:11px; color:var(--text-secondary); min-height:15px; margin-top:5px; line-height:1.35; }
+.hh-cmp-read b{ color:var(--text-primary); }
+.hh-legend{ display:flex; flex-wrap:wrap; gap:10px; font-size:10px; color:var(--text-secondary); margin:10px 0 6px; }
+.hh-legend i{ display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:4px; }
+.hh-check{ display:flex; align-items:center; gap:6px; font-size:11px; color:var(--text-secondary); margin:4px 0; }
+.hh-caveat{ font-size:10.5px; color:var(--text-secondary); line-height:1.35; margin:6px 0 8px; padding:6px 8px; border-left:3px solid var(--accent); background:var(--bg-surface-alt); border-radius:0 6px 6px 0; }
+.hh-warn{ font-size:11px; color:#ffb300; margin:6px 0; }
+.hh-actions{ display:flex; gap:8px; }
+.hh-btn{ flex:1; padding:8px; border:1px solid var(--border-color-strong); background:var(--bg-surface-alt); color:var(--text-primary); border-radius:8px; font-size:12px; font-weight:600; cursor:pointer; }
+
+/* ═══════════════════════════════════════════════════
+   INSTALL REMINDER + WIND ALERT TOAST
+═══════════════════════════════════════════════════ */
+.alert-radius-title{ margin-top:14px; }
+
+/* Persistent location reminder: small pill beside the pin button */
+.map-act-btn{
+  width:44px; height:44px; border-radius:50%; padding:0; cursor:pointer;
+  display:flex; align-items:center; justify-content:center;
+  background:var(--floating-bg); color:var(--text-primary);
+  border:2px solid #f5a623; box-shadow:0 2px 8px var(--floating-shadow);
+  -webkit-tap-highlight-color:transparent; touch-action:manipulation;
+}
+.map-act-btn:active{ transform:scale(.92); }
+.map-act-btn svg{ width:20px; height:20px; display:block; }
+.pin-map-btn.pin-attn{ border-color:#f5a623; animation:pinPulse 1.8s ease-out infinite; }
+@keyframes pinPulse{
+  0%{ box-shadow:0 2px 8px var(--floating-shadow), 0 0 0 0 rgba(245,166,35,.65); }
+  70%{ box-shadow:0 2px 8px var(--floating-shadow), 0 0 0 14px rgba(245,166,35,0); }
+  100%{ box-shadow:0 2px 8px var(--floating-shadow), 0 0 0 0 rgba(245,166,35,0); }
+}
+/* Wind drift: soft puffs travelling downwind from fresh reports */
+.drift-icon{ background:none; border:none; pointer-events:none; }
+.drift-wrap{ position:relative; width:100%; height:100%; transform:scale(var(--drift-scale,1)); }
+.drift-puff{
+  position:absolute; left:50%; top:50%; width:28px; height:28px; margin:-14px 0 0 -14px; border-radius:50%;
+  background:radial-gradient(circle, var(--pc) 0%, transparent 70%);
+  opacity:0; will-change:transform,opacity;
+  animation:driftPuff 4s linear infinite;
+}
+@keyframes driftPuff{
+  0%{ opacity:0; transform:translate(0,0) scale(.5); }
+  15%{ opacity:.65; }
+  100%{ opacity:0; transform:translate(var(--dx),var(--dy)) scale(2.8); }
+}
+.drift-ring{
+  position:absolute; left:50%; top:50%; width:30px; height:30px; margin:-15px 0 0 -15px; border-radius:50%;
+  border:2px solid var(--pc); opacity:0; animation:driftRing 3.4s ease-out infinite;
+}
+@keyframes driftRing{ 0%{ opacity:.55; transform:scale(.6); } 100%{ opacity:0; transform:scale(3); } }
+
+/* Smell forecast: estimated path of the smell over the next 3 hours */
+.forecast-line{ animation:forecastFlow 1.4s linear infinite; }
+@keyframes forecastFlow{ to{ stroke-dashoffset:-16; } }
+.map-moving .forecast-line{ animation-play-state:paused; }
+.forecast-chip-icon{ background:none; border:none; }
+.forecast-chip{
+  display:inline-block; transform:translate(-50%,-50%); white-space:nowrap;
+  font-size:var(--fs-10); font-weight:var(--fw-bold); line-height:1;
+  padding:3px 6px; border-radius:999px;
+  background:var(--floating-bg); color:var(--text-primary);
+  border:1.5px solid var(--fc,#888); box-shadow:0 1px 4px var(--floating-shadow);
+}
+.forecast-zoomed-out .forecast-chip{ display:none; }
+@media (prefers-reduced-motion: reduce){ .forecast-line{ animation:none; } }
+
+/* Location pulses: live blue dot and grey last-known ghost */
+.user-location-icon{ overflow:visible; }
+.loc-pulse{
+  position:absolute; left:50%; top:50%; width:26px; height:26px; margin:-13px 0 0 -13px; border-radius:50%;
+  background:rgba(0,208,255,.4); pointer-events:none;
+  animation:locPulse 2.6s ease-out infinite;
+}
+.loc-pulse.p2{ animation-delay:1.3s; }
+.lastloc-wrap .loc-pulse{ background:rgba(138,143,152,.4); animation-duration:3.6s; }
+.lastloc-wrap .loc-pulse.p2{ animation-delay:1.8s; }
+@keyframes locPulse{ 0%{ transform:scale(.6); opacity:.65; } 100%{ transform:scale(3.2); opacity:0; } }
+.user-location-icon svg, .lastloc-wrap svg{ position:relative; z-index:1; }
+.lastloc-ring{ transform-origin:22px 22px; animation:lastlocSpin 16s linear infinite; }
+@keyframes lastlocSpin{ to{ transform:rotate(360deg); } }
+
+/* Keyboard focus ring (only for keyboard users) */
+button:focus-visible, [role="button"]:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible{
+  outline:2px solid #f5a623; outline-offset:2px;
+}
+
+/* Last known location (shown while GPS is off) */
+.lastloc-icon{ background:none; border:none; }
+.lastloc-wrap{ position:relative; width:44px; height:44px; }
+.lastloc-wrap svg{ display:block; overflow:visible; }
+.lastloc-label{
+  position:absolute; top:48px; left:50%; transform:translateX(-50%); white-space:nowrap;
+  font-size:10px; font-weight:600; padding:2px 7px; border-radius:999px;
+  background:var(--floating-bg); color:var(--text-secondary); border:1px solid var(--floating-border);
+  box-shadow:0 1px 4px var(--floating-shadow);
+}
+@media (prefers-reduced-motion: reduce){
+  .drift-icon{ display:none; }
+  .loc-pulse, .lastloc-ring{ animation:none; }
+  .loc-pulse{ opacity:.25; }
+}
+@media (prefers-reduced-motion: reduce){
+  .pin-map-btn.pin-attn, .loc-chip-arrow, .splash-slogan, .splash-quote, .loc-chip{ animation:none; }
+  .splash-quote{ opacity:.7; }
+}
+
+/* Empty state: no reports inside the on-map date filter. The card itself lets
+   touches through to the map; only its button is tappable. */
+#mapEmptyState{
+  position:fixed; left:50%; top:calc(50% - 30px); transform:translate(-50%,-50%); z-index:405;
+  display:none; flex-direction:column; align-items:center; gap:4px; text-align:center;
+  width:calc(100% - 48px); max-width:300px; padding:16px 18px;
+  background:var(--floating-bg); border:1px solid var(--floating-border); border-radius:var(--radius-xl);
+  box-shadow:0 4px 18px var(--floating-shadow);
+  pointer-events:none;
+}
+#mapEmptyState.visible{ display:flex; }
+#mapEmptyState b{ font-size:var(--fs-14); color:var(--text-primary); }
+#mapEmptyState span{ font-size:var(--fs-12); line-height:1.4; color:var(--text-secondary); }
+#mapEmptyState .loc-chip-btn{ margin-top:8px; pointer-events:auto; }
+.settings-btn:disabled{ opacity:.45; cursor:not-allowed; }
+.settings-btn:disabled:active{ background:var(--bg-surface-alt); transform:none; }
+
+
+/* ── Source popup: compact wind-model match card (shared by mobile and desktop) ── */
+.src-nearby{ display:flex; align-items:flex-start; gap:2px; margin-top:6px; font-size:10.5px; line-height:1.35; color:var(--text-secondary); }
+.src-nearby .ui-ico{ flex:none; margin-top:2px; }
+.src-stat{ margin-top:8px; padding:9px 11px 8px; border:1px solid var(--border-color-strong); border-radius:12px; background:var(--bg-surface-alt); }
+.src-stat-head{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.src-stat-title{ font-size:9px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--text-secondary); }
+.src-stat-verdict{ font-size:9.5px; font-weight:700; padding:1px 7px; border-radius:999px; color:var(--accent-contrast); background:var(--accent); white-space:nowrap; }
+.src-stat-verdict.low{ color:var(--text-secondary); background:transparent; border:1px solid var(--border-color-strong); padding:0 7px; }
+.src-stat-main{ display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:3px; }
+.src-stat-num{ font-size:22px; font-weight:800; line-height:1.1; color:var(--text-primary); }
+.src-stat-num small{ font-size:12px; font-weight:600; color:var(--text-secondary); }
+.src-stat-pct{ font-size:12px; font-weight:700; color:var(--text-secondary); }
+.src-meter{ position:relative; height:6px; margin:8px 1px 7px; border-radius:6px; background:var(--border-color-strong); }
+.src-meter i{ display:block; height:100%; border-radius:6px; background:var(--accent); }
+.src-meter.low i{ background:var(--text-secondary); opacity:.65; }
+.src-meter b{ position:absolute; top:-3px; width:2px; height:12px; border-radius:1px; background:var(--text-primary); opacity:.9; }
+.src-stat-row{ display:flex; align-items:center; gap:2px; margin-top:3px; font-size:10.5px; line-height:1.35; color:var(--text-secondary); }
+.src-stat-row .ui-ico{ flex:none; stroke:var(--accent); }
+.src-tick{ flex:none; display:inline-block; width:2px; height:10px; margin:0 6px 0 4px; border-radius:1px; background:var(--text-primary); opacity:.9; }
+.src-stat-foot{ margin-top:6px; padding-top:5px; border-top:1px solid var(--border-color); font-size:9.5px; line-height:1.3; color:var(--text-secondary); opacity:.85; }
+
+/* hourly time ticks on a report's wind history ("-1 h", "-2 h", ...) */
+.leaflet-tooltip.trail-tick-tip{ background:transparent; border:none; box-shadow:none; padding:0; font-size:10px; font-weight:700; color:var(--text-primary); text-shadow:0 0 3px var(--bg-surface), 0 0 3px var(--bg-surface), 0 0 3px var(--bg-surface); pointer-events:none; }
+.leaflet-tooltip.trail-tick-tip::before{ display:none; }
+
+/* wind at several heights, hover on an hourly tick */
+.leaflet-tooltip.trail-wind-tip{ background:var(--bg-surface); color:var(--text-primary); border:1px solid var(--border-color-strong); font-size:11px; line-height:1.45; padding:5px 8px; box-shadow:0 2px 10px var(--floating-shadow); }

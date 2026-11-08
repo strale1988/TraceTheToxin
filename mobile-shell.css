@@ -1,0 +1,80 @@
+/* TraceTheToxin mobile shell styles (index.html only) */
+
+#pullRefreshIndicator{
+  position:fixed; top:0; left:50%;
+  transform:translate(-50%, -100%);
+  opacity:0;
+  z-index:499; /* behind the header; it drops out from underneath while the header stays put */
+  background:var(--floating-bg);
+  border:1px solid var(--floating-border);
+  border-radius:999px;
+  padding:7px 14px;
+  display:flex; align-items:center; gap:6px;
+  font-size:var(--fs-11); color:var(--text-secondary);
+  box-shadow:0 2px 8px var(--floating-shadow);
+  pointer-events:none;
+  white-space:nowrap;
+}
+#pullRefreshIndicator.animate{ transition:transform .2s ease, opacity .2s ease; }
+#pullRefreshIndicator svg{ width:14px; height:14px; transition:transform .1s ease; }
+#pullRefreshIndicator.ready svg{ transform:rotate(180deg); }
+#pullRefreshIndicator.refreshing svg{ animation:pullRefreshSpin .7s linear infinite; }
+.report-fab-btn{
+  width:60px; height:60px;
+  border-radius:50%;
+  background:var(--danger);
+  color:#fff;
+  box-shadow:0 4px 14px rgba(0,0,0,.35);
+  border:none;
+  position:fixed;
+  left:50%;
+  transform:translateX(-50%);
+  bottom:calc(var(--legend-bar-h) + 8px);
+  z-index:420;
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer;
+  transition:transform .12s ease, box-shadow .12s ease;
+  -webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;
+}
+.report-fab-btn:active{ transform:translateX(-50%) scale(.9); }
+.report-fab-btn svg{ width:28px; height:28px; }
+.report-fab-btn:disabled{ opacity:.45; cursor:not-allowed; box-shadow:none; }
+.report-fab-btn:disabled:active{ transform:translateX(-50%); }
+.pwa-banner{
+  position:fixed; left:0; right:0; margin:0 auto; z-index:1100;
+  width:calc(100% - 20px); max-width:460px;
+  display:none; align-items:center; gap:10px; padding:10px 12px;
+  background:var(--floating-bg); border:1px solid var(--floating-border);
+  border-radius:var(--radius-xl); box-shadow:0 6px 22px var(--floating-shadow);
+}
+.pwa-banner img{ width:36px; height:36px; border-radius:8px; flex-shrink:0; }
+.pwa-banner-text{ flex:1; min-width:0; font-size:var(--fs-12); color:var(--text-secondary); line-height:1.35; }
+.pwa-banner-text b{ display:block; font-size:var(--fs-13); color:var(--text-primary); margin-bottom:1px; }
+.pwa-banner-btn{
+  background:var(--accent); color:var(--accent-contrast); border:none; flex-shrink:0;
+  border-radius:var(--radius-md); padding:8px 12px; font-size:var(--fs-12); font-weight:var(--fw-semibold); cursor:pointer;
+}
+.pwa-banner-x{ background:none; border:none; color:var(--text-muted); font-size:var(--fs-16); padding:4px 2px; cursor:pointer; flex-shrink:0; }
+#alertToast{ border-color:var(--danger); z-index:1110; }
+#alertToast .pwa-banner-text b{ color:var(--danger); }
+.loc-chip{
+  position:fixed; right:64px; bottom:calc(var(--legend-bar-h) + 170px); transform:translateY(50%); z-index:1050; cursor:pointer; pointer-events:auto;
+  -webkit-tap-highlight-color:transparent; touch-action:manipulation; user-select:none;
+  display:none; align-items:center; gap:6px; padding:7px 8px; min-height:44px; box-sizing:border-box;
+  background:var(--floating-bg); border:1px solid #f5a623; border-radius:999px;
+  box-shadow:0 2px 10px var(--floating-shadow);
+  font-size:var(--fs-12); color:var(--text-primary); max-width:calc(100vw - 80px);
+}
+.map-act-stack{ display:flex; flex-direction:column; gap:8px; margin-top:8px !important; }
+.loc-chip{ animation:locChipIn .35s ease both; }
+.loc-chip-btn{
+  background:var(--accent); color:var(--accent-contrast); border:none; border-radius:999px;
+  padding:5px 10px; font-size:var(--fs-12); font-weight:var(--fw-semibold); cursor:pointer; white-space:nowrap;
+}
+.loc-chip:active{ opacity:.85; }
+.loc-chip-text{ white-space:nowrap; color:var(--text-secondary); }
+.loc-chip-arrow{ color:#f5a623; font-weight:700; padding-right:4px; animation:locNudge 1.4s ease-in-out infinite; }
+@keyframes pullRefreshSpin{ to{ transform:rotate(360deg); } }
+@keyframes locChipIn{ from{ opacity:0; } to{ opacity:1; } }
+@keyframes locNudge{ 0%,100%{ transform:translateX(0); } 50%{ transform:translateX(4px); } }
