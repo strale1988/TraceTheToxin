@@ -59,6 +59,70 @@ function markReportSubmittedNow() {
 }
 
 /* ═══════════════════════════════════════════════════
+   NEAR-DUPLICATE REPORTS (anonymous app: no reporter id)
+   Several reports from nearly the same spot within an hour are almost always one person pressing the button
+   repeatedly. They stay in the database and on the map, but ANALYSIS (source tracing, source estimate, area
+   statistics) counts them once, so a burst cannot pull a trace towards itself or look like independent evidence.
+   Greedy by time: a report is a duplicate if a kept report lies within TT_DEDUPE_KM and TT_DEDUPE_MS before it.
+═══════════════════════════════════════════════════ */
+const TT_DEDUPE_KM = 0.15;
+const TT_DEDUPE_MS = 60 * 60 * 1000;
+function ttDedupeReports(reports) {
+  if (!reports || reports.length < 2) return reports || [];
+  const rows = [], rest = [];
+  reports.forEach(r => {
+    const la = parseFloat(r.latitude), lo = parseFloat(r.longitude), ts = Date.parse(r.created_at);
+    if (r.spam_score >= 2) return;                       // flagged by the server (see server/submit-report): never independent evidence
+    if (!isFinite(la) || !isFinite(lo) || !isFinite(ts)) rest.push(r); else rows.push({ r, la, lo, ts });
+  });
+  rows.sort((a, b) => a.ts - b.ts);
+  const kept = [], keepSet = new Set();
+  rows.forEach(c => {
+    let dup = false;
+    for (let i = kept.length - 1; i >= 0 && c.ts - kept[i].ts <= TT_DEDUPE_MS; i--) {
+      const k = kept[i];
+      const dLat = (c.la - k.la) * 111.32, dLon = (c.lo - k.lo) * 111.32 * Math.cos(c.la * Math.PI / 180);
+      if (Math.hypot(dLat, dLon) <= TT_DEDUPE_KM) { dup = true; break; }
+    }
+    if (!dup) { kept.push(c); keepSet.add(c.r); }
+  });
+  // keep the caller's original order
+  return reports.filter(r => keepSet.has(r) || rest.includes(r));
+}
+
+/* Random per-browser id sent with each report. Not security (clearing storage makes a new one); it only catches the
+   ordinary "pressed the button again" case. The server stores a keyed hash of it, never the raw value. */
+const TT_DEVICE_KEY = (TT_LS + 'device_id');
+function ttDeviceId() {
+  try {
+    let id = localStorage.getItem(TT_DEVICE_KEY);
+    if (!id) { id = (crypto.randomUUID ? crypto.randomUUID() : (Date.now().toString(36) + Math.random().toString(36).slice(2))); localStorage.setItem(TT_DEVICE_KEY, id); }
+    return id;
+  } catch (e) { return null; }
+}
+
+/* Reports go through the `submit-report` edge function (server-side rate limit, validation, flagging). While the function
+   is not deployed yet the direct insert is used as before; once direct inserts are revoked in the database the fallback
+   simply fails, which is intended. Set TT_REQUIRE_SERVER_SUBMIT = true to drop the fallback in the code too. */
+const TT_REQUIRE_SERVER_SUBMIT = false;
+async function ttSubmitReport(row) {
+  let res;
+  try { res = await sb.functions.invoke('submit-report', { body: { report: row, device_id: ttDeviceId() } }); }
+  catch (e) { res = { data: null, error: e }; }
+  const { data, error } = res;
+  if (!error) { if (data && data.error) throw new Error(data.error); return; }
+  const status = error.context && error.context.status;
+  if (status && status !== 404) {                       // the function answered and said no (429 too many, 400 invalid, ...)
+    let msg = error.message;
+    try { const j = await error.context.json(); if (j && j.error) msg = j.error; } catch (e) {}
+    throw new Error(msg);
+  }
+  if (TT_REQUIRE_SERVER_SUBMIT) throw error;            // function missing or unreachable
+  const ins = await sb.from('air_reports').insert([row]);   // transition fallback
+  if (ins.error) throw ins.error;
+}
+
+/* ═══════════════════════════════════════════════════
    REPORT WIZARD — category tiles → intensity slider →
    details & submit. No dropdown selects anywhere.
 ═══════════════════════════════════════════════════ */
@@ -1030,6 +1094,9 @@ const OPEN_METEO_MAX_CONCURRENT = 3;
 // request hammering the API again (which keeps the rate limit tripped and starves everything).
 let openMeteoPauseUntil = 0;
 const openMeteoPause = ms => { openMeteoPauseUntil = Math.max(openMeteoPauseUntil, Date.now() + ms); };
+// A long pause = hourly/daily quota used up: wind calls fail fast until then. Returns the resume time (ms) or 0.
+const openMeteoLongPauseUntil = () => (openMeteoPauseUntil - Date.now() > 90000 ? openMeteoPauseUntil : 0);
+window.ttRateLimitInfo = () => { const u = openMeteoLongPauseUntil(); return u ? { paused: true, resumeAtUTC: new Date(u).toISOString().slice(11, 16) } : { paused: false }; };
 // Short (per-minute) pauses are waited out; a long one (hourly/daily quota used up) makes calls fail fast with null
 // instead of queueing for hours, so the UI degrades quietly and nothing keeps hammering the API.
 const OM_FAILFAST_MS = 90000;
@@ -2771,15 +2838,17 @@ function bucketReportsByRange(reports, rng) {
 // Reports within radiusKm of a point (straight-line, NOT wind-trace matched --
 // see filterPinsBySourceTrajectory for that) that fall inside the on-map
 // filter's date range. Reads from globalActiveData.
-function reportsNearPoint(lat, lon, radiusKm = NEARBY_REPORTS_RADIUS_KM) {
+function reportsNearPoint(lat, lon, radiusKm = NEARBY_REPORTS_RADIUS_KM, opts = {}) {
   if (!globalActiveData?.length) return [];
-  const { start, end } = mapFilterRange();
-  return globalActiveData.filter(r => {
+  const { start, end } = opts.rng || mapFilterRange();
+  const out = globalActiveData.filter(r => {
     if (r.latitude == null || r.longitude == null) return false;
     const ts = new Date(r.created_at).getTime();
     if (ts < start || ts > end) return false;
+    if (opts.keep && !opts.keep(r)) return false;
     return getHaversineDistance(lat, lon, parseFloat(r.latitude), parseFloat(r.longitude)) <= radiusKm;
   });
+  return opts.dedupe === false ? out : ttDedupeReports(out);   // near-duplicates count once in every statistic
 }
 function countNearbyReports(lat, lon, radiusKm = NEARBY_REPORTS_RADIUS_KM) {
   return reportsNearPoint(lat, lon, radiusKm).length;
@@ -4005,6 +4074,10 @@ const pKey = ttMetKey(cacheKey, isoEnd);
 // IndexedDB or waiting for the network joins the same promise instead of starting its own request.
 return ttShared('met:' + cacheKey, async () => {
   if (weatherCache[cacheKey]) return weatherCache[cacheKey];
+  // Grid-point windows come from our own database when it covers them completely (not stored under cacheKey: that key
+  // ignores the window end, and the DB answer is exactly [isoStart, isoEnd]).
+  const dbH = await fetchCellHourlyFromDB(lat, lon, new Date(isoStart).getTime(), new Date(isoEnd).getTime()).catch(() => null);
+  if (dbH) { ttStats.db = (ttStats.db || 0) + 1; return dbH; }
   if (wcMs) { const hit = await ttMetLoad(cacheKey, pKey); if (hit) { weatherCache[cacheKey] = hit; return hit; } }
   const daysDiff = (Date.now() - new Date(isoStart)) / 86400000;
   let url, urlBase, sdOld, edOld;
@@ -4030,7 +4103,8 @@ async function fetchForwardWind(lat, lon, isoStart, isoEnd) {
   lon = parseFloat(lon);
   const cacheKey = `fwd_${lat.toFixed(3)}_${lon.toFixed(3)}_${isoStart.slice(0,13)}`;
   if (weatherCache[cacheKey]) { ttStats.mem++; return weatherCache[cacheKey]; }
-  const wcMs = wcTtl(isoStart, isoEnd, true);
+  let wcMs = wcTtl(isoStart, isoEnd, true);
+  if (wcMs === WC_RECENT_TTL && KNOWN_BURNERS.some(b => Math.abs(b.a - lat) < 1e-4 && Math.abs(b.o - lon) < 1e-4)) wcMs = 3600000;   // fixed chimney: one request per hour, survives reloads
   const pKey = ttMetKey(cacheKey, isoEnd);
   return ttShared('met:' + cacheKey, async () => {
     if (weatherCache[cacheKey]) return weatherCache[cacheKey];
@@ -6089,7 +6163,7 @@ function ensureWorkStatusElement() {
   el.setAttribute('aria-live', 'polite');
   el.setAttribute('aria-atomic', 'true');
   el.innerHTML = '<div class="work-status-top"><span class="work-spinner" aria-hidden="true"></span><span class="work-status-label"></span><span class="work-status-count"></span></div><div class="work-status-track"><div class="work-status-bar"></div></div>';
-  document.body.appendChild(el);
+  (document.querySelector('header') || document.body).appendChild(el);
   return el;
 }
 function renderWorkStatus() {
@@ -6097,6 +6171,7 @@ function renderWorkStatus() {
   if (!activeWorkItems.size) {
     if (workStatusShowTimer) { clearTimeout(workStatusShowTimer); workStatusShowTimer = null; }
     el.classList.remove('visible', 'indeterminate');
+    try { if (typeof restackBanners === 'function') restackBanners(); } catch (e) {}
     return;
   }
   const current = [...activeWorkItems.values()].sort((a, b) => a.order - b.order).pop();
@@ -6120,7 +6195,7 @@ function renderWorkStatus() {
   if (!el.classList.contains('visible') && !workStatusShowTimer) {
     workStatusShowTimer = setTimeout(() => {
       workStatusShowTimer = null;
-      if (activeWorkItems.size) el.classList.add('visible');
+      if (activeWorkItems.size) { el.classList.add('visible'); try { if (typeof restackBanners === 'function') restackBanners(); } catch (e) {} }
     }, 180); // avoid flashing for very fast cached operations
   }
 }
@@ -6227,7 +6302,7 @@ const HH_DEFAULT_RADIUS_KM = TT_CFG.hhRadiusKm || 1.5;
 const HH_CONCURRENCY = 6;
 const HH_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
 const HH_CACHE_INDEX_KEY = (TT_LS + 'hh_index_v1');
-const HH_CACHE_MAX_SITES = 5;
+const HH_CACHE_MAX_SITES = 12;
 // VIIRS only (375 m). MODIS' 1 km pixels are too coarse to say anything
 // about a single plant. There is no NOAA-21 archive (SP) product yet, so
 // NOAA-21 only contributes through its recent NRT window.
@@ -6424,24 +6499,72 @@ function hhHeatBuckets(points, rng) {
   return buckets;
 }
 
-/* cache (small LRU so localStorage never fills up) */
-function hhCacheKey(lat, lon) { return `${TT_LS}hh_v2:${lat.toFixed(4)},${lon.toFixed(4)}`; }
-function hhCacheGet(lat, lon) {
+/* cache: per site, remembers WHICH days it covers (from..to) and refreshes only what can still change.
+   FIRMS can revise only its newest days, so old days are never fetched twice; a stale entry re-fetches just the last
+   HH_REFRESH_DAYS days; a request for older days than the cache holds fetches only the missing older part. */
+const HH_REFRESH_DAYS = 3;
+function hhCacheKey(lat, lon) { return `${TT_LS}hh_v3:${lat.toFixed(4)},${lon.toFixed(4)}`; }
+function hhCacheRaw(lat, lon) {
   try {
     const c = JSON.parse(localStorage.getItem(hhCacheKey(lat, lon)) || 'null');
-    if (c && (Date.now() - c.t) < HH_CACHE_TTL_MS && Array.isArray(c.r)) return c;
+    if (c && c.v === 3 && Array.isArray(c.r) && c.from && c.to) return c;
   } catch (e) {}
   return null;
 }
-function hhCachePut(lat, lon, rows, failed) {
-  try {
-    const key = hhCacheKey(lat, lon);
-    let idx = JSON.parse(localStorage.getItem(HH_CACHE_INDEX_KEY) || '[]').filter(k => k !== key);
-    idx.push(key);
-    while (idx.length > HH_CACHE_MAX_SITES) localStorage.removeItem(idx.shift());
-    localStorage.setItem(HH_CACHE_INDEX_KEY, JSON.stringify(idx));
-    localStorage.setItem(key, JSON.stringify({ t: Date.now(), r: rows, failed }));
-  } catch (e) { /* quota: just skip caching */ }
+function hhCachePut(lat, lon, entry) {
+  const key = hhCacheKey(lat, lon);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      let idx = JSON.parse(localStorage.getItem(HH_CACHE_INDEX_KEY) || '[]').filter(k => k !== key);
+      idx.push(key);
+      while (idx.length > HH_CACHE_MAX_SITES) localStorage.removeItem(idx.shift());
+      localStorage.setItem(HH_CACHE_INDEX_KEY, JSON.stringify(idx));
+      localStorage.setItem(key, JSON.stringify(Object.assign({ v: 3 }, entry)));
+      return;
+    } catch (e) {   // quota: drop the oldest site and try again
+      try { const idx = JSON.parse(localStorage.getItem(HH_CACHE_INDEX_KEY) || '[]'); const old = idx.shift(); if (old) localStorage.removeItem(old); localStorage.setItem(HH_CACHE_INDEX_KEY, JSON.stringify(idx)); } catch (e2) { return; }
+    }
+  }
+}
+let hhAvailMemo = null;
+async function hhAvail(signal) {
+  if (hhAvailMemo && Date.now() - hhAvailMemo.t < 6 * 3600000) return hhAvailMemo.v;
+  const v = await hhFetchAvailability(signal);
+  if (v) hhAvailMemo = { t: Date.now(), v };
+  return v;
+}
+// Heat detections around (lat, lon) for the days startStr..endStr (UTC dates), from the cache where it already covers them.
+// Returns { rows, failed } -- rows may cover more days than asked; callers filter by period.
+async function hhEnsureRows(lat, lon, startStr, endStr, o = {}) {
+  const signal = o.signal || new AbortController().signal, onProgress = o.onProgress || (() => {});
+  const todayStr = hhDateStr(new Date());
+  if (endStr > todayStr) endStr = todayStr;
+  const floor = hhAddDays(todayStr, -(HH_DAYS - 1));
+  if (startStr < floor) startStr = floor;
+  const c = hhCacheRaw(lat, lon), parts = [];
+  if (!c) parts.push([startStr, endStr]);
+  else {
+    if (startStr < c.from) parts.push([startStr, hhAddDays(c.from, -1)]);
+    const tail = hhAddDays(c.to, -HH_REFRESH_DAYS) > c.from ? hhAddDays(c.to, -HH_REFRESH_DAYS) : c.from;
+    const stale = Date.now() - c.t > HH_CACHE_TTL_MS;
+    if (endStr > c.to || (stale && endStr >= tail)) parts.push([tail, todayStr]);
+  }
+  let rows = c ? c.r.slice() : [], from = c ? c.from : startStr, to = c ? c.to : endStr, failedAny = false, changed = false;
+  if (parts.length) {
+    const avail = await hhAvail(signal), bbox = computeWildfireBbox(lat, lon, HH_MAX_RADIUS_KM);
+    for (const [a, b] of parts) {
+      if (a > b) continue;
+      const reqs = hhPlanRequests(a, b, avail);
+      const res = await hhRunRequests(reqs, bbox, signal, onProgress);
+      if (signal.aborted) throw new DOMException('aborted', 'AbortError');
+      if (res.failed) { failedAny = true; continue; }   // keep what we had for that part, do not claim coverage
+      rows = rows.filter(r => r.d < a || r.d > b).concat(res.rows);
+      if (a < from) from = a; if (b > to) to = b; changed = true;
+    }
+    rows = hhDedupe(rows).filter(r => r.d >= floor);
+    if (changed) hhCachePut(lat, lon, { t: Date.now(), from: from < floor ? floor : from, to, r: rows });
+  }
+  return { rows, failed: failedAny, fromCache: parts.length === 0 };
 }
 
 function hhColorForDays(n) { return n >= 30 ? '#7f0000' : n >= 10 ? '#d84315' : n >= 3 ? '#f57c00' : '#ffca28'; }
@@ -6710,19 +6833,10 @@ async function openHeatHistory(lat, lon, name) {
   if (noKey) return;
   const mine = hhState;
   try {
-    const cached = hhCacheGet(lat, lon);
-    if (cached) {
-      mine.rows = cached.r; mine.failed = cached.failed || 0;
-    } else {
-      const avail = await hhFetchAvailability(abort.signal);
-      const bbox = computeWildfireBbox(lat, lon, HH_MAX_RADIUS_KM);
-      const reqs = hhPlanRequests(startStr, todayStr, avail);
-      const { rows, failed } = await hhRunRequests(reqs, bbox, abort.signal, hhUpdateProgress);
-      if (abort.signal.aborted || hhState !== mine) return;
-      if (failed === reqs.length && reqs.length) throw new Error('all requests failed');
-      mine.rows = hhDedupe(rows); mine.failed = failed;
-      if (!failed) hhCachePut(lat, lon, mine.rows, 0);
-    }
+    const res = await hhEnsureRows(lat, lon, startStr, todayStr, { signal: abort.signal, onProgress: hhUpdateProgress });
+    if (abort.signal.aborted || hhState !== mine) return;
+    if (res.failed && !res.rows.length) throw new Error('all requests failed');
+    mine.rows = res.rows; mine.failed = res.failed ? 1 : 0;
     if (hhState !== mine) return;
     hhRecompute();
     fitHeatHistory();
@@ -7598,16 +7712,17 @@ function hourlyPlumePanelHtml(id, source) {
   </section>`;
 }
 
+const PLUME_ARROW = deg => `<span style="display:inline-block;transform:rotate(${deg}deg);font-family:system-ui,sans-serif;font-variant-emoji:text;">&#8593;&#xFE0E;</span>`;
 function plumeTowardName(bearing) {
   const dirs = [
-    { key: 'plumeHourlyNorth', arrow: '↑', short: { sr:'S', en:'N' } },
-    { key: 'plumeHourlyNorthEast', arrow: '↗', short: { sr:'SI', en:'NE' } },
-    { key: 'plumeHourlyEast', arrow: '→', short: { sr:'I', en:'E' } },
-    { key: 'plumeHourlySouthEast', arrow: '↘', short: { sr:'JI', en:'SE' } },
-    { key: 'plumeHourlySouth', arrow: '↓', short: { sr:'J', en:'S' } },
-    { key: 'plumeHourlySouthWest', arrow: '↙', short: { sr:'JZ', en:'SW' } },
-    { key: 'plumeHourlyWest', arrow: '←', short: { sr:'Z', en:'W' } },
-    { key: 'plumeHourlyNorthWest', arrow: '↖', short: { sr:'SZ', en:'NW' } }
+    { key: 'plumeHourlyNorth', arrow: PLUME_ARROW(0), short: { sr:'S', en:'N' } },
+    { key: 'plumeHourlyNorthEast', arrow: PLUME_ARROW(45), short: { sr:'SI', en:'NE' } },
+    { key: 'plumeHourlyEast', arrow: PLUME_ARROW(90), short: { sr:'I', en:'E' } },
+    { key: 'plumeHourlySouthEast', arrow: PLUME_ARROW(135), short: { sr:'JI', en:'SE' } },
+    { key: 'plumeHourlySouth', arrow: PLUME_ARROW(180), short: { sr:'J', en:'S' } },
+    { key: 'plumeHourlySouthWest', arrow: PLUME_ARROW(225), short: { sr:'JZ', en:'SW' } },
+    { key: 'plumeHourlyWest', arrow: PLUME_ARROW(270), short: { sr:'Z', en:'W' } },
+    { key: 'plumeHourlyNorthWest', arrow: PLUME_ARROW(315), short: { sr:'SZ', en:'NW' } }
   ];
   return dirs[Math.round((((bearing % 360) + 360) % 360) / 45) % 8];
 }
@@ -7840,6 +7955,61 @@ function fetchSourceHourlyFromDB(b, startMs, endMs) {
   })().catch(() => null);
   ttDbHourlyMem.set(mk, pr);
   pr.then(h => { if (!h) ttDbHourlyMem.delete(mk); });
+  return pr;
+}
+// Hourly wind for a 0.1-degree grid point from our own Supabase copy (om_wx at a report_cell / grid location).
+// Used ONLY when the requested point is exactly a cell centre (trail waypoints are snapped to 0.1 deg), so the numbers
+// are for that very point; any other point keeps using the live request. Same shape and units as the live fetch.
+// Provenance is tagged 'supabase' (ttMetSrc). Returns null when the cell is unknown or the DB does not cover the whole
+// window (it lags a few days), and the caller then falls back to the live request: nothing is stitched together.
+let ttCellIdsP = null;
+const ttCellHourlyMem = new Map();
+function ttCellKey(lat, lon) {
+  const la = Math.round(lat * 10) / 10, lo = Math.round(lon * 10) / 10;
+  if (!isFinite(la) || !isFinite(lo) || Math.abs(lat - la) > 1e-6 || Math.abs(lon - lo) > 1e-6) return null;
+  return 'cell:' + la.toFixed(1) + '_' + lo.toFixed(1);
+}
+function ttCellIds() {
+  if (!ttCellIdsP) {
+    ttCellIdsP = Promise.resolve(sb.from('om_locations').select('id,key').in('kind', ['report_cell', 'grid']).eq('active', true).limit(1000))
+      .then(r => { const m = new Map(); ((r && r.data) || []).forEach(x => m.set(x.key, x.id)); if (!m.size) ttCellIdsP = null; return m; })
+      .catch(() => { ttCellIdsP = null; return new Map(); });
+  }
+  return ttCellIdsP;
+}
+function fetchCellHourlyFromDB(lat, lon, startMs, endMs) {
+  const key = ttCellKey(lat, lon);
+  if (!key || !isFinite(startMs) || !isFinite(endMs) || endMs < startMs) return Promise.resolve(null);
+  const mk = key + '|' + startMs + '|' + endMs;
+  if (ttCellHourlyMem.has(mk)) return ttCellHourlyMem.get(mk);
+  const pr = (async () => {
+    const id = (await ttCellIds()).get(key);
+    if (id == null) return null;
+    const t0 = Math.floor(startMs / 3600000) * 3600000, t1 = Math.floor(endMs / 3600000) * 3600000;
+    const need = Math.round((t1 - t0) / 3600000) + 1;
+    if (need > 900) return null;
+    const { data, error } = await sb.from('om_wx')
+      .select('t,ws10,wd10,ws80,wd80,ws120,wd120,ws180,wd180,temp2,temp120,rh2,pmsl,cloud,precip,blh')
+      .eq('loc', id).gte('t', new Date(t0).toISOString()).lte('t', new Date(t1).toISOString())
+      .order('t', { ascending: true }).limit(1000);
+    if (error || !data) return null;
+    const rows = data.filter(r => r.ws10 != null && r.wd10 != null);
+    if (rows.length < need - 1) return null;
+    const col = name => rows.map(r => (r[name] == null || r[name] === '' ? null : Number(r[name])));
+    const h = {
+      time: rows.map(r => String(r.t).slice(0, 16)),
+      wind_speed_10m: col('ws10'), wind_direction_10m: col('wd10'),
+      wind_speed_80m: col('ws80'), wind_direction_80m: col('wd80'),
+      wind_speed_120m: col('ws120'), wind_direction_120m: col('wd120'),
+      wind_speed_180m: col('ws180'), wind_direction_180m: col('wd180'),
+      temperature_2m: col('temp2'), temperature_120m: col('temp120'), relative_humidity_2m: col('rh2'),
+      pressure_msl: col('pmsl'), cloud_cover: col('cloud'), precipitation: col('precip'), boundary_layer_height: col('blh'),
+    };
+    try { ttMetSrc.set(h, 'supabase'); } catch (e) {}
+    return h;
+  })().catch(() => null);
+  ttCellHourlyMem.set(mk, pr);
+  pr.then(h => { if (!h) ttCellHourlyMem.delete(mk); });
   return pr;
 }
 function burnerHourlyFor(b, tR) {
@@ -8140,7 +8310,7 @@ async function fitAttributeReports(reports, sourceFilter = null, opts = {}) {
     todo.push(it);
   }
   todo.sort((a, b) => b.tR - a.tR);   // newest first
-  let done = items.length - todo.length, lastYield = performance.now();
+  let done = items.length - todo.length, lastYield = performance.now(), rateSkipped = 0;
   if (onProgress) onProgress(done, items.length);
   // 2) compute only what is missing
   for (let i = 0; i < todo.length; i += 6) {
@@ -8164,7 +8334,12 @@ async function fitAttributeReports(reports, sourceFilter = null, opts = {}) {
         if (!near || f.norm < near.norm) near = entry;
         if (f.ok && (!best || f.norm < best.norm)) best = entry;
       }
-      if (!anyData) { fitNoDataUntil.set(r.id, Date.now() + 15 * 60000); return; }
+      if (!anyData) {
+        const lp = openMeteoLongPauseUntil();
+        fitNoDataUntil.set(r.id, lp ? lp + 15000 : Date.now() + 15 * 60000);   // quota gone: retry right after it resets
+        if (lp) rateSkipped++;
+        return;
+      }
       fitNoDataUntil.delete(r.id);
       const ent = best || { none: true, near, calAt: plumeCal.at };
       ent.sig = sig; ent.sh = it.sh;
@@ -8178,7 +8353,8 @@ async function fitAttributeReports(reports, sourceFilter = null, opts = {}) {
     if (performance.now() - lastYield > 12) { await new Promise(res => setTimeout(res, 0)); lastYield = performance.now(); }
   }
   fitFlush();
-  fitLastRun = { reports: items.length, reused, computed: todo.length, ms: Math.round(performance.now() - t0), downloads: ttStats.net - net0, cpuMs: Math.round(tm.cpu), waitMs: Math.round(tm.netWait), sig, source: sourceFilter ? sourceFilter.n : 'all' };
+  fitLastRun = { reports: items.length, reused, computed: todo.length, ms: Math.round(performance.now() - t0), downloads: ttStats.net - net0, cpuMs: Math.round(tm.cpu), waitMs: Math.round(tm.netWait), sig, source: sourceFilter ? sourceFilter.n : 'all', skippedRateLimit: rateSkipped };
+  if (rateSkipped) console.warn(`[fit] ${rateSkipped} report(s) not evaluated: Open-Meteo quota used up, retry after ${ttRateLimitInfo().resumeAtUTC} UTC`);
 }
 // Why a report is or is not linked (console): matched / informative band but the puff missed / band too wide or wind too calm
 // to say anything ("not informative": sd > 40 deg or mean wind < 0.8 m/s) / no candidate. Negative results are results too.
@@ -8254,7 +8430,9 @@ window.explainSourceReports = function (namePart, opts = {}) {
     let why;
     if (isCleanAirReport(r)) why = 'excluded: Clean air category';
     else if (isBeocinResearchSource(b) && !isBeocinChemicalOdourReport(r)) why = 'excluded: category (BEOCIN_CHEMICAL_ONLY is on)';
-    else if (!f) why = 'not evaluated (click the source first; or no wind data yet)';
+    else if (!f && openMeteoLongPauseUntil()) why = `not evaluated: Open-Meteo quota used up (retry after ${ttRateLimitInfo().resumeAtUTC} UTC)`;
+    else if (!f && (fitNoDataUntil.get(r.id) || 0) > Date.now()) why = 'not evaluated: no wind data returned (retrying later)';
+    else if (!f) why = 'not evaluated (click the source first)';
     else if (f.none) {
       const n = f.near;
       why = !n ? 'no usable wind path (data/plausibility)'
@@ -9434,7 +9612,7 @@ function renderPin(report, index = 0){
 const AIR_REPORTS_LIST_COLUMNS = [
   'id', 'created_at', 'latitude', 'longitude', 'wind_speed', 'wind_direction',
   'sea_level_pressure', 'comment', 'category', 'duration', 'intensity',
-  'formatted_id', 'manual_wind_direction', 'updated_at', 'confidence', 'location_name', 'elevation', 'stability'
+  'formatted_id', 'manual_wind_direction', 'updated_at', 'confidence', 'location_name', 'elevation', 'stability', 'spam_score'
 ].join(',');
 
 // Friendly card shown when the on-map date filter matches no reports.
@@ -9539,7 +9717,7 @@ async function backfillMissingStability(reports) {
 // null -> value, so this can never overwrite a stored reading.
 let elevationBackfillRunning = false;
 async function backfillMissingElevations(reports) {
-  if (elevationBackfillRunning) return;
+  if (elevationBackfillRunning || openMeteoLongPauseUntil()) return;   // same quota family: do not hammer it while paused
   const missing = reports.filter(r => r.elevation == null && r.latitude != null && r.longitude != null);
   if (!missing.length) return;
   elevationBackfillRunning = true;
@@ -9866,6 +10044,8 @@ const TRACE_HEAT_RADIUS_KM = 4; // render radius for the independent report-dens
 let lastTraceTracerCoords = null;
 let lastTraceMatchedReports = [];
 let lastTraceTotalInRange = 0;
+let lastTraceAnalysisData = null;   // every report that entered the last source analysis (accepted + not accepted), for the time strip
+let traceRejectedGroup = null;      // layer group of the grey dots of the reports that did not pass
 let lastTraceChance = null;    // { rate, n, cn, chit }: share of random positions the wind-fit screen accepts for the last known-source analysis
 let lastTraceBtStats = null;   // { fitOnly, pass, disagree, unchecked } of the last known-source analysis (backward wind-history check)
 
@@ -10161,10 +10341,10 @@ async function filterPinsBySourceTrajectory(tracerCoords) {
   if (!mapFp || !mapFp.selectedDates || mapFp.selectedDates.length < 2) return;
   const filterStart = new Date(mapFp.selectedDates[0]); filterStart.setHours(0, 0, 0, 0);
   const filterEnd = new Date(mapFp.selectedDates[1]); filterEnd.setHours(23, 59, 59, 999);
-  const timeFilteredData = globalActiveData.filter(r => {
+  const timeFilteredData = ttDedupeReports(globalActiveData.filter(r => {
     const ts = new Date(r.created_at).getTime();
     return ts >= filterStart.getTime() && ts <= filterEnd.getTime();
-  });
+  }));   // near-duplicates (same ~150 m, same hour) are one observation, not several
 
   const activeReportsToDrawTrails = [];
   const results = [];
@@ -10312,9 +10492,10 @@ async function filterPinsBySourceTrajectory(tracerCoords) {
     const rej = analysisData.filter(r => !okIds.has(r.id) && isFinite(+r.latitude) && isFinite(+r.longitude)).slice(0, 2000);
     if (rej.length) {
       const sr = lang === 'sr';
-      const rejLayer = L.layerGroup(rej.map(r => L.circleMarker([+r.latitude, +r.longitude], {
+      const rejLayer = L.layerGroup(rej.map(r => Object.assign(L.circleMarker([+r.latitude, +r.longitude], {
         radius: 3.5, color: '#78909c', weight: 1, opacity: .55, fillColor: '#b0bec5', fillOpacity: .4, bubblingMouseEvents: false
-      }).bindTooltip(`${formatStationTime(r.created_at) || ''} · ${ttEsc(String(r.category || ''))}<br>${sr ? 'nije prošla proveru' : 'did not pass the screen'}`, { direction: 'top', opacity: .95 })));
+      }).bindTooltip(`${formatStationTime(r.created_at) || ''} · ${ttEsc(String(r.category || ''))}<br>${sr ? 'nije prošla proveru' : 'did not pass the screen'}`, { direction: 'top', opacity: .95 }), { _ts: Date.parse(r.created_at) })));
+      traceRejectedGroup = rejLayer;
       rejLayer.addTo(map);
       tracerVisualCircles.push(rejLayer);   // cleaned up together with the other trace-mode overlays
     }
@@ -10326,6 +10507,7 @@ async function filterPinsBySourceTrajectory(tracerCoords) {
   lastTraceTracerCoords = tracerCoords;
   lastTraceMatchedReports = activeReportsToDrawTrails;
   lastTraceTotalInRange = analysisData.length;
+  lastTraceAnalysisData = analysisData;
   lastTraceBtStats = poiSource ? traceBtStats : null;
   lastTraceChance = poiSource ? traceChance : null;
   // Refresh anything on screen that shows trace numbers.
@@ -10450,7 +10632,7 @@ async function reportBadAir(){
   }
 
   try {
-    const { error } = await sb.from('air_reports').insert([{
+    await ttSubmitReport({
       latitude:              parseFloat(coords.lat),
       longitude:             parseFloat(coords.lon),
       // manual_wind_direction: the user-reported value — never updated after this
@@ -10471,9 +10653,7 @@ async function reportBadAir(){
       intensity:             parseInt(intensity),
       duration:              durationValue,
       created_at:            reportDate.toISOString()
-    }]);
-
-    if (error) throw error;
+    });
 
     markReportSubmittedNow();
     alert(t('submitted'));
@@ -10519,7 +10699,11 @@ async function reverseGeocodeLocation(lat, lon) {
 
 /* ---------- Service worker ---------- */
 let swReg = null;
+// The desktop (science) page manages its own service worker in desktop-extras.js (on localhost it removes it again), so the
+// core must not register one there: registering here while desktop-extras unregisters on the next load made localhost reload.
+const TT_DESKTOP_PAGE = !!(window.TT_CFG && window.TT_CFG.platform === 'desktop');
 if ('serviceWorker' in navigator) {
+  if (!TT_DESKTOP_PAGE) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(r => { swReg = r; r.update().catch(() => {}); }).catch(e => console.warn('SW registration failed:', e));
   });
@@ -10530,6 +10714,7 @@ if ('serviceWorker' in navigator) {
     if (!swHadController) { swHadController = true; return; }
     reloadForUpdate(true);
   });
+  }
   navigator.serviceWorker.addEventListener('message', e => {
     if (e.data && e.data.type === 'focus') focusMapOn(e.data.lat, e.data.lon);
   });

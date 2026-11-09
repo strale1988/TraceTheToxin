@@ -18,12 +18,13 @@
   <meta name="apple-mobile-web-app-title" content="TraceTheToxin">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta property="og:image" content="https://github.io"/>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"/>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"/>
+  <!-- Pinned versions; jsdelivr first, unpkg as fallback (a failed stylesheet must not wreck the map layout) -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" onerror="this.onerror=null;this.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'"/>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" onerror="this.onerror=null;this.href='https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css'"/>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" onerror="this.onerror=null;this.href='https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css'"/>
 
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/themes/dark.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css" onerror="this.onerror=null;this.href='https://unpkg.com/flatpickr@4.6.13/dist/flatpickr.min.css'">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/themes/dark.css" onerror="this.onerror=null;this.href='https://unpkg.com/flatpickr@4.6.13/dist/themes/dark.css'">
   <script>
     (function(){
       try {
@@ -54,16 +55,43 @@
   </div>
 </div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
-<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
-<!-- Flatpickr Calendar Engine -->
-<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-<!-- Flatpickr Serbian Translation File -->
-<script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/sr.js"></script>
+<script>
+/* Third-party libraries: pinned versions, jsdelivr first, then unpkg / cdnjs. They are written in order with document.write so
+   the page scripts below still run after them. Before, one CDN request that failed on the first visit stopped app-core.js halfway:
+   ttBoot never existed and the splash screen stayed up until a manual refresh. */
+(function () {
+  var JD = 'https://cdn.jsdelivr.net/npm/', UP = 'https://unpkg.com/', CJ = 'https://cdnjs.cloudflare.com/ajax/libs/';
+  var LIBS = [
+    ['window.L', [JD + 'leaflet@1.9.4/dist/leaflet.js', UP + 'leaflet@1.9.4/dist/leaflet.js', CJ + 'leaflet/1.9.4/leaflet.js']],
+    ['window.L && window.L.MarkerClusterGroup', [JD + 'leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js', UP + 'leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js', CJ + 'leaflet.markercluster/1.5.3/leaflet.markercluster.js']],
+    ['window.supabase && window.supabase.createClient', [JD + '@supabase/supabase-js@2.118.0/dist/umd/supabase.js', UP + '@supabase/supabase-js@2.118.0/dist/umd/supabase.js']],
+    ['window.flatpickr', [JD + 'flatpickr@4.6.13/dist/flatpickr.min.js', UP + 'flatpickr@4.6.13/dist/flatpickr.min.js', CJ + 'flatpickr/4.6.13/flatpickr.min.js']],
+    ['window.flatpickr && window.flatpickr.l10ns && window.flatpickr.l10ns.sr', [JD + 'flatpickr@4.6.13/dist/l10n/sr.js', UP + 'flatpickr@4.6.13/dist/l10n/sr.js', CJ + 'flatpickr/4.6.13/l10n/sr.min.js']]
+  ];
+  window.__ttLib = function (i, j) {
+    var lib = LIBS[i], ok = false;
+    try { ok = !!(new Function('return ' + lib[0]))(); } catch (e) {}
+    if (ok) return;
+    if (j >= lib[1].length) { (window.__ttLibFail = window.__ttLibFail || []).push(lib[1][0]); return; }
+    document.write('<script src="' + lib[1][j] + '"><\/script><script>__ttLib(' + i + ',' + (j + 1) + ')<\/script>');
+  };
+  for (var i = 0; i < LIBS.length; i++) window.__ttLib(i, 0);
+})();
+</script>
 <script src="app-core.js"></script>
 <script src="mobile-shell.js"></script>
-<script>ttBoot();</script>
+<script>
+if (typeof ttBoot === 'function') ttBoot();
+else (function () {   // a library or app-core.js did not load: say so instead of leaving the splash screen up forever
+  var s = document.getElementById('splashScreen'); if (!s) return;
+  var q = document.getElementById('splashQuote') || s;
+  q.textContent = 'Učitavanje nije uspelo (mreža ili biblioteka). / Loading failed (network or library).';
+  var b = document.createElement('button'); b.textContent = 'Osveži / Reload';
+  b.style.cssText = 'display:block;margin:14px auto 0;padding:9px 18px;border:0;border-radius:8px;font-size:14px;cursor:pointer';
+  b.onclick = function () { location.reload(); }; q.parentNode.appendChild(b);
+  try { console.error('ttBoot is not defined. Libraries that failed to load:', window.__ttLibFail); } catch (e) {}
+})();
+</script>
 
 </body>
 </html>
