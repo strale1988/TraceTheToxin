@@ -1276,7 +1276,7 @@ button:focus-visible, [role="button"]:focus-visible, a:focus-visible, input:focu
 .settings-btn:disabled:active{ background:var(--bg-surface-alt); transform:none; }
 
 
-/* ── Source popup: compact wind-model match card (shared by mobile and desktop) ── */
+/* ── Source popup: compact wind-model match card (shared by mobile and science) ── */
 .src-nearby{ display:flex; align-items:flex-start; gap:2px; margin-top:6px; font-size:10.5px; line-height:1.35; color:var(--text-secondary); }
 .src-nearby .ui-ico{ flex:none; margin-top:2px; }
 .src-stat{ margin-top:8px; padding:9px 11px 8px; border:1px solid var(--border-color-strong); border-radius:12px; background:var(--bg-surface-alt); }
@@ -1303,3 +1303,34 @@ button:focus-visible, [role="button"]:focus-visible, a:focus-visible, input:focu
 
 /* wind at several heights, hover on an hourly tick */
 .leaflet-tooltip.trail-wind-tip{ background:var(--bg-surface); color:var(--text-primary); border:1px solid var(--border-color-strong); font-size:11px; line-height:1.45; padding:5px 8px; box-shadow:0 2px 10px var(--floating-shadow); }
+
+/* ── station data quality (availability, gaps, implausible readings) ── */
+.sq-open-btn{ margin-top:8px; width:100%; padding:6px 10px; border-radius:var(--radius-md,8px); border:1px solid var(--border-color-strong); background:var(--bg-surface-alt); color:var(--text-primary); font-size:12px; font-weight:600; cursor:pointer; }
+.sq-open-btn:hover{ border-color:var(--accent); }
+#ppDetail .sq-open-btn{ min-height:46px; font-size:15px; border-radius:10px; }
+#sqView{ max-width:720px; margin:0 auto; padding-bottom:12px; }
+#sqView .sq-bar{ display:flex; flex-wrap:wrap; gap:6px; padding:10px 0; border-bottom:1px solid var(--border-color); }
+#sqView .sq-bar button{ padding:4px 10px; border-radius:999px; border:1px solid var(--border-color-strong); background:var(--bg-surface-alt); color:var(--text-primary); font-size:12px; cursor:pointer; }
+#sqView .sq-bar button.on{ background:var(--accent); border-color:var(--accent); color:var(--accent-contrast); font-weight:700; }
+#sqView .sq-bar .sq-sp{ flex:1; }
+#sqView .sq-body{ padding:12px 0 16px; font-size:13px; line-height:1.45; }
+#sqView h4{ margin:14px 0 6px; font-size:12px; text-transform:uppercase; letter-spacing:.04em; color:var(--text-secondary); }
+#sqView h4:first-child{ margin-top:0; }
+#sqView .sq-kpis{ display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:8px; }
+#sqView .sq-kpi{ padding:8px 10px; border-radius:10px; background:var(--bg-surface-alt); border:1px solid var(--border-color); }
+#sqView .sq-kpi b{ display:block; font-size:20px; line-height:1.15; }
+#sqView .sq-kpi span{ font-size:11px; color:var(--text-secondary); }
+#sqView .sq-ok{ color:#2e9e5b; } #sqView .sq-warn{ color:#e0a100; } #sqView .sq-bad{ color:#d32f2f; }
+#sqView .sq-row{ display:grid; grid-template-columns:92px 1fr 118px; align-items:center; gap:8px; margin:4px 0; }
+#sqView .sq-track{ height:9px; border-radius:5px; background:var(--border-color); overflow:hidden; }
+#sqView .sq-fill{ display:block; height:100%; border-radius:5px; background:var(--accent); }
+#sqView .sq-fill.warn{ background:#e0a100; } #sqView .sq-fill.bad{ background:#d32f2f; } #sqView .sq-fill.ok{ background:#2e9e5b; }
+#sqView .sq-num{ text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+#sqView table{ width:100%; border-collapse:collapse; font-size:11.5px; }
+#sqView th, #sqView td{ padding:4px 6px; border-bottom:1px solid var(--border-color); text-align:right; white-space:nowrap; }
+#sqView th:first-child, #sqView td:first-child{ text-align:left; white-space:normal; }
+#sqView th{ color:var(--text-secondary); font-weight:600; }
+#sqView tr.sq-link{ cursor:pointer; } #sqView tr.sq-link:hover{ background:var(--bg-surface-alt); }
+#sqView .sq-note{ margin-top:10px; font-size:11px; color:var(--text-secondary); }
+#sqView .sq-flag{ display:inline-block; padding:1px 7px; border-radius:999px; font-size:10.5px; font-weight:700; background:var(--bg-surface-alt); border:1px solid var(--border-color-strong); }
+@media (max-width:520px){ #sqView .sq-row{ grid-template-columns:70px 1fr 96px; } }

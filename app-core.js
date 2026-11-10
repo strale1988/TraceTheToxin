@@ -1,13 +1,13 @@
-/* TraceTheToxin — app-core.js (generated from the old index.html; single source for everything shared by index.html and desktop.html) */
+/* TraceTheToxin — app-core.js (generated from the old index.html; single source for everything shared by index.html and science.html) */
 (function injectCoreMarkup() {
   document.body.insertAdjacentHTML('afterbegin', "\n\n\n\n\n<header>\n  <div class=\"header-top\">\n    <div>\n      <h1>TraceTheToxin</h1>\n      <div class=\"subtitle-row\">\n        <p id=\"subtitle\">Community Air Reporting Network</p>\n        <span id=\"headerReportCount\" class=\"header-report-count\"></span>\n      </div>\n      <div id=\"trailLimitChip\" class=\"trail-limit-chip\" style=\"display:none\"></div>\n    </div>\n    <div class=\"right-controls\">\n      <button class=\"help-icon-btn\" id=\"settingsBtn\" title=\"Settings / Podešavanja\" onclick=\"showSettingsModal()\">\n        <img class=\"icon-img\" src=\"icons/settings.png\" alt=\"Settings\">\n      </button>\n    </div>\n  </div>\n</header>\n\n\n\n\n\n\n\n<div id=\"updateBanner\" class=\"pwa-banner\" role=\"alert\">\n  <div class=\"pwa-banner-text\"><b id=\"updateBannerTitle\">New version available</b></div>\n  <button type=\"button\" class=\"pwa-banner-btn\" id=\"updateBannerBtn\" onclick=\"location.reload()\">Refresh</button>\n  <button type=\"button\" class=\"pwa-banner-x\" onclick=\"document.getElementById('updateBanner').style.display='none'\" aria-label=\"Close\">✕</button>\n</div>\n\n\n\n<div id=\"map\"></div>\n\n<div id=\"windCompassWidget\" title=\"Live wind direction\">\n  <svg id=\"windCompassSvg\" width=\"34\" height=\"34\" viewBox=\"0 0 34 34\" style=\"overflow:visible;\">\n    <circle cx=\"17\" cy=\"17\" r=\"15\" fill=\"none\" stroke=\"var(--border-color-strong)\" stroke-width=\"1\"></circle>\n    <g id=\"windCompassArrowGroup\" transform=\"rotate(0 17 17)\">\n      <line x1=\"17\" y1=\"6\" x2=\"17\" y2=\"17\" stroke=\"var(--accent)\" stroke-width=\"3\" stroke-linecap=\"round\"></line>\n      <polygon points=\"17,3 13,10 21,10\" fill=\"var(--accent)\"></polygon>\n    </g>\n  </svg>\n  <span class=\"wind-compass-deg\" id=\"windCompassDeg\">–</span>\n  <span class=\"wind-compass-dir\" id=\"windCompassDir\">–</span>\n</div>\n\n\n\n<div id=\"legendBar\">\n  <div class=\"legend-row\" id=\"ageLegendRow\">\n    <span class=\"legend-item\"><span class=\"legend-dot\" style=\"background:#a32222\"></span><span class=\"leg\" data-en=\"&lt;1h\" data-sr=\"&lt;1h\">&lt;1h</span></span>\n    <span class=\"legend-item\"><span class=\"legend-dot\" style=\"background:#a33822\"></span><span class=\"leg\" data-en=\"1–2h\" data-sr=\"1–2h\">1–2h</span></span>\n    <span class=\"legend-item\"><span class=\"legend-dot\" style=\"background:#a34d22\"></span><span class=\"leg\" data-en=\"2–6h\" data-sr=\"2–6h\">2–6h</span></span>\n    <span class=\"legend-item\"><span class=\"legend-dot\" style=\"background:#a36322\"></span><span class=\"leg\" data-en=\"6–12h\" data-sr=\"6–12h\">6–12h</span></span>\n    <span class=\"legend-item\"><span class=\"legend-dot\" style=\"background:#a37822\"></span><span class=\"leg\" data-en=\"12–24h\" data-sr=\"12–24h\">12–24h</span></span>\n    <span class=\"legend-item\"><span class=\"legend-dot\" style=\"background:#9f8a5f\"></span><span class=\"leg\" data-en=\"24-48h\" data-sr=\"24-48h\">24-48h</span></span>\n    <span class=\"legend-item\"><span class=\"legend-dot\" style=\"background:#333333\"></span><span class=\"leg\" data-en=\"48h+\" data-sr=\"48h+\">48h+</span></span>\n  </div>\n  <div class=\"legend-row\" id=\"catLegendRow\">\n    <span class=\"legend-item\"><span class=\"legend-dot\" style=\"background:#c41e27\"></span><span class=\"leg\" data-en=\"Smoke\" data-sr=\"Dim\">Dim</span></span>\n    <span class=\"legend-item\"><span class=\"legend-dot\" style=\"background:#8b4513\"></span><span class=\"leg\" data-en=\"Sewage\" data-sr=\"Kanalizacija\">Kanalizacija</span></span>\n    <span class=\"legend-item\"><span class=\"legend-dot\" style=\"background:#d4c600\"></span><span class=\"leg\" data-en=\"Sulfur\" data-sr=\"Sumpor\">Sumpor</span></span>\n    <span class=\"legend-item\"><span class=\"legend-dot\" style=\"background:#cc3399\"></span><span class=\"leg\" data-en=\"Burnt plastic\" data-sr=\"Spaljena plastika\">Spaljena plastika</span></span>\n    <span class=\"legend-item\"><span class=\"legend-dot\" style=\"background:#008ab8\"></span><span class=\"leg\" data-en=\"Chemicals\" data-sr=\"Hemikalije\">Hemikalije</span></span>\n    <span class=\"legend-item\"><span class=\"legend-dot\" style=\"background:#2a682a\"></span><span class=\"leg\" data-en=\"Waste\" data-sr=\"Otpad\">Otpad</span></span>\n    <span class=\"legend-item\"><span class=\"legend-dot\" style=\"background:#3ec46d\"></span><span class=\"leg\" data-en=\"Clean Air\" data-sr=\"Čist vazduh\">Čist vazduh</span></span>\n    <span class=\"legend-item\"><span class=\"legend-dot\" style=\"background:#8342a1\"></span><span class=\"leg\" data-en=\"Unknown\" data-sr=\"Nepoznato\">Nepoznato</span></span>\n    <span class=\"legend-item\"><span class=\"legend-dot\" style=\"background:#474747\"></span><span class=\"leg\" data-en=\"Other\" data-sr=\"Ostalo\">Ostalo</span></span>\n  </div>\n</div>\n\n<div id=\"bottomRightStack\" class=\"bottomright-stack\">\n  <div id=\"mapFilterBtn\" class=\"map-filter-btn\" style=\"display:none\" title=\"Filter reports shown on the map by date\" onclick=\"openMapFilter()\">\n    <img class=\"icon-img\" src=\"icons/category-filter.png\" alt=\"Filter\">\n  </div>\n  <div id=\"pinMapBtn\" class=\"pin-map-btn\" style=\"display:none\" title=\"Set location manually\" onclick=\"togglePinMode()\">\n    <img class=\"icon-img\" src=\"icons/pin.png\" alt=\"Pin\">\n  </div>\n  <div id=\"traceSourceBtn\" class=\"trace-source-btn\" style=\"display:flex\" title=\"Trace Possible Source\" onclick=\"toggleTraceMode()\">\n    <img class=\"icon-img\" src=\"icons/search.png\" alt=\"Trace\">\n  </div>\n  <div id=\"wildfireBtn\" class=\"wildfire-btn\" style=\"display:none\" title=\"Show active wildfires\" onclick=\"toggleWildfireLayer()\">\n    <img class=\"icon-img\" src=\"icons/fire.png\" alt=\"Fire\">\n  </div>\n  <div id=\"factoryBtn\" class=\"factory-btn\" style=\"display:none\" title=\"Show factories &amp; industrial sites\" onclick=\"toggleFactoryLayer()\">\n    <img class=\"icon-img\" src=\"icons/factory.png\" alt=\"Factories\">\n  </div>\n</div>\n<input type=\"text\" id=\"mapDateRangePicker\" style=\"display:none\">\n<div id=\"mapEmptyState\" role=\"status\" aria-live=\"polite\">\n  <b id=\"mapEmptyTitle\"></b>\n  <span id=\"mapEmptyBody\"></span>\n  <button type=\"button\" class=\"loc-chip-btn\" id=\"mapEmptyBtn\" onclick=\"openMapFilter()\"></button>\n</div>\n<div id=\"hhSheet\" role=\"dialog\" aria-live=\"polite\"></div>\n<div id=\"ppDetail\" role=\"dialog\" aria-modal=\"true\">\n  <div class=\"ppd-bar\">\n    <button type=\"button\" class=\"ppd-back\" onclick=\"ppCloseDetail()\" aria-label=\"Back\"><svg viewBox=\"0 0 24 24\"><polyline points=\"15 18 9 12 15 6\"></polyline></svg><span id=\"ppdBackTxt\">Nazad</span></button>\n    <div class=\"ppd-titles\"><div class=\"ppd-title\" id=\"ppdTitle\"></div><div class=\"ppd-sub\" id=\"ppdSub\"></div></div>\n  </div>\n  <div class=\"ppd-body\" id=\"ppdBody\"></div>\n</div>\n\n\n\n<!-- Report Wizard (no dropdowns; category tiles -> intensity slider -> details) -->\n<div class=\"wiz-overlay\" id=\"reportWizard\" style=\"display:none\">\n  <div class=\"wiz-header\">\n    <button type=\"button\" class=\"wiz-back-btn\" id=\"wizBackBtn\" onclick=\"wizGoBack()\" aria-label=\"Back\">‹</button>\n    <div class=\"wiz-progress\" id=\"wizProgress\"></div>\n    <button type=\"button\" class=\"wiz-close-btn\" onclick=\"closeReportWizard()\" aria-label=\"Cancel\">✕</button>\n  </div>\n  <div class=\"wiz-body\" id=\"wizBody\"></div>\n</div>\n\n<!-- Settings modal -->\n<div id=\"settingsModal\" class=\"fullscreen-modal-overlay\" style=\"display:none\">\n  <div class=\"fullscreen-modal-header\">\n    <h2 id=\"settingsModalTitle\">Settings</h2>\n    <button class=\"fullscreen-modal-close\" onclick=\"hideSettingsModal()\" aria-label=\"Close\"><img class=\"icon-img\" src=\"icons/close.png\" alt=\"close\"></button>\n  </div>\n  <div class=\"fullscreen-modal-body\">\n\n    <div class=\"detail-section\" id=\"helpSettingsSection\">\n      <div class=\"detail-section-title\" id=\"helpSectionTitle\">Help</div>\n      <div style=\"display:flex; gap:8px;\">\n        <button type=\"button\" class=\"settings-btn\" style=\"flex:1;\" onclick=\"showHelpModal()\" id=\"settingsHelpBtn\">\n          <img class=\"icon-img icon-img-inline\" src=\"icons/help.png\" alt=\"\"> How to use TraceTheToxin\n        </button>\n        <button type=\"button\" class=\"settings-btn\" style=\"flex:1;\" onclick=\"showMapKeyModal()\" id=\"settingsMapKeyBtn\">\n          <svg class=\"icon-img-inline\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" style=\"margin:0 4px -3px 0;flex-shrink:0;\">\n            <circle cx=\"12\" cy=\"12\" r=\"10\"></circle>\n            <line x1=\"12\" y1=\"10.5\" x2=\"12\" y2=\"16.5\"></line>\n            <circle cx=\"12\" cy=\"7.2\" r=\"1.15\" fill=\"currentColor\" stroke=\"none\"></circle>\n          </svg> Map key\n        </button>\n      </div>\n    </div>\n\n    <div class=\"detail-section\" id=\"languageSettingsSection\">\n      <div class=\"detail-section-title\" id=\"languageSectionTitle\">Language</div>\n      <div class=\"theme-segment\" id=\"langSegment\">\n        <button type=\"button\" class=\"theme-segment-btn\" onclick=\"setLang('en')\" id=\"langBtnEn\">🇬🇧 EN</button>\n        <button type=\"button\" class=\"theme-segment-btn active\" onclick=\"setLang('sr')\" id=\"langBtnSr\">🇷🇸 SR</button>\n        <button type=\"button\" class=\"theme-segment-btn\" onclick=\"setLang('auto')\" id=\"langBtnAuto\"><span id=\"langBtnAutoLabel\">Auto</span></button>\n      </div>\n      <p class=\"detail-export-hint\" id=\"langAutoHint\">We'll set the language from your location if available, otherwise from your device, time zone, or network.</p>\n    </div>\n\n    <div class=\"detail-section\" id=\"themeSettingsSection\">\n      <div class=\"detail-section-title\" id=\"themeSectionTitle\">Theme</div>\n      <div class=\"theme-segment\" id=\"themeSegment\">\n        <button type=\"button\" class=\"theme-segment-btn\" onclick=\"setThemeMode('light')\" id=\"themeBtnLight\">Light</button>\n        <button type=\"button\" class=\"theme-segment-btn active\" onclick=\"setThemeMode('dark')\" id=\"themeBtnDark\">Dark</button>\n        <button type=\"button\" class=\"theme-segment-btn\" onclick=\"setThemeMode('auto')\" id=\"themeBtnAuto\">Auto</button>\n        <button type=\"button\" class=\"theme-segment-btn\" onclick=\"setThemeMode('smart')\" id=\"themeBtnSmart\">Smart</button>\n      </div>\n      <p class=\"detail-export-hint\" id=\"themeAutoHint\">Auto follows your device's light/dark setting. Smart adapts to ambient light where available, otherwise local time.</p>\n    </div>\n\n    \n\n    \n\n    \n\n    <div class=\"detail-section\" id=\"freshDriftSettingsSection\">\n      <label class=\"settings-toggle-row\" for=\"freshDriftToggle\">\n        <span id=\"freshDriftToggleLabel\">Wind drift on fresh reports</span>\n        <span class=\"toggle-switch\">\n          <input type=\"checkbox\" id=\"freshDriftToggle\" autocomplete=\"off\" onchange=\"setFreshDriftEnabled(this.checked)\">\n          <span class=\"toggle-switch-track\"><span class=\"toggle-switch-thumb\"></span></span>\n        </span>\n      </label>\n      <p class=\"detail-export-hint\" id=\"freshDriftToggleHint\"></p>\n    </div>\n\n\n    <div class=\"detail-section\" id=\"smellForecastSettingsSection\">\n      <label class=\"settings-toggle-row\" for=\"smellForecastToggle\">\n        <span id=\"smellForecastToggleLabel\">Smell forecast (next 3 hours)</span>\n        <span class=\"toggle-switch\">\n          <input type=\"checkbox\" id=\"smellForecastToggle\" autocomplete=\"off\" onchange=\"setSmellForecast(this.checked)\">\n          <span class=\"toggle-switch-track\"><span class=\"toggle-switch-thumb\"></span></span>\n        </span>\n      </label>\n      <p class=\"detail-export-hint\" id=\"smellForecastToggleHint\"></p>\n    </div>\n\n    \n\n    <div class=\"detail-section\" id=\"splashQuotesSettingsSection\">\n      <label class=\"settings-toggle-row\" for=\"splashQuotesToggle\">\n        <span id=\"splashQuotesToggleLabel\">Loading screen quotes</span>\n        <span class=\"toggle-switch\">\n          <input type=\"checkbox\" id=\"splashQuotesToggle\" autocomplete=\"off\" onchange=\"setSplashQuotesEnabled(this.checked)\">\n          <span class=\"toggle-switch-track\"><span class=\"toggle-switch-thumb\"></span></span>\n        </span>\n      </label>\n      <p class=\"detail-export-hint\" id=\"splashQuotesToggleHint\"></p>\n    </div>\n\n\n    <div class=\"detail-section\" id=\"trailHoursSettingsSection\">\n      <div class=\"detail-section-title\" id=\"trailHoursSectionTitle\">Wind Trail Length</div>\n      <div class=\"theme-segment\" id=\"trailHoursSegment\">\n        <button type=\"button\" class=\"theme-segment-btn\" onclick=\"setTrailDisplayHours(3)\" id=\"trailHoursBtn3\">3h</button>\n        <button type=\"button\" class=\"theme-segment-btn active\" onclick=\"setTrailDisplayHours(6)\" id=\"trailHoursBtn6\">6h</button>\n        <button type=\"button\" class=\"theme-segment-btn\" onclick=\"setTrailDisplayHours(12)\" id=\"trailHoursBtn12\">12h</button>\n      </div>\n      <p class=\"detail-export-hint\" id=\"trailHoursHint\">How far back the wind trail is drawn on the map. Nearest-station matching always uses up to 12h of history regardless of this setting.</p>\n    </div>\n\n    <div class=\"detail-section\" id=\"factorySettingsSection\">\n      <label class=\"settings-toggle-row\" for=\"factoryToggle\">\n        <span id=\"factoryToggleLabel\">More industrial sites</span>\n        <span class=\"toggle-switch\">\n          <input type=\"checkbox\" id=\"factoryToggle\" autocomplete=\"off\" onchange=\"setFactoryLayer(this.checked)\">\n          <span class=\"toggle-switch-track\"><span class=\"toggle-switch-thumb\"></span></span>\n        </span>\n      </label>\n      <p class=\"detail-export-hint\" id=\"factoryToggleHint\">Also show other factories and landfills. Major chimneys (cement plants, power stations) are always shown. Off by default.</p>\n    </div>\n\n    <div class=\"detail-section\" id=\"wildfireSettingsSection\">\n      <label class=\"settings-toggle-row\" for=\"wildfireToggle\">\n        <span id=\"wildfireToggleLabel\">Active wildfires</span>\n        <span class=\"toggle-switch\">\n          <input type=\"checkbox\" id=\"wildfireToggle\" autocomplete=\"off\" onchange=\"setWildfireLayer(this.checked)\">\n          <span class=\"toggle-switch-track\"><span class=\"toggle-switch-thumb\"></span></span>\n        </span>\n      </label>\n      <p class=\"detail-export-hint\" id=\"wildfireToggleHint\">Show active wildfires detected by satellites near you. Off by default.</p>\n    </div>\n\n    <div class=\"detail-section\" id=\"traceButtonSettingsSection\">\n      <label class=\"settings-toggle-row\" for=\"traceButtonToggle\">\n        <span id=\"traceButtonToggleLabel\">Trace Possible Source button</span>\n        <span class=\"toggle-switch\">\n          <input type=\"checkbox\" id=\"traceButtonToggle\" autocomplete=\"off\" onchange=\"setTraceButtonVisible(this.checked)\">\n          <span class=\"toggle-switch-track\"><span class=\"toggle-switch-thumb\"></span></span>\n        </span>\n      </label>\n      <p class=\"detail-export-hint\" id=\"traceButtonToggleHint\">Show the Trace Possible Source button on the map. Turn it on, then tap the map to see which reports' wind trails trace back to that point. Off by default.</p>\n    </div>\n\n    <div class=\"detail-section\" id=\"splineVisibilitySettingsSection\">\n      <label class=\"settings-toggle-row\" for=\"splineVisibilityToggle\">\n        <span id=\"splineVisibilityLabel\">Show historical wind trails</span>\n        <span class=\"toggle-switch\">\n          <input type=\"checkbox\" id=\"splineVisibilityToggle\" autocomplete=\"off\" onchange=\"setSplineVisibility(this.checked)\">\n          <span class=\"toggle-switch-track\"><span class=\"toggle-switch-thumb\"></span></span>\n        </span>\n      </label>\n      <p class=\"detail-export-hint\" id=\"splineVisibilityHint\">Show the dashed wind-trail lines behind each pin. Off by default to keep the map uncluttered.</p>\n    </div>\n\n    <div class=\"detail-section\" id=\"traceHeatmapSettingsSection\">\n      <label class=\"settings-toggle-row\" for=\"traceHeatmapToggle\">\n        <span id=\"traceHeatmapLabel\">Show heatmap when tracing possible source</span>\n        <span class=\"toggle-switch\">\n          <input type=\"checkbox\" id=\"traceHeatmapToggle\" autocomplete=\"off\" onchange=\"setTraceHeatmapEnabled(this.checked)\">\n          <span class=\"toggle-switch-track\"><span class=\"toggle-switch-thumb\"></span></span>\n        </span>\n      </label>\n      <p class=\"detail-export-hint\" id=\"traceHeatmapHint\">While using Trace Possible Source: where reports meeting the selected analysis criteria were observed. Darker means more and stronger reports there; pale yellow is a single report's path or its tail downwind.</p>\n    </div>\n\n\n\n\n\n  </div>\n</div>\n\n<!-- GPS/Error Alert Modal -->\n\n\n<!-- Dynamic Instruction Help Modal -->\n<div id=\"helpModal\" class=\"generic-modal-overlay\" style=\"display:none\">\n  <div class=\"generic-modal\" style=\"max-width: 380px;\">\n    <h2 id=\"helpModalTitle\" style=\"margin-top: 6px;\">How to Use</h2>\n    <div id=\"helpModalContent\" style=\"max-height: 70vh; overflow-y: auto; padding-right: 4px;\">\n      <!-- Filled programmatically via standard state language rules -->\n    </div>\n    <button class=\"generic-modal-close\" onclick=\"hideHelpModal()\" id=\"helpModalBtn\" style=\"margin-top:14px;\">Close</button>\n  </div>\n</div>\n\n\n<div id=\"mapKeyModal\" class=\"generic-modal-overlay\" style=\"display:none\">\n  <div class=\"generic-modal\" style=\"max-width: 440px;\">\n    <h2 style=\"margin-top: 6px;\" id=\"mapKeyModalTitle\">Map key</h2>\n    <div id=\"mapKeyModalContent\" style=\"max-height: 65vh; overflow-y: auto; padding-right: 4px; font-size: 13px; line-height: 1.5;\">\n      <!-- Filled programmatically via buildMapKeyModalContent() -->\n    </div>\n    <button class=\"generic-modal-close\" onclick=\"hideMapKeyModal()\" id=\"mapKeyModalBtn\" style=\"margin-top:14px;\">Close</button>\n  </div>\n</div>\n\n\n\n");
 })();
-/* ═════ TraceTheToxin core — shared by index.html (mobile) and desktop.html ═════
-   Pages configure it BEFORE this file loads via window.TT_CFG = { platform: 'mobile'|'desktop', lsPrefix: 'ttt_' }.
+/* ═════ TraceTheToxin core — shared by index.html (mobile) and science.html ═════
+   Pages configure it BEFORE this file loads via window.TT_CFG = { platform: 'mobile'|'science' ('desktop' is still accepted as the old name), lsPrefix: 'ttt_' }.
    Page-specific code registers behaviour through ttOn(name, fn); the core calls it with ttHook(name, ...args).
    Each page calls ttBoot() once, after its own scripts have loaded. */
 const TT_CFG = Object.assign({ platform: 'mobile', lsPrefix: 'ttt_' }, window.TT_CFG || {});
-const TT_DESKTOP = TT_CFG.platform === 'desktop';
+const TT_SCIENCE = TT_CFG.platform === 'science' || TT_CFG.platform === 'desktop';
 const TT_LS = TT_CFG.lsPrefix;
 const TT_HOOKS = (window.TT_HOOKS = window.TT_HOOKS || {});
 function ttOn(name, fn) { (TT_HOOKS[name] = TT_HOOKS[name] || []).push(fn); }
@@ -56,6 +56,7 @@ function getReportCooldownRemainingMs() {
 
 function markReportSubmittedNow() {
   try { localStorage.setItem(REPORT_COOLDOWN_KEY, Date.now().toString()); } catch (e) {}
+  ttReportRequestId = null;   // delivered: the next report gets a new id
 }
 
 /* ═══════════════════════════════════════════════════
@@ -104,10 +105,10 @@ function ttDeviceId() {
 /* Reports go through the `submit-report` edge function (server-side rate limit, validation, flagging). While the function
    is not deployed yet the direct insert is used as before; once direct inserts are revoked in the database the fallback
    simply fails, which is intended. Set TT_REQUIRE_SERVER_SUBMIT = true to drop the fallback in the code too. */
-const TT_REQUIRE_SERVER_SUBMIT = false;
+const TT_REQUIRE_SERVER_SUBMIT = true;
 async function ttSubmitReport(row) {
   let res;
-  try { res = await sb.functions.invoke('submit-report', { body: { report: row, device_id: ttDeviceId() } }); }
+  try { res = await sb.functions.invoke('submit-report', { body: { report: row, device_id: ttDeviceId(), request_id: ttReportRequestId } }); }
   catch (e) { res = { data: null, error: e }; }
   const { data, error } = res;
   if (!error) { if (data && data.error) throw new Error(data.error); return; }
@@ -1315,6 +1316,7 @@ const T = {
   waitGps:      { en:'Waiting for GPS...',               sr:'Čekanje GPS-a...' },
   
   submitted:    { en:'Report submitted.',                sr:'Prijava uspešna.' },
+  sendingReport:{ en:'Sending…',                          sr:'Šaljem…' },
   popupInt:     { en:'Intensity',                        sr:'Intenzitet' },
   popupDir:     { en:'Reported Wind Direction',                        sr:'Prijavljen Smer Vetra' },
 
@@ -3254,6 +3256,7 @@ function ppWrap(o) {
 
 let ppSrc = null, ppObs = null, ppTimer = null, ppIsOpen = false;
 function ppRenderDetail() {
+  if (window.ppSubView) return;                      // a sub-view (station data quality) is showing inside Detalji
   const pp = ppSrc && ppSrc.querySelector('.pp');
   if (!pp) return;                                   // popup already gone: keep the last render
   const body = document.getElementById('ppdBody');
@@ -3303,11 +3306,12 @@ function ppOpenDetail(btn) {
 }
 function ppHide() {
   if (ppObs) { ppObs.disconnect(); ppObs = null; }
-  ppIsOpen = false; ppSrc = null;
+  ppIsOpen = false; ppSrc = null; window.ppSubView = null;
   document.getElementById('ppDetail').classList.remove('open');
 }
 function ppCloseDetail() {
   if (!ppIsOpen) return;
+  if (window.ppSubView) { window.ppSubView.exit(); return; }   // Back from a sub-view returns to the station details
   if (history.state && history.state.ppDetail) history.back();   // popstate hides it
   else ppHide();
 }
@@ -3339,7 +3343,8 @@ function buildStationPopupHtml(station, reading) {
     ` : `<span style="font-size:11px;color:var(--text-secondary);">${t('aqNoData')}</span>`}
     ${ppDivider(true)}
     ${ppRow(t('ppCoords'), `${Number(station.lat).toFixed(4)}, ${Number(station.lon).toFixed(4)}`, true)}
-    ${station.precision === 'city' ? `<div style="font-size:10px;color:var(--text-secondary);font-style:italic;margin-top:2px;">${t('aqApprox')}</div>` : ''}`;
+    ${station.precision === 'city' ? `<div style="font-size:10px;color:var(--text-secondary);font-style:italic;margin-top:2px;">${t('aqApprox')}</div>` : ''}
+    ${ttHookHtml('stationPopupExtra', station)}`;
   return ppWrap({ color, title: station.name, sub: t('aqStationLabel'), body });
 }
 
@@ -3502,7 +3507,7 @@ async function findStationMatchesForReport(report, stations, maxDistanceKm = STA
 // station reading fetched. Falls back to plain nearest-station (a 1-item
 // list, matchType: 'nearest-fallback') only if nothing matched at all.
 async function getStationsAlongWindTrailForReport(report, maxDistanceKm = STATION_TRAIL_MATCH_RADIUS_KM) {
-  const matchPool = airQualityStationsCache.concat(ttHook('stationCandidates', report) || []);   // desktop: manually entered sensors
+  const matchPool = airQualityStationsCache.concat(ttHook('stationCandidates', report) || []);   // science: manually entered sensors
   if (!matchPool.length) return null;
 
   const reportAgeHoursDbg = (Date.now() - new Date(report.created_at).getTime()) / 3600000;
@@ -6814,7 +6819,7 @@ function fitHeatHistory() {
   if (!hhState) return;
   const b = L.latLng(hhState.lat, hhState.lon).toBounds(hhState.radiusKm * 2400);
   const sheetH = (document.getElementById('hhSheet')?.offsetHeight || 0) + 20;
-  map.fitBounds(b, { paddingBottomRight: [10, TT_DESKTOP ? 10 : sheetH], paddingTopLeft: [10, TT_DESKTOP ? 20 : 90], maxZoom: 16, animate: true });
+  map.fitBounds(b, { paddingBottomRight: [10, TT_SCIENCE ? 10 : sheetH], paddingTopLeft: [10, TT_SCIENCE ? 20 : 90], maxZoom: 16, animate: true });
 }
 
 async function openHeatHistory(lat, lon, name) {
@@ -7905,6 +7910,10 @@ const burnerMode = b => {
 };
 // FIT_MAX_AGE_DAYS: model-fit attribution applies to every report (research tool, nothing is targeted), whatever its age.
 const FIT_MAX_KM = 40, FIT_MAX_AGE_DAYS = 36500, FIT_MAX_TRAVEL_H = 8, FIT_STEP_MIN = 10;
+/* Model versions. Any change to the wind-trail model (anchoredFitCore / anchoredFitTwoLeg, FIT_*, PLUME_*, tolerance, informative rule) MUST bump TT_MODEL_VERSION.
+   TT_MODEL_VERSION = the model this app computes and prints in the PDF. TT_SERVER_MODEL_VERSION = the pre-registered model stored in air_report_fits (server, immutable; see ttt_prereg.md).
+   They are different models: do not compare their numbers without naming the version. */
+const TT_MODEL_VERSION = 'app-anchored-v1', TT_SERVER_MODEL_VERSION = 'prereg80-v1';
 const fitAttribCache = {};   // report.id -> { b, d, miss, width, norm, travelMin, calAt } | { none: true, near, calAt }
 // Hourly wind at a source, shared between reports: recent reports use one request per source and hour (past 7 days
 // plus forecast), older ones one archive request per source and day.
@@ -9612,7 +9621,7 @@ function renderPin(report, index = 0){
 const AIR_REPORTS_LIST_COLUMNS = [
   'id', 'created_at', 'latitude', 'longitude', 'wind_speed', 'wind_direction',
   'sea_level_pressure', 'comment', 'category', 'duration', 'intensity',
-  'formatted_id', 'manual_wind_direction', 'updated_at', 'confidence', 'location_name', 'elevation', 'stability', 'spam_score'
+  'formatted_id', 'manual_wind_direction', 'updated_at', 'confidence', 'location_name', 'elevation', 'stability', 'spam_score', 'spam_reason'
 ].join(',');
 
 // Friendly card shown when the on-map date filter matches no reports.
@@ -9759,7 +9768,8 @@ async function loadPinsByWindow() {
   ttHook('reportsReloading');
   const data = await fetchAll();
   if (mySeq !== pinLoadSeq) return;
-  globalActiveData = data; 
+  // Server-flagged duplicates (one device pressing send several times) stay in the database but are not drawn or counted.
+  globalActiveData = data.filter(r => r.spam_reason !== 'duplicate');
   
   if (data.length > 0) {
       lastSyncTimestamp = data[0].created_at;
@@ -10543,7 +10553,23 @@ function resetReportingForm() {
   checkFormReady();
 }
 
-async function reportBadAir(){
+/* One send at a time. The slow part (weather, place name, elevation, stability) used to leave the button live for seconds, so impatient
+   taps started several sends in parallel. Now the first tap locks the button until it finishes; request id makes a retry idempotent. */
+let ttReportInFlight = false, ttReportRequestId = null;
+function ttReportBusy(on) {
+  const btn = document.getElementById('wizSubmitBtn'), lab = document.getElementById('reportBtnLabel');
+  if (!btn) return;
+  if (on) { btn.dataset.label = lab ? lab.textContent : ''; btn.disabled = true; if (lab) lab.textContent = t('sendingReport'); }
+  else { if (lab && btn.dataset.label) lab.textContent = btn.dataset.label; delete btn.dataset.label; if (typeof checkWizSubmitReady === 'function') checkWizSubmitReady(); }
+}
+async function reportBadAir() {
+  if (ttReportInFlight) return;
+  ttReportInFlight = true;
+  if (!ttReportRequestId) ttReportRequestId = (crypto.randomUUID ? crypto.randomUUID() : null);
+  ttReportBusy(true);
+  try { await reportBadAirInner(); } finally { ttReportInFlight = false; ttReportBusy(false); }
+}
+async function reportBadAirInner(){
   // Spam protection: at most one report per device per hour.
   const remaining = getReportCooldownRemainingMs();
   if (remaining > 0) {
@@ -10699,11 +10725,11 @@ async function reverseGeocodeLocation(lat, lon) {
 
 /* ---------- Service worker ---------- */
 let swReg = null;
-// The desktop (science) page manages its own service worker in desktop-extras.js (on localhost it removes it again), so the
-// core must not register one there: registering here while desktop-extras unregisters on the next load made localhost reload.
-const TT_DESKTOP_PAGE = !!(window.TT_CFG && window.TT_CFG.platform === 'desktop');
+// The science page manages its own service worker in science-extras.js (on localhost it removes it again), so the
+// core must not register one there: registering here while science-extras unregisters on the next load made localhost reload.
+const TT_SCIENCE_PAGE = !!(window.TT_CFG && (window.TT_CFG.platform === 'science' || window.TT_CFG.platform === 'desktop'));
 if ('serviceWorker' in navigator) {
-  if (!TT_DESKTOP_PAGE) {
+  if (!TT_SCIENCE_PAGE) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(r => { swReg = r; r.update().catch(() => {}); }).catch(e => console.warn('SW registration failed:', e));
   });
@@ -10921,6 +10947,123 @@ function alertMemberWind(manual, auto) {
   return m ?? a;
 }
 
+
+/* ═══════════════════════════════════════════════════
+   STATION DATA QUALITY
+   Availability, outages and implausible readings per station, computed in the database
+   (station_quality_detail / station_quality_overview). Opened from a station popup (shared by the mobile and science pages).
+═══════════════════════════════════════════════════ */
+(function stationQuality() {
+  const tr = (sr, en) => (typeof lang !== 'undefined' && lang === 'en') ? en : sr;
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const PERIODS = () => [[7, '7 d'], [30, '30 d'], [90, '90 d'], [0, tr('Sve', 'All')]];
+  const Q = { id: null, name: '', days: 30, token: 0, cache: {} };
+  let active = false;
+
+  const pct = (a, b) => (b > 0 ? 100 * a / b : null);
+  const fp = (v, d = 1) => v == null ? '–' : v.toLocaleString(lang === 'en' ? 'en-GB' : 'sr-RS', { minimumFractionDigits: d, maximumFractionDigits: d }) + '%';
+  const fn = v => (v == null ? '–' : Number(v).toLocaleString(lang === 'en' ? 'en-GB' : 'sr-RS'));
+  const when = iso => iso ? new Date(iso).toLocaleString(lang === 'en' ? 'en-GB' : 'sr-RS', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '–';
+  const dur = h => h >= 48 ? `${Math.floor(h / 24)} d ${h % 24} h` : `${h} h`;
+  const cls = (v, good, warn) => v == null ? '' : v >= good ? 'ok' : v >= warn ? 'warn' : 'bad';           // higher is better
+  const clsBad = (v, warn, bad) => v == null ? '' : v >= bad ? 'bad' : v >= warn ? 'warn' : 'ok';          // higher is worse
+  const bar = (label, v, c, right) => `<div class="sq-row"><span>${esc(label)}</span><span class="sq-track"><span class="sq-fill ${c}" style="width:${Math.max(0, Math.min(100, v || 0))}%"></span></span><span class="sq-num">${right}</span></div>`;
+
+  // The data lives inside the station's Detalji view (#ppdBody), not in a separate window.
+  function ensureView() {
+    let v = document.getElementById('sqView');
+    if (!v) {
+      v = document.createElement('div'); v.id = 'sqView';
+      v.innerHTML = '<div class="sq-bar" id="sqBar"></div><div class="sq-body" id="sqBody"></div>';
+      document.getElementById('ppdBody').replaceChildren(v);
+    }
+    return v;
+  }
+  function exit() { active = false; Q.token++; window.ppSubView = null; window.sqLast = null; ppRenderDetail(); }
+
+  async function fetchQ(fn_, args) {
+    const key = fn_ + JSON.stringify(args);
+    const hit = Q.cache[key]; if (hit && Date.now() - hit.t < 120000) return hit.v;
+    const { data, error } = await sb.rpc(fn_, args);
+    if (error) throw error;
+    Q.cache[key] = { t: Date.now(), v: data };
+    return data;
+  }
+  const range = () => ({ p_from: Q.days ? new Date(Date.now() - Q.days * 86400000).toISOString() : '2000-01-01T00:00:00Z', p_to: new Date().toISOString() });
+
+  function bar_() {
+    const b = document.getElementById('sqBar');
+    b.innerHTML = PERIODS().map(([d, l]) => `<button data-days="${d}" class="${Q.days === d ? 'on' : ''}">${esc(l)}</button>`).join('') + ttHookHtml('stationQualityBar');   // science adds its CSV / PDF buttons here
+    b.querySelectorAll('button[data-days]').forEach(x => x.onclick = () => { Q.days = +x.dataset.days; load(); });
+  }
+
+  function verdict(q) {
+    const miss = pct(q.missing_hours, q.expected_hours);
+    const stale = q.hours_since_last != null && q.hours_since_last > 3;
+    const pr = q.pairs || {}; const gt = pct(pr.gt, pr.pairs);
+    const issues = [];
+    if (stale) issues.push(tr(`nema novih podataka ${q.hours_since_last} h`, `no new data for ${q.hours_since_last} h`));
+    if (miss != null && miss > 5) issues.push(tr(`nedostaje ${fp(miss)} sati`, `${fp(miss)} of hours missing`));
+    if (gt != null && gt > 5) issues.push(tr(`PM2.5 > PM10 u ${fp(gt)} parova`, `PM2.5 > PM10 in ${fp(gt)} of pairs`));
+    return { stale, issues, c: stale || (miss != null && miss > 20) ? 'bad' : issues.length ? 'warn' : 'ok' };
+  }
+
+  function renderOne(q) {
+    if (!q || !q.expected_hours) return `<div class="sq-note">${tr('Nema podataka za izabrani period.', 'No data for the selected period.')}</div>`;
+    const av = pct(q.hours_with_data, q.expected_hours), miss = pct(q.missing_hours, q.expected_hours), v = verdict(q), pr = q.pairs || {}, a = q.availability || {};
+    const POL = [['PM10', 'pm10'], ['PM2.5', 'pm25'], ['SO₂', 'so2'], ['NO₂', 'no2'], ['O₃', 'o3']];
+    let h = `<div class="sq-kpis">
+      <div class="sq-kpi"><b class="sq-${cls(av, 98, 90)}">${fp(av)}</b><span>${tr('dostupnost (sati sa podacima)', 'availability (hours with data)')}<br>${fn(q.hours_with_data)} / ${fn(q.expected_hours)} h</span></div>
+      <div class="sq-kpi"><b class="sq-${clsBad(miss, 2, 10)}">${fp(miss)}</b><span>${tr('sati bez podataka', 'hours without data')}<br>${fn(q.missing_hours)} h u ${fn(q.gap_count)} ${tr('rupa', 'gaps')}</span></div>
+      <div class="sq-kpi"><b>${dur(q.longest_gap_hours || 0)}</b><span>${tr('najduža rupa u radu', 'longest outage')}</span></div>
+      <div class="sq-kpi"><b class="sq-${v.stale ? 'bad' : 'ok'}">${q.hours_since_last == null ? '–' : tr('pre ' + dur(q.hours_since_last), dur(q.hours_since_last) + ' ago')}</b><span>${tr('poslednje očitavanje', 'last reading')}<br>${when(q.last_reading)}</span></div></div>
+      <div class="sq-note">${v.issues.length ? '<span class="sq-flag sq-' + v.c + '">' + esc(v.issues.join(' · ')) + '</span>' : '<span class="sq-flag sq-ok">' + tr('Bez većih primedbi', 'No major issues') + '</span>'}</div>`;
+
+    h += `<h4>${tr('Dostupnost po zagađivaču', 'Availability per pollutant')}</h4>` + POL.map(([l, k]) => { const p = pct(a[k] || 0, q.expected_hours); return bar(l, p, cls(p, 98, 90), `${fp(p)} · ${fn(a[k] || 0)}`); }).join('');
+
+    h += `<h4>${tr('Nelogičnosti u merenjima', 'Implausible readings')}</h4>`;
+    const gtp = pct(pr.gt, pr.pairs), tolp = pct(pr.gt_tol, pr.pairs), wp = pct(pr.whole, pr.pairs);
+    h += bar(tr('PM2.5 > PM10', 'PM2.5 > PM10'), gtp, clsBad(gtp, 2, 10) === 'ok' ? 'ok' : clsBad(gtp, 2, 10), `${fp(gtp)} · ${fn(pr.gt)} / ${fn(pr.pairs)}`);
+    h += bar(tr('… za više od 20% i 2 µg/m³', '… by more than 20% and 2 µg/m³'), tolp, clsBad(tolp, 2, 10), `${fp(tolp)} · ${fn(pr.gt_tol)}`);
+    h += bar(tr('Celobrojni parovi', 'Whole-number pairs'), wp, '', `${fp(wp)} · ${fn(pr.whole)}`);
+    h += `<div class="sq-note">${tr('PM2.5 ne može fizički biti veći od PM10, pa je to greška senzora ili podataka. Celobrojni parovi su satovi u kojima su PM10 i PM2.5 oba celi brojevi (moguć drugi izvor ili zaokruživanje).', 'PM2.5 is a subset of PM10, so PM2.5 > PM10 means a sensor or data error. Whole-number pairs are hours where both PM10 and PM2.5 are whole numbers (possibly another source or rounding).')}</div>`;
+    if (pr.pairs) h += `<table><tr><th>${tr('Vrsta para', 'Pair type')}</th><th>${tr('Satova', 'Hours')}</th><th>PM2.5 &gt; PM10</th><th>%</th></tr>
+      <tr><td>${tr('Celobrojni', 'Whole-number')}</td><td>${fn(pr.whole)}</td><td>${fn(pr.whole_gt)}</td><td>${fp(pct(pr.whole_gt, pr.whole))}</td></tr>
+      <tr><td>${tr('Decimalni', 'Decimal')}</td><td>${fn(pr.dec)}</td><td>${fn(pr.dec_gt)}</td><td>${fp(pct(pr.dec_gt, pr.dec))}</td></tr></table>`;
+
+    const bad = q.bad || {}, flat = q.flat || {};
+    const rows = POL.filter(([, k]) => bad[k] || flat[k]).map(([l, k]) => { const b = bad[k] || {}, f = flat[k] || {}; return `<tr><td>${l}</td><td>${fn(b.neg)}</td><td>${fn(b.zero)}</td><td>${fn(b.huge)}</td><td>${fn(f.runs)}</td><td>${fn(f.hours)}</td><td>${fn(f.longest)} h</td></tr>`; }).join('');
+    if (rows) h += `<table style="margin-top:8px"><tr><th>${tr('Zagađivač', 'Pollutant')}</th><th>${tr('Negativne', 'Negative')}</th><th>${tr('Nule', 'Zeros')}</th><th>${tr('Nerealno visoke', 'Implausibly high')}</th><th>${tr('Zaglavljene serije', 'Stuck runs')}</th><th>${tr('Sati u njima', 'Hours in them')}</th><th>${tr('Najduža', 'Longest')}</th></tr>${rows}</table>
+      <div class="sq-note">${tr('Zaglavljena serija = ista vrednost 6 ili više sati uzastopno. Nerealno visoko = iznad 1000 µg/m³ (O₃ iznad 600).', 'Stuck run = the same value for 6 or more consecutive hours. Implausibly high = above 1000 µg/m³ (O₃ above 600).')}</div>`;
+
+    h += `<h4>${tr('Najduže rupe u radu', 'Longest outages')}</h4>`;
+    h += (q.gaps && q.gaps.length) ? `<table><tr><th>${tr('Od', 'From')}</th><th>${tr('Do', 'To')}</th><th>${tr('Trajanje', 'Duration')}</th><th>${tr('% perioda', '% of period')}</th></tr>` + q.gaps.map(g => `<tr><td>${when(g.start)}</td><td>${when(g.end)}</td><td>${dur(g.hours)}</td><td>${fp(pct(g.hours, q.expected_hours), 2)}</td></tr>`).join('') + '</table>' : `<div class="sq-note">${tr('Nema rupa: stanica je radila bez prekida.', 'No gaps: the station reported without interruption.')}</div>`;
+    h += `<div class="sq-note">${tr('Period', 'Period')}: ${when(q.from)} – ${when(q.to)} (${tr('od prvog očitavanja stanice, tekući sat se ne računa', 'from the first reading of the station; the current hour is not counted')}). ${tr('Rupa = satovi bez ijednog očitavanja.', 'A gap = hours without any reading.')}</div>`;
+    return h;
+  }
+
+  async function load() {
+    ensureView(); bar_(); window.sqLast = null;
+    const body = document.getElementById('sqBody'), tok = ++Q.token;
+    document.getElementById('ppdTitle').textContent = tr('Kvalitet podataka stanica', 'Station data quality');
+    document.getElementById('ppdSub').textContent = Q.name;
+    body.innerHTML = `<div class="sq-note">${tr('Računam…', 'Computing…')}</div>`;
+    try {
+      const q = await fetchQ('station_quality_detail', { p_station: Q.id, ...range() });
+      if (tok === Q.token) { body.innerHTML = renderOne(q); window.sqLast = { q, id: Q.id, name: Q.name, days: Q.days, verdict: q && q.expected_hours ? verdict(q) : null }; }   // read by the science CSV / PDF export
+    } catch (e) {
+      if (tok === Q.token) body.innerHTML = `<div class="sq-note sq-bad">${tr('Greška pri računanju', 'Calculation failed')}: ${esc(e.message || e)}</div>`;
+    }
+  }
+
+  window.openStationQuality = function (id, name) {
+    Q.id = id; Q.name = name || id; active = true; window.ppSubView = { exit };
+    const pb = document.getElementById('ppdBody'); if (pb) pb.scrollTop = 0;
+    load();
+  };
+  ttOn('stationPopupExtra', station => `<div class="pp-more"><button type="button" class="sq-open-btn" onclick="openStationQuality(${JSON.stringify(String(station.id)).replace(/"/g, '&quot;')}, ${JSON.stringify(String(station.name)).replace(/"/g, '&quot;')})">${tr('Kvalitet podataka', 'Data quality')}</button></div>`);
+  ttOn('applyLang', () => { if (active && window.ppSubView) load(); });
+})();
 
 /* ═════ Startup: called once by the page after its shell/extras scripts are loaded ═════ */
 window.ttBoot = function ttBoot() {
