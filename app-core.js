@@ -3325,6 +3325,7 @@ document.getElementById('ppDetail').addEventListener('click', e => {
 function buildStationPopupHtml(station, reading) {
   const color = reading ? aqiColor(reading.category) : '#9e9e9e';
   const POLL = [['PM10','pm10'],['PM2.5','pm25'],['SO₂','so2'],['NO₂','no2'],['O₃','o3']];
+  if (TT_SCIENCE) POLL.push(['NO','no'],['NOx','nox']);   // NO / NOx are shown in the science version only
   const pollRows = reading ? POLL.map(([lbl, k]) => {
     const v = reading[k], ok = v != null && !isNaN(v);
     const tier = ok ? aqiTierLabel(pollutantValueTier(k, v)) : '';
@@ -6915,6 +6916,7 @@ function pollutantSummaryRowHtml(reading) {
     ['NO2', 'no2', reading.no2],
     ['O3', 'o3', reading.o3],
   ];
+  if (TT_SCIENCE) entries.push(['NO', 'no', reading.no], ['NOx', 'nox', reading.nox]);   // science version only
   const parts = entries.map(([label, key, val]) => {
     const display = (val != null && !isNaN(val)) ? Number(val).toFixed(1) : '–';
     const color = (val != null && !isNaN(val)) ? pollutantValueColor(key, val) : 'var(--text-primary)';
@@ -6947,6 +6949,8 @@ function averagePollutantReadings(readings, weights = null) {
     so2:  avg(readings.map(r => r?.so2)),
     no2:  avg(readings.map(r => r?.no2)),
     o3:   avg(readings.map(r => r?.o3)),
+    no:   avg(readings.map(r => r?.no)),
+    nox:  avg(readings.map(r => r?.nox)),
   };
 }
 
@@ -10957,7 +10961,7 @@ function alertMemberWind(manual, auto) {
   const tr = (sr, en) => (typeof lang !== 'undefined' && lang === 'en') ? en : sr;
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const PERIODS = () => [[7, '7 d'], [30, '30 d'], [90, '90 d'], [0, tr('Sve', 'All')]];
-  const Q = { id: null, name: '', days: 30, token: 0, cache: {} };
+  const Q = { id: null, name: '', days: 30, from: '', to: '', mode: 'auto', fp: null, token: 0, cache: {} };   // days: 0 = all, -1 = custom from/to
   let active = false;
 
   const pct = (a, b) => (b > 0 ? 100 * a / b : null);
@@ -10979,7 +10983,7 @@ function alertMemberWind(manual, auto) {
     }
     return v;
   }
-  function exit() { active = false; Q.token++; window.ppSubView = null; window.sqLast = null; ppRenderDetail(); }
+  function exit() { active = false; Q.token++; if (Q.fp) { try { Q.fp.destroy(); } catch (e) {} Q.fp = null; } window.ppSubView = null; window.sqLast = null; ppRenderDetail(); }
 
   async function fetchQ(fn_, args) {
     const key = fn_ + JSON.stringify(args);
@@ -10989,12 +10993,34 @@ function alertMemberWind(manual, auto) {
     Q.cache[key] = { t: Date.now(), v: data };
     return data;
   }
-  const range = () => ({ p_from: Q.days ? new Date(Date.now() - Q.days * 86400000).toISOString() : '2000-01-01T00:00:00Z', p_to: new Date().toISOString() });
+  const custom = () => Q.days === -1 && (Q.from || Q.to);
+  const range = () => custom()
+    ? { p_from: Q.from ? new Date(Q.from + 'T00:00:00').toISOString() : '2000-01-01T00:00:00Z', p_to: Q.to ? new Date(Q.to + 'T23:59:59').toISOString() : new Date().toISOString() }
+    : { p_from: Q.days > 0 ? new Date(Date.now() - Q.days * 86400000).toISOString() : '2000-01-01T00:00:00Z', p_to: new Date().toISOString() };
+  const spanDays = () => { const r = range(); return (new Date(r.p_to) - new Date(r.p_from)) / 86400000; };
+  const dayOf = iso => dayKey(new Date(iso).getTime());
 
   function bar_() {
     const b = document.getElementById('sqBar');
-    b.innerHTML = PERIODS().map(([d, l]) => `<button data-days="${d}" class="${Q.days === d ? 'on' : ''}">${esc(l)}</button>`).join('') + ttHookHtml('stationQualityBar');   // science adds its CSV / PDF buttons here
-    b.querySelectorAll('button[data-days]').forEach(x => x.onclick = () => { Q.days = +x.dataset.days; load(); });
+    if (Q.fp) { try { Q.fp.destroy(); } catch (e) {} Q.fp = null; }
+    const ds = 'background:var(--bg-surface-alt);color:var(--text-primary);border:1px solid ' + (Q.days === -1 ? 'var(--accent)' : 'var(--border-color-strong)') + ';border-radius:999px;padding:4px 10px;font-size:12px;width:178px;cursor:pointer;text-align:center;' + (Q.days === -1 ? 'font-weight:700;' : '');
+    b.innerHTML = PERIODS().map(([d, l]) => `<button data-days="${d}" class="${Q.days === d ? 'on' : ''}">${esc(l)}</button>`).join('')
+      + `<input type="text" id="sqRange" readonly placeholder="${tr('Od – do (kalendar)', 'From – to (calendar)')}" style="${ds}" aria-label="${tr('Vremenski filter', 'Time filter')}">`
+      + ttHookHtml('stationQualityBar');   // science adds its CSV / PDF buttons here
+    b.querySelectorAll('button[data-days]').forEach(x => x.onclick = () => { Q.days = +x.dataset.days; Q.from = Q.to = ''; load(); });
+    if (window.flatpickr) {
+      const def = custom() ? [Q.from && new Date(Q.from + 'T00:00:00'), Q.to && new Date(Q.to + 'T00:00:00')].filter(Boolean) : [];
+      Q.fp = flatpickr('#sqRange', {
+        mode: 'range', theme: 'dark', dateFormat: 'd.m.Y', minDate: '2019-01-01', maxDate: 'today', defaultDate: def,
+        locale: (lang === 'sr' && flatpickr.l10ns && flatpickr.l10ns.sr) ? flatpickr.l10ns.sr : 'default',
+        onClose: sel => {
+          if (!sel.length) return;
+          const f = flatpickr.formatDate(sel[0], 'Y-m-d'), t = flatpickr.formatDate(sel[sel.length - 1], 'Y-m-d');
+          if (Q.days === -1 && f === Q.from && t === Q.to) return;   // calendar just opened and closed
+          Q.from = f; Q.to = t; Q.days = -1; load();
+        }
+      });
+    }
   }
 
   function verdict(q) {
@@ -11011,7 +11037,8 @@ function alertMemberWind(manual, auto) {
   function renderOne(q) {
     if (!q || !q.expected_hours) return `<div class="sq-note">${tr('Nema podataka za izabrani period.', 'No data for the selected period.')}</div>`;
     const av = pct(q.hours_with_data, q.expected_hours), miss = pct(q.missing_hours, q.expected_hours), v = verdict(q), pr = q.pairs || {}, a = q.availability || {};
-    const POL = [['PM10', 'pm10'], ['PM2.5', 'pm25'], ['SO₂', 'so2'], ['NO₂', 'no2'], ['O₃', 'o3']];
+    const POL = [['PM10', 'pm10'], ['PM2.5', 'pm25'], ['SO₂', 'so2'], ['NO₂', 'no2'], ['NO', 'no'], ['NOₓ', 'nox'], ['O₃', 'o3']];
+    const meas = a.measured || null, POLM = POL.filter(([, k]) => !meas || meas[k]), notMeas = POL.filter(([, k]) => meas && !meas[k]).map(([l]) => l);   // only what this station has ever measured
     let h = `<div class="sq-kpis">
       <div class="sq-kpi"><b class="sq-${cls(av, 98, 90)}">${fp(av)}</b><span>${tr('dostupnost (sati sa podacima)', 'availability (hours with data)')}<br>${fn(q.hours_with_data)} / ${fn(q.expected_hours)} h</span></div>
       <div class="sq-kpi"><b class="sq-${clsBad(miss, 2, 10)}">${fp(miss)}</b><span>${tr('sati bez podataka', 'hours without data')}<br>${fn(q.missing_hours)} h u ${fn(q.gap_count)} ${tr('rupa', 'gaps')}</span></div>
@@ -11019,7 +11046,7 @@ function alertMemberWind(manual, auto) {
       <div class="sq-kpi"><b class="sq-${v.stale ? 'bad' : 'ok'}">${q.hours_since_last == null ? '–' : tr('pre ' + dur(q.hours_since_last), dur(q.hours_since_last) + ' ago')}</b><span>${tr('poslednje očitavanje', 'last reading')}<br>${when(q.last_reading)}</span></div></div>
       <div class="sq-note">${v.issues.length ? '<span class="sq-flag sq-' + v.c + '">' + esc(v.issues.join(' · ')) + '</span>' : '<span class="sq-flag sq-ok">' + tr('Bez većih primedbi', 'No major issues') + '</span>'}</div>`;
 
-    h += `<h4>${tr('Dostupnost po zagađivaču', 'Availability per pollutant')}</h4>` + POL.map(([l, k]) => { const p = pct(a[k] || 0, q.expected_hours); return bar(l, p, cls(p, 98, 90), `${fp(p)} · ${fn(a[k] || 0)}`); }).join('');
+    h += `<h4>${tr('Dostupnost po zagađivaču', 'Availability per pollutant')}</h4>` + POLM.map(([l, k]) => { const p = pct(a[k] || 0, q.expected_hours); return bar(l, p, cls(p, 98, 90), `${fp(p)} · ${fn(a[k] || 0)}`); }).join('') + (notMeas.length ? `<div class="sq-note">${tr('Stanica ne meri', 'Not measured by this station')}: ${esc(notMeas.join(', '))}</div>` : '');
 
     h += `<h4>${tr('Nelogičnosti u merenjima', 'Implausible readings')}</h4>`;
     const gtp = pct(pr.gt, pr.pairs), tolp = pct(pr.gt_tol, pr.pairs), wp = pct(pr.whole, pr.pairs);
@@ -11042,6 +11069,176 @@ function alertMemberWind(manual, auto) {
     return h;
   }
 
+
+  /* ── Comparison chart: all pollutants of the station on one axis, follows the 7 d / 30 d / 90 d / All filter ── */
+  const SER = [['pm10', 'PM10', '#e0a100'], ['pm25', 'PM2.5', '#d32f2f'], ['no2', 'NO₂', '#8e44ad'], ['no', 'NO', '#3498db'], ['nox', 'NOₓ', '#00a7b5'], ['so2', 'SO₂', '#2e9e5b'], ['o3', 'O₃', '#e67e22'], ['o3d', 'O₃ (max 8 h)', '#b9770e']];
+  const SER_DEFAULT_ON = { pm10: 1, pm25: 1, no2: 1, v_pm10: 1, v_pm25: 1, v_no2: 1 };
+  Q.on = null;                                                   // chosen series survive period changes and reopening
+  const loc = () => (lang === 'en' ? 'en-GB' : 'sr-RS');
+  const fv = v => v == null ? '–' : Number(v).toLocaleString(loc(), { maximumFractionDigits: 1 });
+  function niceMax(m) { const p = Math.pow(10, Math.floor(Math.log10(m))), f = m / p; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p; }
+
+  /* Verified daily means (SEPA, 2019–2024) fill the days the hourly feed does not cover.
+     Hourly-derived days always win; a verified day is only added when that calendar day has no hourly row. */
+  async function fetchDaily() {
+    const r = range(), f = dayOf(r.p_from), t = dayOf(r.p_to), key = 'daily|' + Q.id + '|' + f + '|' + t, hit = Q.cache[key];
+    if (hit && Date.now() - hit.t < 600000) return hit.v;
+    let all = [];
+    for (let page = 0; page < 5; page++) {
+      const { data, error } = await sb.from('air_quality_daily_verified').select('day,pm10,pm25,so2,no2,o3_max8h,co_max8h')
+        .eq('station_id', Q.id).gte('day', f).lte('day', t).order('day', { ascending: true }).range(page * 1000, page * 1000 + 999);
+      if (error) throw error;
+      all = all.concat(data || []); if (!data || data.length < 1000) break;
+    }
+    Q.cache[key] = { t: Date.now(), v: all };
+    return all;
+  }
+  const dayKey = ms => new Date(ms).toLocaleDateString('en-CA', { timeZone: 'Europe/Belgrade' });
+  /* Validated first: on a day that has a verified value, the verified value is shown; the collected (hourly) value
+     is only used where there is no verified one. Returns the merged rows plus how many days came from each source. */
+  function mergeDaily(rows, daily) {
+    const ver = new Map(daily.map(d => [d.day, d])), seen = new Set(), out = [];
+    let nVer = 0, nCol = 0;
+    rows.forEach(r => {
+      const k = dayKey(new Date(r.t).getTime()), v = ver.get(k); seen.add(k);
+      if (!v) { out.push(r); nCol++; return; }
+      nVer++;
+      out.push(Object.assign({}, r, { pm10: v.pm10 ?? r.pm10, pm25: v.pm25 ?? r.pm25, so2: v.so2 ?? r.so2, no2: v.no2 ?? r.no2, o3d: v.o3_max8h, _ver: 1 }));
+    });
+    daily.forEach(d => { if (!seen.has(d.day)) { nVer++; out.push({ t: d.day + 'T00:00:00', pm10: d.pm10, pm25: d.pm25, so2: d.so2, no2: d.no2, o3d: d.o3_max8h, _ver: 1 }); } });
+    out.sort((a, b) => new Date(a.t) - new Date(b.t));
+    return { rows: out, nVer, nCol };
+  }
+  // 'Both': validated and collected kept as separate series so they can be compared day by day.
+  function mergeBoth(rows, daily) {
+    const ver = new Map(daily.map(d => [d.day, d])), seen = new Set(), out = [];
+    rows.forEach(r => { const k = dayKey(new Date(r.t).getTime()), v = ver.get(k); seen.add(k);
+      out.push(v ? Object.assign({}, r, { v_pm10: v.pm10, v_pm25: v.pm25, v_so2: v.so2, v_no2: v.no2, o3d: v.o3_max8h }) : r); });
+    daily.forEach(d => { if (!seen.has(d.day)) out.push({ t: d.day + 'T00:00:00', v_pm10: d.pm10, v_pm25: d.pm25, v_so2: d.so2, v_no2: d.no2, o3d: d.o3_max8h }); });
+    return out.sort((a, b) => new Date(a.t) - new Date(b.t));
+  }
+  const serBoth = () => [['pm10', 'PM10', '#e0a100'], ['pm25', 'PM2.5', '#d32f2f'], ['no2', 'NO₂', '#8e44ad'], ['so2', 'SO₂', '#2e9e5b']]
+    .flatMap(([k, l, c]) => [['v_' + k, l + ' ✓', c], [k, l + ' (' + tr('prik.', 'coll.') + ')', c, '4 3']])
+    .concat(SER.filter(x => ['no', 'nox', 'o3', 'o3d'].includes(x[0])));
+  const MODES = () => [['auto', tr('Automatski', 'Automatic')], ['ver', tr('Validirani', 'Validated')], ['col', tr('Prikupljeni', 'Collected')], ['both', tr('Oba', 'Both')]];
+  // Table of the verified daily data in the selected period (also holds CO, which is mg/m³ and so is not on the µg/m³ chart).
+  function verifiedSummary(daily) {
+    if (!daily.length) return '';
+    const P = [['PM10', 'pm10', 'µg/m³'], ['PM2.5', 'pm25', 'µg/m³'], ['SO₂', 'so2', 'µg/m³'], ['NO₂', 'no2', 'µg/m³'], ['O₃ max 8 h', 'o3_max8h', 'µg/m³'], ['CO max 8 h', 'co_max8h', 'mg/m³']];
+    const total = Math.round((new Date(daily[daily.length - 1].day) - new Date(daily[0].day)) / 86400000) + 1;
+    const rows = P.map(([l, k, u]) => {
+      const v = daily.map(d => d[k]).filter(x => x != null).map(Number); if (!v.length) return '';
+      const mean = v.reduce((a, b) => a + b, 0) / v.length, p = pct(v.length, total);
+      return `<tr><td>${l}</td><td>${fn(v.length)} / ${fn(total)} (${fp(p, 0)})</td><td>${fv(mean)}</td><td>${fv(Math.max(...v))}</td><td>${u}</td></tr>`;
+    }).join('');
+    return `<h4>${tr('Verifikovani dnevni podaci (SEPA)', 'Verified daily data (SEPA)')}</h4>
+      <table><tr><th>${tr('Zagađivač', 'Pollutant')}</th><th>${tr('Dana sa podacima', 'Days with data')}</th><th>${tr('Prosek', 'Mean')}</th><th>${tr('Maks.', 'Max')}</th><th></th></tr>${rows}</table>
+      <div class="sq-note">${tr('Period sa verifikovanim podacima', 'Verified period')}: ${daily[0].day} – ${daily[daily.length - 1].day}</div>`;
+  }
+
+  function chartShell() { return `<div id="sqVer"></div><div class="sq-bar" id="sqMode" style="display:none"></div><h4>${tr('Poređenje vrednosti', 'Compare readings')}</h4><div class="sq-chart" id="sqChart"><div class="sq-note">${tr('Računam…', 'Computing…')}</div></div>`; }
+
+  async function loadChart(tok) {
+    const box = document.getElementById('sqChart'); if (!box) return;
+    try {
+      let daily = []; try { daily = await fetchDaily(); } catch (e) { console.warn('[quality] verified daily data skipped', e); }
+      const modeBar = document.getElementById('sqMode');
+      if (modeBar) {
+        modeBar.style.display = daily.length ? '' : 'none';
+        modeBar.innerHTML = MODES().map(([m, l]) => `<button data-m="${m}" class="${Q.mode === m ? 'on' : ''}">${esc(l)}</button>`).join('');
+        modeBar.querySelectorAll('button').forEach(x => x.onclick = () => { Q.mode = x.dataset.m; Q.on = null; loadChart(Q.token); });
+      }
+      const ver = document.getElementById('sqVer'); if (ver && tok === Q.token) ver.innerHTML = verifiedSummary(daily);
+      const mode = daily.length ? Q.mode : 'col';
+      let bucket = mode === 'col' ? (spanDays() > 30 ? 'day' : 'hour') : 'day', rows = [], ser = null, extra = '';
+      if (mode === 'ver') {
+        rows = daily.map(d => ({ t: d.day + 'T00:00:00', pm10: d.pm10, pm25: d.pm25, so2: d.so2, no2: d.no2, o3d: d.o3_max8h }));
+        extra = tr(`${daily.length} dana validiranih podataka (SEPA)`, `${daily.length} days of validated data (SEPA)`);
+      } else {
+        // 'auto' keeps validated + collected on a day view, but short periods without validated data stay hourly
+        if (mode === 'auto' && !daily.length && spanDays() <= 30) bucket = 'hour';
+        rows = (await fetchQ('station_quality_series', { p_station: Q.id, ...range(), p_bucket: bucket })) || [];
+        if (mode === 'auto' && daily.length) { const m = mergeDaily(rows, daily); rows = m.rows; extra = tr(`${m.nVer} dana validirani podaci (SEPA), ${m.nCol} dana prikupljeni (satni) gde nema validiranih`, `${m.nVer} days validated (SEPA), ${m.nCol} days collected (hourly) where none validated`); }
+        else if (mode === 'both') { rows = mergeBoth(rows, daily); ser = serBoth(); extra = tr('✓ = validirani (puna linija), prik. = prikupljeni (isprekidano)', '✓ = validated (solid), coll. = collected (dashed)'); }
+      }
+      if (tok === Q.token) drawChart(box, rows, bucket, extra, ser);
+    } catch (e) {
+      if (tok === Q.token) box.innerHTML = `<div class="sq-note sq-bad">${tr('Greška pri računanju', 'Calculation failed')}: ${esc(e.message || e)}</div>`;
+    }
+  }
+
+  function drawChart(box, rows, bucket, extra, serIn) {
+    const SERX = serIn || SER;
+    const have = SERX.filter(([k]) => rows.some(r => r[k] != null));
+    if (!rows.length || !have.length) { box.innerHTML = `<div class="sq-note">${tr('Nema podataka za izabrani period.', 'No data for the selected period.')}</div>`; return; }
+    if (!Q.on) Q.on = Object.assign({}, SER_DEFAULT_ON);
+    if (!have.some(([k]) => Q.on[k])) have.slice(0, 3).forEach(([k]) => { Q.on[k] = 1; });   // never open on an empty chart
+    const W = 720, H = 260, L = 42, R = 10, T = 10, B = 24, step = bucket === 'hour' ? 3600000 : 86400000;
+    const pts = rows.map(r => ({ ms: new Date(r.t).getTime(), r }));
+    const t0 = pts[0].ms, t1 = pts[pts.length - 1].ms;
+    const X = ms => L + (t1 === t0 ? (W - L - R) / 2 : (ms - t0) / (t1 - t0) * (W - L - R));
+    box.innerHTML = `<div class="sq-legend">${have.map(([k, l, c]) => `<button type="button" data-k="${k}" class="${Q.on[k] ? 'on' : ''}"><i style="background:${c};${''}"></i>${l}</button>`).join('')}</div>
+      <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" class="sq-svg" role="img"></svg>
+      <div class="sq-tip" id="sqTip"></div>
+      <div class="sq-note">${bucket === 'hour' ? tr('Satne vrednosti', 'Hourly values') : tr('Dnevni proseci', 'Daily averages')} · µg/m³ · ${tr('prekid linije = nema merenja', 'broken line = no data')}${extra ? ' · ' + esc(extra) : ''}</div>`;
+    const svg = box.querySelector('svg'), tip = box.querySelector('#sqTip');
+    const fmtX = ms => new Date(ms).toLocaleDateString(loc(), (Q.days === 0 || spanDays() > 120) ? { day: '2-digit', month: '2-digit', year: '2-digit' } : { day: '2-digit', month: '2-digit' });
+
+    function paint() {
+      const vis = have.filter(([k]) => Q.on[k]);
+      let max = 0; vis.forEach(([k]) => pts.forEach(p => { const v = p.r[k]; if (v != null && +v > max) max = +v; }));
+      const top = niceMax(max || 10), Y = v => T + (H - T - B) * (1 - v / top);
+      let s = '';
+      for (let i = 0; i <= 4; i++) { const v = top * i / 4, y = Y(v); s += `<line x1="${L}" x2="${W - R}" y1="${y}" y2="${y}" class="sq-grid"/><text x="${L - 5}" y="${y + 3}" text-anchor="end" class="sq-ax">${fv(v)}</text>`; }
+      for (let i = 0; i <= 4; i++) { const ms = t0 + (t1 - t0) * i / 4; s += `<text x="${X(ms)}" y="${H - 6}" text-anchor="${i === 0 ? 'start' : i === 4 ? 'end' : 'middle'}" class="sq-ax">${fmtX(ms)}</text>`; }
+      vis.forEach(([k, , c, dash]) => {
+        let d = '', prev = null, run = 0;
+        pts.forEach(p => {
+          const v = p.r[k];
+          if (v == null) { if (run === 1) d += 'l.01 0'; prev = null; run = 0; return; }
+          const gap = prev == null || p.ms - prev > step * 1.5;
+          if (gap && run === 1) d += 'l.01 0';                      // a lone point is drawn as a dot
+          d += `${gap ? 'M' : 'L'}${X(p.ms).toFixed(1)} ${Y(+v).toFixed(1)}`;
+          run = gap ? 1 : run + 1; prev = p.ms;
+        });
+        if (run === 1) d += 'l.01 0';
+        s += `<path d="${d}" fill="none" stroke="${c}" stroke-width="1.6" ${dash ? `stroke-dasharray="${dash}"` : ''} stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>`;
+      });
+      // Source change (Automatic mode): dashed line where validated (SEPA) days switch to collected (hourly) days or back;
+      // each long enough stretch is labelled once, in its middle, so the labels never overlap
+      if (pts.some(p => p.r._ver) && pts.some(p => !p.r._ver)) {
+        const runs = []; let a = 0;
+        for (let i = 1; i <= pts.length; i++) if (i === pts.length || !!pts[i].r._ver !== !!pts[a].r._ver) { runs.push({ a, b: i - 1, ver: !!pts[a].r._ver }); a = i; }
+        const sw = runs.length - 1, lim = pts.length > 1 ? 1 : 0;
+        for (let k = 1; k < runs.length; k++) {
+          const x = X((pts[runs[k].a - 1].ms + pts[runs[k].a].ms) / 2);
+          s += `<line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${T}" y2="${H - B}" stroke="var(--text-secondary)" stroke-width="1.4" stroke-dasharray="5 3" vector-effect="non-scaling-stroke"/>`;
+        }
+        runs.forEach(r => {
+          const x0 = r.a === 0 ? L : X((pts[r.a - 1].ms + pts[r.a].ms) / 2), x1 = r.b === pts.length - 1 ? W - R : X((pts[r.b].ms + pts[r.b + 1].ms) / 2);
+          if (x1 - x0 < 70) return;
+          s += `<text x="${((x0 + x1) / 2).toFixed(1)}" y="${T + 12}" text-anchor="middle" class="sq-ax" style="font-weight:700;fill:var(--text-primary);paint-order:stroke;stroke:var(--bg-surface);stroke-width:3px;stroke-linejoin:round">${r.ver ? 'SEPA ✓' : tr('prikupljeno', 'collected')}</text>`;
+        });
+      }
+      s += '<line id="sqCur" y1="' + T + '" y2="' + (H - B) + '" class="sq-cur" style="display:none"/>';
+      svg.innerHTML = s;
+    }
+    function show(ev) {
+      const rc = svg.getBoundingClientRect(), px = (ev.touches ? ev.touches[0].clientX : ev.clientX) - rc.left, ms = t0 + (px / rc.width * W - L) / (W - L - R) * (t1 - t0);
+      let best = pts[0]; pts.forEach(p => { if (Math.abs(p.ms - ms) < Math.abs(best.ms - ms)) best = p; });
+      const cur = svg.querySelector('#sqCur'); cur.setAttribute('x1', X(best.ms)); cur.setAttribute('x2', X(best.ms)); cur.style.display = '';
+      tip.innerHTML = `<b>${new Date(best.ms).toLocaleString(loc(), bucket === 'hour' ? { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' } : { day: '2-digit', month: '2-digit', year: 'numeric' })}</b> ` +
+        have.filter(([k]) => Q.on[k]).map(([k, l, c]) => `<span><i style="background:${c}"></i>${l} ${fv(best.r[k])}</span>`).join('');
+    }
+    svg.addEventListener('pointermove', show); svg.addEventListener('pointerdown', show);
+    svg.addEventListener('pointerleave', () => { tip.textContent = ''; const c = svg.querySelector('#sqCur'); if (c) c.style.display = 'none'; });
+    box.querySelectorAll('.sq-legend button').forEach(b => b.onclick = () => {
+      const k = b.dataset.k; if (Q.on[k] && have.filter(([x]) => Q.on[x]).length === 1) return;   // keep at least one line
+      Q.on[k] = Q.on[k] ? 0 : 1; b.classList.toggle('on', !!Q.on[k]); paint();
+    });
+    paint();
+  }
+
   async function load() {
     ensureView(); bar_(); window.sqLast = null;
     const body = document.getElementById('sqBody'), tok = ++Q.token;
@@ -11050,7 +11247,7 @@ function alertMemberWind(manual, auto) {
     body.innerHTML = `<div class="sq-note">${tr('Računam…', 'Computing…')}</div>`;
     try {
       const q = await fetchQ('station_quality_detail', { p_station: Q.id, ...range() });
-      if (tok === Q.token) { body.innerHTML = renderOne(q); window.sqLast = { q, id: Q.id, name: Q.name, days: Q.days, verdict: q && q.expected_hours ? verdict(q) : null }; }   // read by the science CSV / PDF export
+      if (tok === Q.token) { const showChart = !!(q && q.expected_hours) || Q.days <= 0; body.innerHTML = renderOne(q) + (showChart ? chartShell() : ''); if (showChart) loadChart(tok); window.sqLast = { q, id: Q.id, name: Q.name, days: Q.days > 0 ? Q.days : 0, tag: Q.days === -1 ? (Q.from || 'start') + '_' + (Q.to || 'now') : null, verdict: q && q.expected_hours ? verdict(q) : null }; }   // read by the science CSV / PDF export
     } catch (e) {
       if (tok === Q.token) body.innerHTML = `<div class="sq-note sq-bad">${tr('Greška pri računanju', 'Calculation failed')}: ${esc(e.message || e)}</div>`;
     }
