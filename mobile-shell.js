@@ -812,7 +812,7 @@ function stopLiveAlerts() {
 
 async function onLiveReport(rep) {
   const p = getAlertPrefs();
-  if (!p.on || !rep) return;
+  if (!p.on || !rep || isTestReport(rep)) return;   // TEST reports never trigger alerts
   const c = buildAlertCluster(rep);
   if (!c) return;
   let me; try { me = await getAlertLocation(); } catch (e) { return; }

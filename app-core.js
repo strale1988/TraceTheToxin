@@ -9,6 +9,10 @@
 const TT_CFG = Object.assign({ platform: 'mobile', lsPrefix: 'ttt_' }, window.TT_CFG || {});
 const TT_SCIENCE = TT_CFG.platform === 'science' || TT_CFG.platform === 'desktop';
 const TT_LS = TT_CFG.lsPrefix;
+/* TEST reports: science marks them with '[TEST] ' at the start of the comment. That survives any server function unchanged,
+   so it needs no database column. The mobile app never shows them; science shows them with an orange TEST badge. */
+const TT_TEST_PREFIX = '[TEST] ';
+function isTestReport(r) { return !!r && (r.is_test === true || /^\s*\[TEST\]/i.test(r.comment || '')); }
 const TT_HOOKS = (window.TT_HOOKS = window.TT_HOOKS || {});
 function ttOn(name, fn) { (TT_HOOKS[name] = TT_HOOKS[name] || []).push(fn); }
 function ttHook(name, ...args) {
@@ -31,64 +35,6 @@ function validateRange(input) {
     if (val > 360) input.value = 360;
   }
   checkWizSubmitReady();
-}
-
-function nowRoundedToQuarterHour() {
-  const now = new Date();
-  const mins = now.getMinutes();
-  now.setMinutes(Math.round(mins / 15) * 15);
-  return now.toTimeString().slice(0, 5);
-}
-
-/* ═══════════════════════════════════════════════════
-   SPAM PROTECTION — max 1 report per device per hour
-═══════════════════════════════════════════════════ */
-const REPORT_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes
-const REPORT_COOLDOWN_KEY = (TT_LS + 'last_report_ts');
-
-function getReportCooldownRemainingMs() {
-  try {
-    const last = parseInt(localStorage.getItem(REPORT_COOLDOWN_KEY), 10) || 0;
-    const remaining = REPORT_COOLDOWN_MS - (Date.now() - last);
-    return remaining > 0 ? remaining : 0;
-  } catch (e) { return 0; } // localStorage unavailable — fail open
-}
-
-function markReportSubmittedNow() {
-  try { localStorage.setItem(REPORT_COOLDOWN_KEY, Date.now().toString()); } catch (e) {}
-  ttReportRequestId = null;   // delivered: the next report gets a new id
-}
-
-/* ═══════════════════════════════════════════════════
-   NEAR-DUPLICATE REPORTS (anonymous app: no reporter id)
-   Several reports from nearly the same spot within an hour are almost always one person pressing the button
-   repeatedly. They stay in the database and on the map, but ANALYSIS (source tracing, source estimate, area
-   statistics) counts them once, so a burst cannot pull a trace towards itself or look like independent evidence.
-   Greedy by time: a report is a duplicate if a kept report lies within TT_DEDUPE_KM and TT_DEDUPE_MS before it.
-═══════════════════════════════════════════════════ */
-const TT_DEDUPE_KM = 0.15;
-const TT_DEDUPE_MS = 60 * 60 * 1000;
-function ttDedupeReports(reports) {
-  if (!reports || reports.length < 2) return reports || [];
-  const rows = [], rest = [];
-  reports.forEach(r => {
-    const la = parseFloat(r.latitude), lo = parseFloat(r.longitude), ts = Date.parse(r.created_at);
-    if (r.spam_score >= 2) return;                       // flagged by the server (see server/submit-report): never independent evidence
-    if (!isFinite(la) || !isFinite(lo) || !isFinite(ts)) rest.push(r); else rows.push({ r, la, lo, ts });
-  });
-  rows.sort((a, b) => a.ts - b.ts);
-  const kept = [], keepSet = new Set();
-  rows.forEach(c => {
-    let dup = false;
-    for (let i = kept.length - 1; i >= 0 && c.ts - kept[i].ts <= TT_DEDUPE_MS; i--) {
-      const k = kept[i];
-      const dLat = (c.la - k.la) * 111.32, dLon = (c.lo - k.lo) * 111.32 * Math.cos(c.la * Math.PI / 180);
-      if (Math.hypot(dLat, dLon) <= TT_DEDUPE_KM) { dup = true; break; }
-    }
-    if (!dup) { kept.push(c); keepSet.add(c.r); }
-  });
-  // keep the caller's original order
-  return reports.filter(r => keepSet.has(r) || rest.includes(r));
 }
 
 /* Random per-browser id sent with each report. Not security (clearing storage makes a new one); it only catches the
@@ -284,10 +230,6 @@ function renderWizDetailsStep() {
     <h3 class="wiz-step-title">${t('wizDetailsTitle')}</h3>
     <div class="wiz-details-three-col">
       <div class="wiz-details-row">
-        <label>${t('wizTimeLabel')}</label>
-        <input type="time" id="reportTime" value="${nowRoundedToQuarterHour()}" oninput="checkWizSubmitReady()">
-      </div>
-      <div class="wiz-details-row">
         <label>${t('windDirPH')}</label>
         <input type="number" id="manualWind" min="0" max="360" placeholder="0-360" value="270"
                oninput="onManualWindChange()" onblur="validateRange(this)">
@@ -324,6 +266,10 @@ function renderWizDetailsStep() {
       <input type="text" id="comment" placeholder="${t('commentPH')}">
     </div>
     <div class="wiz-details-row" id="wizLocationHint" style="font-size:12px;color:var(--text-secondary);"></div>
+    ${TT_SCIENCE ? `<label class="wiz-details-row wiz-test-row" style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
+      <input type="checkbox" id="wizTestToggle" ${wizState.isTest ? 'checked' : ''} onchange="wizState.isTest = this.checked">
+      <span><b>${t('wizTestLabel')}</b><br><span style="font-size:11px;color:var(--text-secondary);">${t('wizTestHint')}</span></span>
+    </label>` : ''}
     <div class="wiz-anon-note">
       <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
       <span>${t('anonNote')}</span>
@@ -484,15 +430,13 @@ function setupCompassDrag() {
 function checkWizSubmitReady() {
   const btn = document.getElementById('wizSubmitBtn');
   if (!btn) return;
-  const timeEl = document.getElementById('reportTime');
   const windEl = document.getElementById('manualWind');
   const durEl  = document.getElementById('duration');
-  const time = timeEl ? timeEl.value : '';
   const wind = windEl ? windEl.value : '';
   const windVal = parseFloat(wind);
   const isWindValid = wind !== '' && windVal >= 0 && windVal <= 360;
   const hasLoc = !!(userCoords || manualCoords);
-  btn.disabled = !(time && isWindValid && hasLoc);
+  btn.disabled = !(isWindValid && hasLoc);
   const hintEl = document.getElementById('wizLocationHint');
   if (hintEl) hintEl.textContent = hasLoc ? '' : t('wizNoLocationHint');
 }
@@ -1249,7 +1193,15 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
    and paste it below. Without a real key the button will still appear but
    will show a message instead of data when tapped.
 ═══════════════════════════════════════════════════ */
-const FIRMS_MAP_KEY = 'dbd760ed261d410dc37484ddf2bede12';
+// The real NASA FIRMS key now lives only in the Supabase secret FIRMS_MAP_KEY and is used by the edge function firms-proxy
+// (which also caches the answers). This constant is only a non-empty marker so existing "is a key set?" checks keep passing.
+const FIRMS_MAP_KEY = 'via-firms-proxy';
+const FIRMS_PROXY_URL = SUPABASE_URL + '/functions/v1/firms-proxy';
+// kind 'area': { src, bbox, days, date? }   kind 'availability': {}
+function firmsFetch(kind, params, init) {
+  const qs = new URLSearchParams(Object.assign({ kind }, params || {}));
+  return fetch(FIRMS_PROXY_URL + '?' + qs.toString(), Object.assign({}, init, { headers: { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY } }));
+}
 // Query every satellite/sensor FIRMS offers near-real-time data for, not
 // just one -- a fire can be picked up by one pass and missed by another
 // (different satellites cross the same spot at different times), so
@@ -1409,6 +1361,9 @@ const T = {
   wizDetailsTitle:   { en:'Add the details',             sr:'Dodajte detalje' },
   wizContinue:       { en:'Continue',                    sr:'Nastavi' },
   wizTimeLabel:      { en:'Time noticed',                sr:'Vreme zapažanja' },
+  wizTestLabel:      { en:'TEST report', sr:'TEST prijava' },
+  wizTestHint:       { en:'The comment gets a [TEST] tag. Only visible in the science app.', sr:'Komentar dobija oznaku [TEST]. Vidljiva samo u science aplikaciji.' },
+  testBadge:         { en:'TEST', sr:'TEST' },
   wizNoLocationHint: { en:'Waiting for GPS — or drop a pin manually on the map.', sr:'Čekanje GPS-a — ili ručno postavite pin na mapi.' },
   cooldownActive:    { en:'You can submit one report every 30 minutes from this device. Please try again in {n} min.', sr:'Sa ovog uređaja možete poslati jednu prijavu na svakih 30 minuta. Pokušajte ponovo za {n} min.' },
 
@@ -2840,6 +2795,23 @@ function bucketReportsByRange(reports, rng) {
 // Reports within radiusKm of a point (straight-line, NOT wind-trace matched --
 // see filterPinsBySourceTrajectory for that) that fall inside the on-map
 // filter's date range. Reads from globalActiveData.
+// Near-duplicates (same ~150 m, same hour) count as one observation.
+function ttDedupeReports(reports, radiusKm = 0.15) {
+  if (!Array.isArray(reports) || reports.length < 2) return reports || [];
+  const sorted = reports.slice().sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+  const byHour = new Map(), out = [];
+  for (const r of sorted) {
+    const lat = parseFloat(r.latitude), lon = parseFloat(r.longitude);
+    if (!isFinite(lat) || !isFinite(lon)) { out.push(r); continue; }
+    const h = Math.floor(new Date(r.created_at).getTime() / 3600000);
+    const kept = byHour.get(h) || [];
+    if (kept.some(k => getHaversineDistance(lat, lon, k.lat, k.lon) <= radiusKm)) continue;
+    kept.push({ lat, lon });
+    byHour.set(h, kept);
+    out.push(r);
+  }
+  return out;
+}
 function reportsNearPoint(lat, lon, radiusKm = NEARBY_REPORTS_RADIUS_KM, opts = {}) {
   if (!globalActiveData?.length) return [];
   const { start, end } = opts.rng || mapFilterRange();
@@ -3175,13 +3147,18 @@ function makeDotIcon(catColor) {
 }
 
 // Picks the right icon for a report given the map's current zoom level.
+function ttTestBadge(icon, report) {
+  if (!TT_SCIENCE || !isTestReport(report) || !icon || !icon.options) return icon;
+  icon.options.html = (icon.options.html || '') + '<span style="position:absolute;left:50%;top:-15px;transform:translateX(-50%);background:#f5a623;color:#111;font:700 9px/1 sans-serif;padding:2px 5px;border-radius:4px;border:1px solid #111;white-space:nowrap;pointer-events:none;box-shadow:0 1px 3px rgba(0,0,0,.5);">TEST</span>';
+  return icon;
+}
 function pickReportIcon(report) {
   const catCol = categoryColor(report.category);
   if (map.getZoom() < REPORT_DOT_ZOOM_THRESHOLD) {
-    return makeDotIcon(catCol);
+    return ttTestBadge(makeDotIcon(catCol), report);
   }
   const color = ageColor(report.created_at);
-  return makeIcon(color, report.manual_wind_direction ?? report.wind_direction, catCol, report.category, report.wind_speed);
+  return ttTestBadge(makeIcon(color, report.manual_wind_direction ?? report.wind_direction, catCol, report.category, report.wind_speed), report);
 }
 
 // Small diamond marker for government AQ stations — visually distinct
@@ -3263,7 +3240,7 @@ function ppRenderDetail() {
   const keep = body.scrollTop;
   const clone = pp.cloneNode(true);
   clone.classList.add('pp-full');
-  clone.querySelectorAll('.pp-head, .pp-detail-btn').forEach(n => n.remove());
+  clone.querySelectorAll('.pp-head, .pp-detail-btn, .hh-open-btn').forEach(n => n.remove());   // heat history loads by itself under the details
   if (pp.dataset.ppLat) {   // source popup: the full wind-match card exists only in Detalji
     const tr = tracedReportsForPoint(+pp.dataset.ppLat, +pp.dataset.ppLon);
     clone.querySelectorAll('.src-confirm').forEach(n => n.remove());   // the card has this line itself
@@ -3275,6 +3252,7 @@ function ppRenderDetail() {
   document.getElementById('ppdSub').textContent = pp.dataset.ppSub || '';
   document.getElementById('ppdBackTxt').textContent = t('ppBack');
   body.replaceChildren(clone);
+  if (typeof hhState !== 'undefined' && hhState && hhState.inline) hhRenderSheet();   // the heat-history section lives under the details: put it back
   body.scrollTop = keep;
 }
 // A factory / chimney popup only shows the basics. Its hourly wind panel is filled in here, when the person
@@ -3303,11 +3281,15 @@ function ppOpenDetail(btn) {
   ppObs = new MutationObserver(() => { clearTimeout(ppTimer); ppTimer = setTimeout(ppRenderDetail, 80); });
   ppObs.observe(content, { childList: true, subtree: true, characterData: true });
   ppLoadLazyPlume(content);
+  // factory / chimney / fire popups: load the satellite heat history under the details right away (no extra button)
+  const hb = content.querySelector('.hh-open-btn');
+  if (hb) { try { hb.click(); } catch (e) {} }
 }
 function ppHide() {
   if (ppObs) { ppObs.disconnect(); ppObs = null; }
   ppIsOpen = false; ppSrc = null; window.ppSubView = null;
   document.getElementById('ppDetail').classList.remove('open');
+  try { if (hhState && hhState.inline) closeHeatHistory(); } catch (e) {}   // the inline heat history belongs to the details window
 }
 function ppCloseDetail() {
   if (!ppIsOpen) return;
@@ -3317,10 +3299,7 @@ function ppCloseDetail() {
 }
 window.addEventListener('popstate', () => { if (ppIsOpen) ppHide(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && ppIsOpen) ppCloseDetail(); });
-// buttons inside the details view that open other panels (e.g. heat history) must leave the overlay first
-document.getElementById('ppDetail').addEventListener('click', e => {
-  if (e.target.closest('.hh-open-btn')) ppCloseDetail();
-}, true);
+// the heat-history button inside the details view no longer leaves the overlay: openHeatHistory() loads it under the details (hhState.inline)
 
 function buildStationPopupHtml(station, reading) {
   const color = reading ? aqiColor(reading.category) : '#9e9e9e';
@@ -3896,7 +3875,7 @@ async function buildSourceModelPaths(report) {
   for (let k = 1; k <= 12; k++) {
     const tRel = tR - k * 3600000;
     if (tRel < ms[0]) break;
-    const pts = advectParcel(b.a, b.o, tRel, tR + 3600000, sh, { mode, stepMin: 12 });
+    const pts = advectParcel(b.a, b.o, tRel, tR + 3600000, sh, { mode, stepMin: 12, src: b });
     if (!pts || pts.length < 2) continue;
     const col = traceGradientColor(SRC_PATH_STOPS, (k - 1) / 11);
     try { const band = forecastBandPolygon(pts, PLUME_DEFAULT_SD_DEG, { fillColor: col, fillOpacity: 0.05 }); band.addTo(map); out.push(band); } catch (e) {}
@@ -4343,7 +4322,11 @@ const ANCHOR_MAX_TRAVEL_H = 8, ANCHOR_STEP_MIN = 10;
 // explains by a known source (the two-leg path from buildAnchoredTrail ends within the uncertainty band of it), the
 // line is that source-to-report wind history: stack-height wind to the touchdown, then near-surface wind. Reports the
 // source does not explain keep the plain backward trail. Only the small remaining miss is bent onto the report.
-const DRAW_ANCHORED_TRAILS = true;
+// DISPLAY CHOICE: false (current). The map lines are each report's own backward wind history, starting AT the report and
+// running upwind. They are not drawn from the chimney, so the picture does not presuppose that a known source is the origin.
+// Source attribution, the fit, the Trace panel and the explicit "explain source" view still use the anchored model.
+// Set back to true to draw chimney-to-report paths for reports the model attributes to a known source.
+const DRAW_ANCHORED_TRAILS = false;
 async function buildAnchoredTrail(report, att) {
   const b = att.b, lat = parseFloat(report.latitude), lon = parseFloat(report.longitude), tR = Date.parse(report.created_at);
   if (!isFinite(lat) || !isFinite(lon) || !isFinite(tR)) return null;
@@ -4363,6 +4346,7 @@ async function buildAnchoredTrail(report, att) {
   // where the plume is taken to reach the ground (null = no touchdown needed) and the range among near-equal fits
   let touchdown = null;
   if (best.dMin != null) { const tT = best.tr + best.dMin * 60000, q = best.pts.find(p => p.tMs >= tT - 1) || null; if (q) touchdown = { lat: q.lat, lon: q.lon, tMs: q.tMs, minutes: best.dMin }; }
+  else if (best.pts.terrainTouch) { const q = best.pts.terrainTouch; touchdown = { lat: q.lat, lon: q.lon, tMs: q.tMs, minutes: Math.round((q.tMs - best.tr) / 60000), terrain: true }; }
   const dms = fit.members.map(m => m.dMin == null ? Infinity : m.dMin);
   const tdRange = dms.some(v => v !== Infinity) ? [Math.min(...dms), Math.max(...dms.filter(v => v !== Infinity))] : null;
   return { rawTrail, spline: smoothPathChaikin(rawTrail, 2), calAt: plumeCal.at, anchored: true, srcName: b.n, bandPts, sd, touchdown,
@@ -5717,15 +5701,13 @@ async function loadWildfireData(silent, radiusKm) {
   try {
     const { lat, lon } = activeWizLocation();
     const bbox = computeWildfireBbox(lat, lon, radius);
-    const urls = WILDFIRE_SOURCES.map(src =>
-      `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${FIRMS_MAP_KEY}/${src}/${bbox}/${WILDFIRE_DAY_RANGE}`
-    );
+    // one request per satellite source, through the firms-proxy edge function (it holds the key and caches)
     // Fetched together: FIRMS for the fire points themselves (one request
     // per satellite source, merged below), Open-Meteo for a center-point
     // wind reading used as the fallback for any fire whose own grid cell
     // doesn't get its own lookup (see fetchWildfireWindByCell).
     const [sourceResults, centerWind] = await Promise.all([
-      Promise.allSettled(urls.map(u => fetch(u).then(async res => {
+      Promise.allSettled(WILDFIRE_SOURCES.map(src => firmsFetch('area', { src, bbox, days: WILDFIRE_DAY_RANGE }).then(async res => {
         if (!res.ok) throw new Error('HTTP ' + res.status);
         return res.text();
       }))),
@@ -6304,11 +6286,11 @@ function hhPopupExtraHtml(flat, flon) {
 const HH_DAYS = 730;
 const HH_CHUNK_DAYS = 5;            // FIRMS Area API max days per request
 const HH_MAX_RADIUS_KM = 5;         // fetch box = largest radius option; smaller radii filter client-side
-const HH_DEFAULT_RADIUS_KM = TT_CFG.hhRadiusKm || 1.5;
+const HH_DEFAULT_RADIUS_KM = 5;   // always 5 km when a factory / chimney / fire dot is opened (the chips still let you narrow it)
 const HH_CONCURRENCY = 6;
 const HH_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
 const HH_CACHE_INDEX_KEY = (TT_LS + 'hh_index_v1');
-const HH_CACHE_MAX_SITES = 12;
+const HH_CACHE_MAX_SITES = 40;   // sites kept in localStorage (oldest dropped first, or sooner if the quota is hit)
 // VIIRS only (375 m). MODIS' 1 km pixels are too coarse to say anything
 // about a single plant. There is no NOAA-21 archive (SP) product yet, so
 // NOAA-21 only contributes through its recent NRT window.
@@ -6325,7 +6307,7 @@ function hhDaysBetween(a, b) { return Math.round((new Date(b + 'T00:00:00Z') - n
 
 async function hhFetchAvailability(signal) {
   try {
-    const res = await fetch(`https://firms.modaps.eosdis.nasa.gov/api/data_availability/csv/${FIRMS_MAP_KEY}/ALL`, { signal });
+    const res = await firmsFetch('availability', {}, { signal });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const lines = (await res.text()).trim().split('\n').map(l => l.trim()).filter(Boolean);
     const head = lines[0].split(',').map(h => h.trim());
@@ -6367,11 +6349,10 @@ async function hhRunRequests(reqs, bbox, signal, onProgress) {
     while (idx < reqs.length) {
       if (signal.aborted) return;
       const r = reqs[idx++];
-      const url = `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${FIRMS_MAP_KEY}/${r.src}/${bbox}/${r.len}/${r.date}`;
       let text = null;
       for (let attempt = 0; attempt < 2 && text === null; attempt++) {
         try {
-          const res = await fetch(url, { signal });
+          const res = await firmsFetch('area', { src: r.src, bbox, days: r.len, date: r.date }, { signal });
           if (!res.ok) throw new Error('HTTP ' + res.status);
           const body = await res.text();
           // A good reply is empty or starts with the CSV header; anything
@@ -6510,15 +6491,19 @@ function hhHeatBuckets(points, rng) {
    HH_REFRESH_DAYS days; a request for older days than the cache holds fetches only the missing older part. */
 const HH_REFRESH_DAYS = 3;
 function hhCacheKey(lat, lon) { return `${TT_LS}hh_v3:${lat.toFixed(4)},${lon.toFixed(4)}`; }
+const hhMem = new Map();   // parsed cache entries: a site opened again in the same session is not re-read / re-parsed
 function hhCacheRaw(lat, lon) {
+  const k = hhCacheKey(lat, lon);
+  if (hhMem.has(k)) return hhMem.get(k);
   try {
-    const c = JSON.parse(localStorage.getItem(hhCacheKey(lat, lon)) || 'null');
-    if (c && c.v === 3 && Array.isArray(c.r) && c.from && c.to) return c;
+    const c = JSON.parse(localStorage.getItem(k) || 'null');
+    if (c && c.v === 3 && Array.isArray(c.r) && c.from && c.to) { hhMem.set(k, c); return c; }
   } catch (e) {}
   return null;
 }
 function hhCachePut(lat, lon, entry) {
   const key = hhCacheKey(lat, lon);
+  hhMem.set(key, Object.assign({ v: 3 }, entry));   // kept in memory even if localStorage is full
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       let idx = JSON.parse(localStorage.getItem(HH_CACHE_INDEX_KEY) || '[]').filter(k => k !== key);
@@ -6577,7 +6562,7 @@ function hhColorForDays(n) { return n >= 30 ? '#7f0000' : n >= 10 ? '#d84315' : 
 
 function hhRenderMap() {
   if (hhLayer) { map.removeLayer(hhLayer); hhLayer = null; }
-  if (!hhState) return;
+  if (!hhState || hhState.inline) return;   // inline (in Detalji): the map is covered, nothing to draw
   const { lat, lon, radiusKm, analysis } = hhState;
   hhLayer = L.layerGroup();
   L.circle([lat, lon], { radius: radiusKm * 1000, color: '#00e5ff', weight: 1.5, dashArray: '6 6', fillColor: '#00e5ff', fillOpacity: 0.04, interactive: false }).addTo(hhLayer);
@@ -6629,7 +6614,7 @@ function hhCompareHtml(s, rng, nearList, trHere, a) {
   const labels = near.buckets.map(b => b.label);
   const rows = [];
   if (a) rows.push({ name: t(daily ? 'hhHeatDetections' : 'hhHeatDaysRow'), vals: hhHeatBuckets(a.points, win).map(b => b.n), cls: 'hh-bar', color: '#d84315' });
-  const paper = near.buckets.map(b => !TT_CFG.noPaperGrey && b.ts < APP_DATA_START_TS);   // satellite data is never "paper"
+  const paper = near.buckets.map(() => false);   // no grey "paper" buckets any more: every bucket is drawn in its own colour (and no legend note)
   rows.push({ name: `${t('hhNearbyRow')} (${s.radiusKm} km)`, vals: near.buckets.map(b => b.n), cls: 'hh-bar-reports', color: '#00acc1', paper: true });
   if (trHere) rows.push({ name: t('hhTracedRow'), vals: bucketReportsByRange(trHere.reports, win).buckets.map(b => b.n), cls: 'hh-bar-traced', color: '#8e24aa', paper: true });
   s.cmp = { labels, paper, daily, ts: near.buckets.map(b => b.ts), rows: rows.map(r => ({ name: r.name, vals: r.vals, paper: !!r.paper })) };
@@ -6689,7 +6674,7 @@ function hhCmpReadout() {
 function hhCmpPick(i) {
   if (!hhState || !hhState.cmp) return;
   hhState.pick = hhState.pick === i ? null : i;
-  document.querySelectorAll('#hhSheet .hh-bar-col[data-i]').forEach(c =>
+  document.querySelectorAll('#hhSheet .hh-bar-col[data-i], #hhInline .hh-bar-col[data-i]').forEach(c =>
     c.classList.toggle('sel', hhState.pick != null && +c.dataset.i === hhState.pick));
   const rd = document.getElementById('hhCmpRead');
   if (rd) rd.innerHTML = hhCmpReadout();
@@ -6715,9 +6700,20 @@ function hhCmpZoomStep(dir) {
   hhRenderSheet();
 }
 
+// Opened from Detalji: the heat history is drawn UNDER the details (inside #ppdBody) instead of in the bottom sheet.
+function hhHost(s) {
+  if (!s.inline) return document.getElementById('hhSheet');
+  const body = document.getElementById('ppdBody');
+  if (!body) return null;
+  let h = document.getElementById('hhInline');
+  if (!h) { h = document.createElement('div'); h.id = 'hhInline'; h.className = 'hh-inline'; }
+  if (h.parentNode !== body) body.appendChild(h);   // ppRenderDetail rebuilds the body: put the section back
+  return h;
+}
 function hhRenderSheet() {
-  const el = document.getElementById('hhSheet');
-  if (!el || !hhState) return;
+  if (!hhState) return;
+  const el = hhHost(hhState);
+  if (!el) return;
   const s = hhState;
   const chips = [0.5, 1.5, 3, 5].map(km =>
     `<button type="button" class="hh-chip${km === s.radiusKm ? ' on' : ''}" ${s.status === 'done' ? '' : 'disabled'} onclick="hhSetRadius(${km})">${km} km</button>`).join('');
@@ -6763,6 +6759,15 @@ function hhRenderSheet() {
       <div class="hh-legend"><span><i style="background:#ffca28"></i>1–2</span><span><i style="background:#f57c00"></i>3–9</span><span><i style="background:#d84315"></i>10–29</span><span><i style="background:#7f0000"></i>30+ ${t('hhDaysUnit')}</span></div>
       <label class="hh-check"><input type="checkbox" ${s.includeLow ? 'checked' : ''} onchange="hhSetIncludeLow(this.checked)"> ${t('hhIncludeLow')}</label>
       <div class="hh-caveat">${t('hhCaveat')}</div>${ttHookHtml('hhSheetExtra')}`;
+  }
+  if (s.inline) {
+    const scrollBox = document.getElementById('ppdBody'), keepIn = scrollBox ? scrollBox.scrollTop : 0;
+    el.innerHTML = `
+      <div class="hh-inline-title">${t('hhOpenBtn')}</div>
+      <div class="hh-chips"><span class="hh-muted" style="margin-right:4px;">${t('hhRadius')}</span>${chips}</div>
+      ${body}`;
+    if (scrollBox) scrollBox.scrollTop = keepIn;
+    return;
   }
   el.classList.toggle('collapsed', !!s.collapsed);
   const keepScroll = el.scrollTop;   // zoom re-renders in place; don't jump back to the top
@@ -6817,7 +6822,7 @@ function hhSetRadius(km) { if (!hhState || hhState.status !== 'done') return; hh
 function hhSetIncludeLow(v) { if (!hhState || hhState.status !== 'done') return; hhState.includeLow = !!v; hhRecompute(); }
 
 function fitHeatHistory() {
-  if (!hhState) return;
+  if (!hhState || hhState.inline) return;
   const b = L.latLng(hhState.lat, hhState.lon).toBounds(hhState.radiusKm * 2400);
   const sheetH = (document.getElementById('hhSheet')?.offsetHeight || 0) + 20;
   map.fitBounds(b, { paddingBottomRight: [10, TT_SCIENCE ? 10 : sheetH], paddingTopLeft: [10, TT_SCIENCE ? 20 : 90], maxZoom: 16, animate: true });
@@ -6825,14 +6830,15 @@ function fitHeatHistory() {
 
 async function openHeatHistory(lat, lon, name) {
   if (hhState?.abort) hhState.abort.abort();
-  map.closePopup();
+  const inline = !!ppIsOpen;   // started from the Detalji window -> load it there, below the details
+  if (!inline) map.closePopup();
   const abort = new AbortController();
   const todayStr = hhDateStr(new Date());
   const startStr = hhAddDays(todayStr, -(HH_DAYS - 1));
   // Without a NASA key the sheet still opens with the community-report
   // details; only the satellite section says it's unavailable.
   const noKey = !FIRMS_MAP_KEY || FIRMS_MAP_KEY === 'YOUR_FIRMS_MAP_KEY_HERE';
-  hhState = { lat, lon, name, radiusKm: HH_DEFAULT_RADIUS_KM, includeLow: false, status: noKey ? 'nokey' : 'loading', rows: null, analysis: null, failed: 0, abort, todayStr, startStr, pct: 0 };
+  hhState = { inline, lat, lon, name, radiusKm: HH_DEFAULT_RADIUS_KM, includeLow: false, status: noKey ? 'nokey' : 'loading', rows: null, analysis: null, failed: 0, abort, todayStr, startStr, pct: 0 };
   hhRenderSheet();
   hhRenderMap();
   fitHeatHistory();
@@ -6870,6 +6876,8 @@ function closeHeatHistory() {
   if (hhLayer) { map.removeLayer(hhLayer); hhLayer = null; }
   const el = document.getElementById('hhSheet');
   if (el) { el.style.display = 'none'; el.innerHTML = ''; }
+  const hi = document.getElementById('hhInline');
+  if (hi) hi.remove();
 }
 
 // Keep the sheet's own taps/scrolls from reaching the map underneath.
@@ -7028,6 +7036,7 @@ function buildReportPopupHtml(report, stationSectionHtml, windSectionHtml) {
     ? Math.round(report.stability.blh_m) + ' m · ' + t('mix_' + (report.stability.cls || 'moderate')) + (report.stability.wet ? ' · ' + t('mixRain') : '')
     : '–';
   const body = `
+    ${isTestReport(report) ? `<div style="display:inline-block;margin-bottom:4px;padding:1px 7px;border-radius:999px;background:#f5a623;color:#111;font-size:10px;font-weight:700;">${t('testBadge')}</div>` : ''}
     ${ppRow(t('popupInt'), `${report.intensity}/10`)}
     ${ppRow(t('popupDuration'), `${report.duration || 1}${t('hours')}`)}
     ${ppDivider()}
@@ -7431,10 +7440,16 @@ function rotateWindVec(w, deg) {
       surface leg (ground mode) gets the full set.
 ═══════════════════════════════════════════════════ */
 let PHYS_ENABLED = true;
+let TD_NIGHT_ONLY = false;   // with TD_PHYS: physical touchdown only when the layer is stable (night); by day the legacy free delays stay
+let TD_EXTRA_DELAYS = false;  // with TD_PHYS: the legacy fixed delays (15-120 min) are tried as extra candidates beside the physical ones
+let TD_PHYS = false;   // physical touchdown (sigma-z / mixing lid) instead of free touchdown delays in anchoredFitTwoLeg. Off until the A/B study supports it.
 let PHYS_SLOPE_FULL_DEG = 3, PHYS_BLOCK_K = 0.5, PHYS_DRAIN_MS = 1.5, PHYS_ANAB_MS = 1.0, PHYS_CHANNEL_K = 0.5;
+let FINE_TERRAIN_ENABLED = true;   // 1 km DEM + plume-terrain contact + dividing streamline (see 'fine terrain' block). false = previous behaviour.
+let FINE_CLEAR_M = 30;             // plume centre closer than this to the ground counts as touching the surface (a-priori assumption, not tuned)
+let TL_PHYS_FACTORS = [0.6, 1, 1.6], TL_PHYS_PENALTY_KM = 1.0;   // touchdown distance tried as x factors of the physical estimate; km of penalty per e-fold of departure from it (settable: tdf / tdp)
 let PHYS_BASE_ERR_DEG = 22;     // direction error of the wind data in neutral, windy air (measured episode scatter was ~25 deg in total)
 const PHYS_PARAMS_KEY = (TT_LS + 'phys_params_v1');
-function physParamsGet() { return { enabled: PHYS_ENABLED, block: PHYS_BLOCK_K, drain: PHYS_DRAIN_MS, anab: PHYS_ANAB_MS, channel: PHYS_CHANNEL_K, base: PHYS_BASE_ERR_DEG }; }
+function physParamsGet() { return { ...(TD_PHYS ? { td: 1 } : {}), ...(TD_NIGHT_ONLY ? { tdn: 1 } : {}), ...(TD_EXTRA_DELAYS ? { tdx: 1 } : {}), tdf: TL_PHYS_FACTORS.slice(), tdp: TL_PHYS_PENALTY_KM, enabled: PHYS_ENABLED, block: PHYS_BLOCK_K, drain: PHYS_DRAIN_MS, anab: PHYS_ANAB_MS, channel: PHYS_CHANNEL_K, base: PHYS_BASE_ERR_DEG, fine: FINE_TERRAIN_ENABLED, clear: FINE_CLEAR_M }; }
 function physParamsSet(p) {
   if (!p) return;
   if (p.enabled != null) PHYS_ENABLED = !!p.enabled;
@@ -7443,7 +7458,16 @@ function physParamsSet(p) {
   if (p.anab != null) PHYS_ANAB_MS = +p.anab;
   if (p.channel != null) PHYS_CHANNEL_K = +p.channel;
   if (p.base != null) PHYS_BASE_ERR_DEG = +p.base;
+  if (p.fine != null) FINE_TERRAIN_ENABLED = !!p.fine;
+  if (p.clear != null) FINE_CLEAR_M = +p.clear;
+  if (Array.isArray(p.tdf) && p.tdf.length) TL_PHYS_FACTORS = p.tdf.map(Number);
+  if (p.tdp != null) TL_PHYS_PENALTY_KM = +p.tdp;
+  if (p.tdn != null) TD_NIGHT_ONLY = !!p.tdn;
+  if (p.tdx != null) TD_EXTRA_DELAYS = !!p.tdx;
+  if (p.td != null || p.tdn != null || p.tdx != null) { if (p.td != null) TD_PHYS = !!p.td; try { TT_MODEL_VERSION = TT_MODEL_BASE + tdVersionTag(); ttFlushFitCaches(); } catch (e) {} }
 }
+function tdVersionTag() { return TD_PHYS ? '+td1' + (TD_NIGHT_ONLY ? 'n' : '') + (TD_EXTRA_DELAYS ? 'x' : '') : ''; }
+function ttFlushFitCaches() { try { Object.keys(fitAttribCache).forEach(k => delete fitAttribCache[k]); Object.keys(windTrailCache).forEach(k => delete windTrailCache[k]); fitStore.clear(); fitBlobs.clear(); } catch (e) {} }
 try { const sp = JSON.parse(localStorage.getItem(PHYS_PARAMS_KEY) || 'null'); if (sp && sp.v === 1) physParamsSet(sp.p); } catch (e) {}
 const PHYS_N_BY_CLASS = [0, 0, 0.005, 0.010, 0.022, 0.030, 0.030];   // Brunt-Vaisala frequency (1/s) by class A..G
 const PLUME_MAX_INFORMATIVE_SD_DEG = 40, PLUME_MIN_INFORMATIVE_MS = 0.8;
@@ -7506,6 +7530,32 @@ function stabClassAt(h, tMs, lat, lon) {
 function briggsSigmaYKm(xKm, cls) {
   const x = Math.max(xKm, 0.05) * 1000;
   return BRIGGS_SY[Math.min(Math.max(cls, 1), 7) - 1] * x / Math.sqrt(1 + 0.0001 * x) / 1000;
+}
+// Vertical spread (m) of the plume after xKm, Briggs open-country (same family as BRIGGS_SY), classes A..G (G uses the F curve).
+function briggsSigmaZm(xKm, cls) {
+  const x = Math.max(xKm, 0.01) * 1000, c = Math.min(Math.max(cls, 1), 7);
+  switch (c) {
+    case 1: return 0.20 * x;
+    case 2: return 0.12 * x;
+    case 3: return 0.08 * x / Math.sqrt(1 + 0.0002 * x);
+    case 4: return 0.06 * x / Math.sqrt(1 + 0.0015 * x);
+    case 5: return 0.03 * x / (1 + 0.0003 * x);
+    default: return 0.016 * x / (1 + 0.0003 * x);
+  }
+}
+// Downwind distance (km) at which an elevated plume of effective height heffM first gives its largest ground-level
+// concentration: sigma_z(x) = H / sqrt(2) (Gaussian plume result). Infinity = it stays aloft: the plume is above the mixing
+// layer (blhM), or sigma_z saturates below that value (E/F/G classes: a tall stack plume does not come down in stable air).
+const TD_BLH_FACTOR = 1.0;
+function physTouchdownKm(heffM, cls, blhM) {
+  if (!(heffM > 0)) return 0;
+  if (blhM != null && isFinite(blhM) && heffM > TD_BLH_FACTOR * blhM) return Infinity;
+  const target = heffM / Math.SQRT2;
+  let lo = 0.01, hi = 150;
+  if (briggsSigmaZm(hi, cls) < target) return Infinity;
+  if (briggsSigmaZm(lo, cls) >= target) return lo;
+  for (let k = 0; k < 50; k++) { const mid = 0.5 * (lo + hi); if (briggsSigmaZm(mid, cls) < target) lo = mid; else hi = mid; }
+  return 0.5 * (lo + hi);
 }
 // Angular spread (deg, 1 sigma) of where the smell may be after D km: turbulence plus the direction error of the wind data.
 function physSdDeg(h, tMs, lat, lon, Dkm, uMs) {
@@ -7571,7 +7621,7 @@ function terrainAt(lat, lon) {
   }
   return null;
 }
-async function ensureTerrain(b) {
+async function ensureTerrainCoarse(b) {
   const key = b.n;
   if (terrainGrids.some(g => g.key === key)) return;
   if (terrainLoading[key]) return terrainLoading[key];
@@ -7605,14 +7655,196 @@ async function ensureTerrainForReports(reports, sourceFilter = null) {
   const sourceList = sourceFilter ? [sourceFilter] : KNOWN_BURNERS;
   for (const b of sourceList) {
     if (!PLUME_STACK_KINDS.includes(b.k)) continue;
-    if ((reports || []).some(r => getHaversineDistance(b.a, b.o, +r.latitude, +r.longitude) <= FIT_MAX_KM)) await ensureTerrain(b);
+    if ((reports || []).some(r => getHaversineDistance(b.a, b.o, +r.latitude, +r.longitude) <= FIT_MAX_KM)) await ensureTerrain(b, { fine: true });
   }
 }
+/* ---------- fine terrain (1 km DEM) and plume-terrain interaction ----------
+   WHY: the 4.3 km grid above cannot resolve the north slope of Fruska gora (a few km wide), and an elevated plume was
+   only given a free, per-report "touchdown delay". This block adds, for the ELEVATED plume only:
+   0. A 1 km elevation grid (+-16 km around each stack source). PROVENANCE: Open-Meteo elevation API = a MODELLED 90 m digital
+      elevation model sampled at 1 km, not a survey. Stack ground level uses the plant's own figure (stk.baseAmsl, midpoint).
+   1. Terrain contact: plume centre height AMSL (ground at the stack + stack height + Briggs rise, hour by hour) is compared with
+      the ground along the path. Closer than FINE_CLEAR_M -> the plume is taken to reach the surface there, and the surface (10 m)
+      wind carries it from then on. This is geometry, not a fitted delay.
+   2. Dividing streamline (Snyder et al. 1985): in stratified air the layer below Hc = hill * (1 - Fr), Fr = U / (N * hill), cannot
+      climb the terrain ahead (hill = highest ground within FINE_LOOK_KM along the wind, above the ground here). The wind component
+      into the slope is removed in proportion to how far below Hc the plume is, and the air follows the contour.
+   Every term uses the weather data and the DEM only, never a report. FINE_CLEAR_M and the look-ahead are a-priori assumptions
+   (order of the vertical plume spread at a few km); they are NOT tuned to reports. Switch off: physParamsSet({fine:false}).
+   Not modelled: gravity currents / drainage layer depth, lee waves, building downwash, plume penetration of the mixing layer. */
+const FINE_DEM_HALF_KM = 16, FINE_DEM_N = 33, FINE_DEM_LS_KEY = (TT_LS + 'dem_fine_v1');
+const FINE_LOOK_KM = 6, FINE_LOOK_STEP_KM = 0.5, FINE_MIN_HILL_M = 40, FINE_GRAD_KM = 3, FINE_MIN_TANGENT = 0.4;
+const fineDems = [], fineDemLoading = {}, fineDemFailedAt = (() => { try { return JSON.parse(localStorage.getItem('ttt_fineDemFailedAt') || '{}') || {}; } catch (e) { return {}; } })();   // failedAt: after an error (rate limit, offline) do not retry the 11 requests on every call
+function fineDemFor(lat, lon) {
+  for (const g of fineDems) {
+    const fx = (lon - g.lon0) / g.dLon, fy = (lat - g.lat0) / g.dLat;
+    if (fx >= 0 && fy >= 0 && fx <= g.n - 1 && fy <= g.n - 1) return { g, fx, fy };
+  }
+  return null;
+}
+function fineDemZ(lat, lon) {
+  const q = fineDemFor(lat, lon);
+  if (!q) return null;
+  const { g, fx, fy } = q, n = g.n, i0 = Math.min(Math.floor(fx), n - 2), j0 = Math.min(Math.floor(fy), n - 2), tx = fx - i0, ty = fy - j0, z = g.z;
+  return z[j0 * n + i0] * (1 - tx) * (1 - ty) + z[j0 * n + i0 + 1] * tx * (1 - ty) + z[(j0 + 1) * n + i0] * (1 - tx) * ty + z[(j0 + 1) * n + i0 + 1] * tx * ty;
+}
+// Broad uphill gradient (m/m, east/north) over +-FINE_GRAD_KM: the slope the air meets, not 90 m noise.
+function fineDemGrad(lat, lon) {
+  const cl = Math.cos(lat * Math.PI / 180), dl = FINE_GRAD_KM / 110.574, dn = FINE_GRAD_KM / (111.32 * cl);
+  const e = fineDemZ(lat, lon + dn), w = fineDemZ(lat, lon - dn), n = fineDemZ(lat + dl, lon), s = fineDemZ(lat - dl, lon);
+  if (e == null || w == null || n == null || s == null) return null;
+  return { gx: (e - w) / (2 * FINE_GRAD_KM * 1000), gy: (n - s) / (2 * FINE_GRAD_KM * 1000) };
+}
+function fineDemBuild(key, lat, lon, z) {
+  const n = FINE_DEM_N, cl = Math.cos(lat * Math.PI / 180);
+  return { key, lat0: lat - FINE_DEM_HALF_KM / 110.574, lon0: lon - FINE_DEM_HALF_KM / (111.32 * cl), dLat: 2 * FINE_DEM_HALF_KM / 110.574 / (n - 1), dLon: 2 * FINE_DEM_HALF_KM / (111.32 * cl) / (n - 1), n, z, zmax: Math.max(...z) };
+}
+// ~11 requests for one source, spaced 400 ms apart, one retry after 6 s. Throws if a chunk fails twice (no fine DEM, graceful fallback).
+async function fetchElevationsPaced(points) {
+  const out = [];
+  for (let i = 0; i < points.length; i += 100) {
+    const chunk = points.slice(i, i + 100);
+    let part = null;
+    for (let attempt = 0; attempt < 2 && !part; attempt++) {
+      if (i > 0 || attempt > 0) await new Promise(r => setTimeout(r, attempt ? 6000 : 400));
+      try { part = await fetchElevations(chunk); } catch (e) { if (attempt) throw e; }
+    }
+    out.push(...part);
+  }
+  return out;
+}
+async function ensureFineDem(b) {
+  const key = b.n;
+  if (!FINE_TERRAIN_ENABLED || fineDems.some(g => g.key === key)) return;
+  if (fineDemLoading[key]) return fineDemLoading[key];
+  if (fineDemFailedAt[key] && Date.now() - fineDemFailedAt[key] < 10 * 60000) return;
+  fineDemLoading[key] = (async () => {
+    try {
+      const n = FINE_DEM_N, cl = Math.cos(b.a * Math.PI / 180);
+      let z = null, store = null;
+      try { store = JSON.parse(localStorage.getItem(FINE_DEM_LS_KEY) || 'null'); } catch (e) {}
+      if (!store || store.v !== 1 || store.hl !== FINE_DEM_HALF_KM || store.n !== n || !store.e) store = { v: 1, hl: FINE_DEM_HALF_KM, n, e: {} };
+      if (Array.isArray(store.e[key]) && store.e[key].length === n * n) z = store.e[key];
+      if (!z) {   // server-side cache first (table om_fine_dem, filled once by a database job): no Open-Meteo call at all
+        try {
+          const { data: row } = await sb.from('om_fine_dem').select('n,half_km,z').eq('key', key).maybeSingle();
+          if (row && row.n === n && Math.abs(row.half_km - FINE_DEM_HALF_KM) < 1e-6 && Array.isArray(row.z) && row.z.length === n * n && row.z.every(v => v != null)) {
+            z = row.z;
+            store.e[key] = z;
+            try { localStorage.setItem(FINE_DEM_LS_KEY, JSON.stringify(store)); } catch (e) {}
+          }
+        } catch (e) { /* table missing or offline: fall back to Open-Meteo below */ }
+      }
+      if (!z) {
+        const pts = [];
+        for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+          pts.push({ lat: b.a + (-FINE_DEM_HALF_KM + 2 * FINE_DEM_HALF_KM * j / (n - 1)) / 110.574, lon: b.o + (-FINE_DEM_HALF_KM + 2 * FINE_DEM_HALF_KM * i / (n - 1)) / (111.32 * cl) });
+        }
+        const el = await runWithOpenMeteoLimit(() => fetchElevationsPaced(pts));
+        const ok = el.filter(v => v != null);
+        if (ok.length < n * n * 0.9) throw new Error('too few elevations');     // no fine DEM = no fine terrain terms (graceful fallback)
+        const mean = ok.reduce((s, v) => s + v, 0) / ok.length;
+        z = el.map(v => (v == null ? mean : v));
+        store.e[key] = z;
+        try { localStorage.setItem(FINE_DEM_LS_KEY, JSON.stringify(store)); } catch (e) {}
+      }
+      fineDems.push(fineDemBuild(key, b.a, b.o, z));
+    } catch (e) { fineDemFailedAt[key] = Date.now(); try { localStorage.setItem('ttt_fineDemFailedAt', JSON.stringify(fineDemFailedAt)); } catch (e2) {} console.warn('[fine-dem]', key, e); }
+    finally { delete fineDemLoading[key]; }
+  })();
+  return fineDemLoading[key];
+}
+// Public entry (all callers use this name): coarse grid as before + the fine DEM.
+async function ensureTerrain(b, opts) {
+  // opts.fine: also load the 1 km DEM. Only callers that fit REPORTS ask for it; the forecast of every plant in the country does not
+  // (that burst of elevation requests made Open-Meteo answer HTTP 429 to the wind-history calls too).
+  const fineP = (FINE_TERRAIN_ENABLED && opts && opts.fine) ? ensureFineDem(b).catch(() => {}) : null;
+  await ensureTerrainCoarse(b);
+  if (fineP) await fineP;
+}
+const stackBaseAmsl = b => {
+  const a = b && b.stk && b.stk.baseAmsl, arr = a == null ? [] : [].concat(a).filter(x => isFinite(x));
+  return arr.length ? arr.reduce((s, x) => s + x, 0) / arr.length : (b ? fineDemZ(b.a, b.o) : null);
+};
+const plumeCentreCache = new WeakMap();      // hourly object -> Map('mode|hour' -> effective stack height above ground, m)
+// Plume centre height above sea level (m) at tMs: ground at the stack + stack height + plume rise (nearest model hour). null if unknown.
+function plumeCentreAsl(b, h, tMs, mode) {
+  const base = stackBaseAmsl(b);
+  if (base == null || !h || !h.time || !h.time.length) return null;
+  let ms = forecastHourlyMsCache.get(h);
+  if (!ms) { ms = h.time.map(x => Date.parse(x + 'Z')); forecastHourlyMsCache.set(h, ms); }
+  const n = ms.length;
+  let i = 0;
+  while (i < n - 1 && ms[i + 1] <= tMs) i++;
+  if (i + 1 < n && tMs - ms[i] > (ms[i + 1] - ms[i]) / 2) i++;
+  let m = plumeCentreCache.get(h);
+  if (!m) { m = new Map(); plumeCentreCache.set(h, m); }
+  const key = mode + '|' + i;
+  let heff = m.get(key);
+  if (heff === undefined) {
+    heff = null;
+    if (String(mode).startsWith('p:')) { const d = plumeRiseDiag(h, i, mode); if (d && d.stacks.length) heff = d.stacks.reduce((s, x) => s + x.heff, 0) / d.stacks.length; }
+    else if (String(mode).startsWith('h:')) { const hs = stackHeightsOf(b); if (hs.length) heff = hs.reduce((s, x) => s + x, 0) / hs.length; }
+    m.set(key, heff);
+  }
+  return heff == null ? null : base + heff;
+}
+// Terrain options for advectParcel: only for an elevated release from a source that has a fine DEM.
+function terrFor(b, h) {
+  if (!FINE_TERRAIN_ENABLED || !b || !h) return null;
+  const mode = burnerMode(b);
+  if (mode === 'ground' || mode === 'stack') return null;
+  if (fineDemZ(b.a, b.o) == null) return null;
+  return { centreAsl: t => plumeCentreAsl(b, h, t, mode) };
+}
+// Dividing-streamline blocking of the elevated plume. Returns the adjusted {u, v} (km/h) or null when nothing applies.
+function fineBlockVec(u, v, lat, lon, zc, st) {
+  const N = PHYS_N_BY_CLASS[st.cls - 1];
+  if (!(N > 0)) return null;                                   // unstable (A, B): no stratification, the plume climbs
+  const sp = Math.hypot(u, v), U = sp / 3.6;
+  if (!(U > 0.05)) return null;
+  const zg = fineDemZ(lat, lon);
+  if (zg == null) return null;
+  const q0 = fineDemFor(lat, lon);
+  if (q0 && zc >= q0.g.zmax) return null;                       // plume above every cell of the grid: nothing can block it (cheap exit)
+  const wx = u / sp, wy = v / sp, cl = Math.cos(lat * Math.PI / 180);
+  let zmax = -Infinity;
+  for (let d = FINE_LOOK_STEP_KM; d <= FINE_LOOK_KM + 1e-9; d += FINE_LOOK_STEP_KM) {
+    const z = fineDemZ(lat + wy * d / 110.574, lon + wx * d / (111.32 * cl));
+    if (z != null && z > zmax) zmax = z;
+  }
+  const hill = zmax - zg;
+  if (!(hill >= FINE_MIN_HILL_M)) return null;
+  const Fr = U / (N * hill);
+  if (!(Fr < 1)) return null;                                  // fast enough to go over
+  const Hc = hill * (1 - Fr), hp = zc - zg;
+  const f = clampN((Hc - hp) / (0.3 * Hc), 0, 1);              // 0 above the dividing streamline .. 1 well below it
+  if (!(f > 0)) return null;
+  const g = fineDemGrad(lat, lon);
+  if (!g) return null;
+  const gm = Math.hypot(g.gx, g.gy);
+  if (!(gm > 0.002)) return null;                              // no usable slope direction (< 0.1 deg)
+  const nx = g.gx / gm, ny = g.gy / gm, wn = u * nx + v * ny;  // n = uphill direction
+  if (!(wn > 0)) return null;                                  // not blowing into the slope
+  let nu = u - f * wn * nx, nv = v - f * wn * ny;
+  const tx = -ny, ty = nx, tc = nu * tx + nv * ty;             // contour direction and the wind along it
+  const floor = FINE_MIN_TANGENT * sp;
+  if (Math.abs(tc) < floor) {                                  // head-on: the air splits, it does not stop
+    const sg = tc === 0 ? 1 : Math.sign(tc), add = (floor - Math.abs(tc)) * sg * f;
+    nu += add * tx; nv += add * ty;
+  }
+  return { u: nu, v: nv };
+}
 // Wind vector (km/h, east/north) -> same vector after terrain effects at (lat, lon, tMs). `h` = hourly weather.
-function physAdjustVec(w, lat, lon, tMs, h, elevated) {
+// `zc` = plume centre height AMSL (elevated releases only; enables the fine-terrain dividing-streamline term).
+function physAdjustVec(w, lat, lon, tMs, h, elevated, zc) {
   if (!w || !h) return w;
   const ter = terrainAt(lat, lon);
-  if (!ter) return w;
+  if (!ter) {                                                       // no coarse grid here: the fine terms can still act on an elevated plume
+    if (elevated && FINE_TERRAIN_ENABLED && zc != null && fineDemZ(lat, lon) != null) { const fb0 = fineBlockVec(w.u, w.v, lat, lon, zc, stabClassAt(h, tMs, lat, lon)); if (fb0) return fb0; }
+    return w;
+  }
+  const fineOn = !!elevated && FINE_TERRAIN_ENABLED && zc != null && fineDemZ(lat, lon) != null;   // fine block replaces the weak coarse blocking
   const gm = Math.hypot(ter.gx, ter.gy);
   const st = stabClassAt(h, tMs, lat, lon), m = metAt(h, tMs);
   const U = Math.hypot(w.u, w.v) / 3.6;
@@ -7623,7 +7855,7 @@ function physAdjustVec(w, lat, lon, tMs, h, elevated) {
     const wn = u * nx + v * ny;
     if (wn > 0 && U > 0.1) {                                        // 1. blocking of flow into a slope
       const N = PHYS_N_BY_CLASS[st.cls - 1], Fr = N > 0 ? U / (N * Math.max(ter.relief, 50)) : 9;
-      const beta = clampN(1 - Fr, 0, 1) * sf * PHYS_BLOCK_K * (elevated ? 0.4 : 1);
+      const beta = clampN(1 - Fr, 0, 1) * sf * PHYS_BLOCK_K * (elevated ? (fineOn ? 0 : 0.4) : 1);
       u -= beta * wn * nx; v -= beta * wn * ny;
     }
     if (!elevated) {                                                // 2. slope flows, surface layer only
@@ -7647,11 +7879,12 @@ function physAdjustVec(w, lat, lon, tMs, h, elevated) {
     const par = u * ter.ax + v * ter.ay;
     u = (1 - kap) * u + kap * par * ter.ax; v = (1 - kap) * v + kap * par * ter.ay;
   }
+  if (fineOn) { const fb = fineBlockVec(u, v, lat, lon, zc, st); if (fb) { u = fb.u; v = fb.v; } }
   return { u, v };
 }
 // Console: physDiag() -> terrain grids loaded and the stability class by hour for the last loaded source.
 window.physDiag = function () {
-  return { enabled: PHYS_ENABLED, grids: terrainGrids.map(g => ({ key: g.key, n: g.n, maxReliefM: Math.round(Math.max(...g.rel)) })) };
+  return { enabled: PHYS_ENABLED, grids: terrainGrids.map(g => ({ key: g.key, n: g.n, maxReliefM: Math.round(Math.max(...g.rel)) })), fineDems: fineDems.map(g => ({ key: g.key, n: g.n, minM: Math.round(Math.min(...g.z)), maxM: Math.round(Math.max(...g.z)) })), fine: FINE_TERRAIN_ENABLED, clearM: FINE_CLEAR_M };
 };
 
 // Carries a parcel of air from (lat0, lon0) at t0Ms to tEndMs in `stepMin` steps, using the
@@ -7659,14 +7892,18 @@ window.physDiag = function () {
 // `fallbackVec` is used where the hourly data has nothing.
 function advectParcel(lat0, lon0, t0Ms, tEndMs, hourly, o = {}) {
   const { mode = 'ground', biasDeg = 0, stepMin = 6, fallbackVec = null, field = null } = o;
+  // Terrain contact (elevated release only): o.terr = { centreAsl(tMs) } or o.src = the source (the helper builds it). On contact the
+  // parcel switches to the surface wind for the rest of the path (pts.terrainTouch = where / when).
+  const terr = o.terr !== undefined ? o.terr : (o.src ? terrFor(o.src, hourly || (field && field[0] && field[0].hourly)) : null);
+  let curMode = mode, touched = null;
   const stepMs = stepMin * 60000;
   // `field` = [{lat, lon, hourly}]: wind at several places along the way. The wind used at each step
   // is an inverse-distance blend of them, so the plume can feel the valley, the plain beyond it, etc.
   const windHere = (t, la, lo) => {
-    if (!field || field.length < 2) return hourly ? forecastWindAt(hourly, t, mode) : null;
+    if (!field || field.length < 2) return hourly ? forecastWindAt(hourly, t, curMode) : null;
     let su = 0, sv = 0, sw = 0;
     for (const f of field) {
-      const w = f.hourly ? forecastWindAt(f.hourly, t, mode) : null;
+      const w = f.hourly ? forecastWindAt(f.hourly, t, curMode) : null;
       if (!w) continue;
       const wt = 1 / ((getHaversineDistance(la, lo, f.lat, f.lon) + 3) ** 2);
       su += w.u * wt; sv += w.v * wt; sw += wt;
@@ -7677,11 +7914,15 @@ function advectParcel(lat0, lon0, t0Ms, tEndMs, hourly, o = {}) {
   const pts = [{ lat, lon, tMs: t0Ms, dist: 0, dir, spd: null }];
   for (let t = t0Ms; t < tEndMs - 1;) {
     const dt = Math.min(stepMs, tEndMs - t);
+    if (terr && curMode !== 'ground') {
+      const zc0 = terr.centreAsl(t + dt / 2), zg0 = fineDemZ(lat, lon);
+      if (zc0 != null && zg0 != null && zc0 - zg0 < FINE_CLEAR_M) { curMode = 'ground'; touched = { lat, lon, tMs: t }; }
+    }
     const w = windHere(t + dt / 2, lat, lon) || lastW || fallbackVec;
     if (!w) break;
     lastW = w;
-    const wp = (PHYS_ENABLED && !o.noPhys) ? physAdjustVec(w, lat, lon, t + dt / 2, hourly || (field && field[0] && field[0].hourly), mode !== 'ground') : w;
-    const wr = rotateWindVec(wp, biasDeg);
+    const wp = (PHYS_ENABLED && !o.noPhys) ? physAdjustVec(w, lat, lon, t + dt / 2, hourly || (field && field[0] && field[0].hourly), curMode !== 'ground', (terr && curMode !== 'ground') ? terr.centreAsl(t + dt / 2) : null) : w;
+    const wr = rotateWindVec(wp, touched ? 0 : biasDeg);
     const dh = dt / 3600000, dx = wr.u * dh, dy = wr.v * dh, km = Math.hypot(dx, dy);
     if (km > 1e-6) dir = { x: dx / km, y: dy / km };
     lat += dy / 110.574;
@@ -7691,6 +7932,7 @@ function advectParcel(lat0, lon0, t0Ms, tEndMs, hourly, o = {}) {
     pts.push({ lat, lon, tMs: t, dist, dir, spd: Math.hypot(wr.u, wr.v) });
   }
   if (pts.length > 1) pts[0].dir = pts[1].dir;
+  if (touched) pts.terrainTouch = touched;
   return pts;
 }
 // Where a parcel path was at time tMs (null outside the path's time range).
@@ -7851,7 +8093,7 @@ async function loadHourlyPlumeForPopup(source, host, isCurated) {
       ? plumeBiasEstimate(source, plumeStability(now, source.a, source.o), hourly, [], now).bias
       : 0;
     const path = advectParcel(source.a, source.o, now, now + FORECAST_AHEAD_H * 3600000, hourly, {
-      mode, biasDeg: bias, stepMin: FORECAST_STEP_MIN, field
+      mode, biasDeg: bias, stepMin: FORECAST_STEP_MIN, field, src: source
     });
     if (path.length < 2) throw new Error('empty plume path');
     host.innerHTML = hourlyPlumeRows(path, now) + hourlyEffectiveHeightHtml(source, hourly, now) + hourlyWindHeightRows(hourly, now);
@@ -7917,7 +8159,8 @@ const FIT_MAX_KM = 40, FIT_MAX_AGE_DAYS = 36500, FIT_MAX_TRAVEL_H = 8, FIT_STEP_
 /* Model versions. Any change to the wind-trail model (anchoredFitCore / anchoredFitTwoLeg, FIT_*, PLUME_*, tolerance, informative rule) MUST bump TT_MODEL_VERSION.
    TT_MODEL_VERSION = the model this app computes and prints in the PDF. TT_SERVER_MODEL_VERSION = the pre-registered model stored in air_report_fits (server, immutable; see ttt_prereg.md).
    They are different models: do not compare their numbers without naming the version. */
-const TT_MODEL_VERSION = 'app-anchored-v1', TT_SERVER_MODEL_VERSION = 'prereg80-v1';
+const TT_MODEL_BASE = 'app-anchored-v2', TT_SERVER_MODEL_VERSION = 'prereg80-v1';
+let TT_MODEL_VERSION = TT_MODEL_BASE + tdVersionTag();   // '+td1' = physical touchdown switched on (a different model: name it when comparing)
 const fitAttribCache = {};   // report.id -> { b, d, miss, width, norm, travelMin, calAt } | { none: true, near, calAt }
 // Hourly wind at a source, shared between reports: recent reports use one request per source and hour (past 7 days
 // plus forecast), older ones one archive request per source and day.
@@ -8046,7 +8289,7 @@ function anchoredFitCore(b, h, lat, lon, tR, o = {}) {
   const biasAt = o.biasAt || ((tr, from) => plumeBiasFor(b.n, plumeStability(tr, b.a, b.o), from).bias);
   const cands = [], maxTravelMs = physMaxTravelH(h, tR) * 3600000;
   for (let tr = tR - maxTravelMs; tr <= tR - 10 * 60000; tr += FIT_STEP_MIN * 60000) {
-    const pts = advectParcel(b.a, b.o, tr, tR, h, { mode, biasDeg: biasAt(tr, stackWindFromAt(h, tr, b)), stepMin: FIT_STEP_MIN });
+    const pts = advectParcel(b.a, b.o, tr, tR, h, { mode, biasDeg: biasAt(tr, stackWindFromAt(h, tr, b)), stepMin: FIT_STEP_MIN, src: b });
     if (pts.length < 2) continue;
     const end = pts[pts.length - 1];
     if (end.tMs < tR - 1) continue;            // ran out of wind data
@@ -8088,13 +8331,50 @@ const TL_STEP_MIN = 15, TL_PENALTY_KM = 0.5, TL_STABLE_EXTRA_KM = 1.0, TL_ENSEMB
 function advectTwoLeg(b, tr, tTouch, tR, h, biasDeg) {
   const mode = burnerMode(b);
   if (tTouch <= tr + 1) return advectParcel(b.a, b.o, tr, tR, h, { mode: 'ground', biasDeg: 0, stepMin: TL_STEP_MIN });
-  if (tTouch >= tR - 1) return advectParcel(b.a, b.o, tr, tR, h, { mode, biasDeg, stepMin: TL_STEP_MIN });
-  const p1 = advectParcel(b.a, b.o, tr, tTouch, h, { mode, biasDeg, stepMin: TL_STEP_MIN });
+  if (tTouch >= tR - 1) return advectParcel(b.a, b.o, tr, tR, h, { mode, biasDeg, stepMin: TL_STEP_MIN, src: b });
+  const p1 = advectParcel(b.a, b.o, tr, tTouch, h, { mode, biasDeg, stepMin: TL_STEP_MIN, src: b });
   const e = p1[p1.length - 1];
   if (p1.length < 2 || e.tMs < tTouch - 1) return [];
   const p2 = advectParcel(e.lat, e.lon, tTouch, tR, h, { mode: 'ground', biasDeg: 0, stepMin: TL_STEP_MIN });
   p2.forEach(q => { q.dist += e.dist; });
-  return p1.concat(p2.slice(1));
+  const out = p1.concat(p2.slice(1));
+  if (p1.terrainTouch) out.terrainTouch = p1.terrainTouch;
+  return out;
+}
+// Physical touchdown candidates for one release time (TD_PHYS). Touchdown happens where the plume reaches the ground by vertical
+// spread (physTouchdownKm), tried at 0.6x / 1x / 1.6x of that distance; the elevated path with no touchdown is also a candidate and
+// is only penalised when the physics says the plume must already have come down. Returns null when the source has no stack data
+// (the caller then uses the free-delay candidates).
+function tdPhysCandidates(b, h, tr, tR, bias, st, mt, lat, lon) {
+  const mode = burnerMode(b);
+  if (typeof mode !== 'string' || mode.slice(0, 2) !== 'p:') return null;
+  const i = physIdx(h, tr);
+  if (i < 0) return null;
+  const diag = plumeRiseDiag(h, i, mode);
+  if (!diag || !diag.stacks.length) return null;
+  const heff = diag.stacks.reduce((a, x) => a + x.heff, 0) / diag.stacks.length;
+  const xTd = physTouchdownKm(heff, st.cls, mt ? mt.blh : null);
+  const p0 = advectTwoLeg(b, tr, Infinity, tR, h, bias);
+  const out = [];
+  if (p0.length < 2) return out;
+  const add = (dMin, pts, m) => {
+    const end = pts[pts.length - 1];
+    if (pts.length < 2 || end.tMs < tR - 1 || !physPathPlausible(b, end)) return;
+    const miss = getHaversineDistance(end.lat, end.lon, lat, lon);
+    out.push({ tr, dMin, pts, miss, dist: end.dist, score: miss + TL_PHYS_PENALTY_KM * m, xTdKm: xTd, heff });
+  };
+  const e0 = p0[p0.length - 1];
+  add(null, p0, isFinite(xTd) && e0.dist > xTd ? Math.log(e0.dist / xTd) : 0);
+  if (isFinite(xTd)) {
+    const seen = new Set();
+    for (const f of TL_PHYS_FACTORS) {
+      const q = p0.find(pt => pt.dist >= xTd * f);
+      if (!q || q.tMs >= tR - 1 || seen.has(q.tMs)) continue;
+      seen.add(q.tMs);
+      add(Math.round((q.tMs - tr) / 60000), advectTwoLeg(b, tr, q.tMs, tR, h, bias), Math.abs(Math.log(f)));
+    }
+  }
+  return out;
 }
 // Same return shape as anchoredFitCore (+ best.dMin = touchdown delay in minutes or null, members = near-equal fits).
 function anchoredFitTwoLeg(b, h, lat, lon, tR, o = {}) {
@@ -8105,7 +8385,10 @@ function anchoredFitTwoLeg(b, h, lat, lon, tR, o = {}) {
     const st = stabClassAt(h, tr, b.a, b.o), mt = metAt(h, tr);
     // Convective, deep mixing layer: an elevated plume is brought down readily, so touching down costs less.
     const convective = st.unstable && mt && mt.blh != null && mt.blh > 600;
+    let physUsed = false;
+    if (TD_PHYS && (!TD_NIGHT_ONLY || st.stable)) { const pc = tdPhysCandidates(b, h, tr, tR, bias, st, mt, lat, lon); if (pc) { pc.forEach(c => cands.push(c)); physUsed = true; if (!TD_EXTRA_DELAYS) continue; } }
     for (const dMin of [null].concat(TL_DELAYS_MIN)) {
+      if (physUsed && dMin == null) continue;   // the no-touchdown path already is a (penalised) physical candidate
       const tT = dMin == null ? Infinity : tr + dMin * 60000;
       const pts = advectTwoLeg(b, tr, tT, tR, h, bias);
       if (pts.length < 2) continue;
@@ -8144,7 +8427,7 @@ async function plumeSkillStudy(opts = {}) {
     let b = null, bd = maxKm;
     KNOWN_BURNERS.forEach(x => { if (!PLUME_STACK_KINDS.includes(x.k)) return; const d = getHaversineDistance(x.a, x.o, lat, lon); if (d >= 2.5 && d < bd) { b = x; bd = d; } });
     if (!b) continue;
-    await ensureTerrain(b).catch(() => {});
+    await ensureTerrain(b, { fine: true }).catch(() => {});
     let h = null; try { h = await burnerHourlyFor(b, tR); } catch (e) {}
     if (!h?.time?.length) continue;
     const h0 = Date.parse(h.time[0] + 'Z') + FIT_MAX_TRAVEL_H * 3600000, h1 = Math.min(Date.now(), Date.parse(h.time[h.time.length - 1] + 'Z')) - 3600000;
@@ -8172,6 +8455,7 @@ async function plumeSkillStudy(opts = {}) {
   console.log('[skill] reports used:', items.length);
   const e0 = put('current', {});
   put('physics OFF', { enabled: false });
+  put('fine terrain OFF', { fine: false });      // A/B of the 1 km terrain terms; not part of the parameter search below
   const best = {};
   for (const k of Object.keys(grid)) {
     let bv = base[k], bs = e0.skill ?? -1;
@@ -8198,6 +8482,148 @@ async function plumeSkillStudy(opts = {}) {
   return { rows, best, better };
 }
 window.plumeSkillStudy = plumeSkillStudy; window.physParamsGet = physParamsGet; window.physParamsSet = physParamsSet;
+
+// Console: await plumeTdStudy()   -- A/B of the touchdown model on the same reports: free touchdown delays (legacy) vs physical
+// touchdown (sigma-z + mixing lid, TD_PHYS). Per report: linked at the real time, linked on placebo days (+-1, +-2 d), mean miss
+// (km) real vs placebo. skill = real - placebo; miss gap = placebo miss - real miss.
+//  1) PAIRED BOOTSTRAP: reports are resampled in pairs (legacy and physical on the same report), {boot:2000} times; the 95 % interval of
+//     the physical - legacy difference says whether skill / miss gap gains are distinguishable from zero (interval excludes 0).
+//  2) DAY / NIGHT: the same table for day (sun >= 3 deg) and night (stable) reports, where the mixing-layer rule matters most.
+//  4) VARIANTS: hybrid (physical touchdown only at night: physParamsSet({td:1, tdn:1})) and physical + the legacy delays as extra
+//     candidates ({tdx:1}), each vs legacy and vs physical. {tune:false} stops after this part; {base:'physical'} tunes the all-day variant.
+//  3) TUNING ON ONE HALF, SCORING THE OTHER: reports are sorted by time and cut into two contiguous halves. TL_PHYS_PENALTY_KM and the
+//     TL_PHYS_FACTORS set are chosen on one half (largest miss gap, skill must not drop, needs a real gain to move), then scored on the
+//     other, in both directions. Reads data only; nothing is applied. Parameters can also be set by hand: physParamsSet({tdp:.., tdf:[..]}).
+async function plumeTdStudy(opts = {}) {
+  const limit = opts.limit || 120, maxKm = opts.maxKm || PLUME_ATTRIB_MAX_KM, catRe = opts.category || /^chemical/i, B = opts.boot || 2000;
+  const rs = (globalActiveData || []).filter(r => catRe.test(r.category || '') && (Date.now() - Date.parse(r.created_at)) / 3600000 >= 6 && r.latitude != null).slice(0, limit);
+  const items = [];
+  for (const r of rs) {
+    const lat = +r.latitude, lon = +r.longitude, tR = Date.parse(r.created_at);
+    let b = null, bd = maxKm;
+    KNOWN_BURNERS.forEach(x => { if (!PLUME_STACK_KINDS.includes(x.k)) return; const d = getHaversineDistance(x.a, x.o, lat, lon); if (d >= 2.5 && d < bd) { b = x; bd = d; } });
+    if (!b) continue;
+    await ensureTerrain(b, { fine: true }).catch(() => {});
+    let h = null; try { h = await burnerHourlyFor(b, tR); } catch (e) {}
+    if (!h?.time?.length) continue;
+    const h0 = Date.parse(h.time[0] + 'Z') + FIT_MAX_TRAVEL_H * 3600000, h1 = Math.min(Date.now(), Date.parse(h.time[h.time.length - 1] + 'Z')) - 3600000;
+    items.push({ b, h, lat, lon, tR, h0, h1, night: plumeStability(tR, b.a, b.o) === 'stable' });
+  }
+  items.sort((x, y) => x.tR - y.tR);
+  const N = items.length, mid = N >> 1, ix = (fn) => items.map((_, i) => i).filter(fn);
+  const ALL = ix(() => true), HA = ix(i => i < mid), HB = ix(i => i >= mid), DAY = ix(i => !items[i].night), NIGHT = ix(i => items[i].night);
+  const f2 = v => v == null || !isFinite(v) ? null : +v.toFixed(3);
+  const DEF = { tdf: [0.6, 1, 1.6], tdp: 1.0 };
+  const key = p => (p.td === false ? 'legacy' : (p.tdn ? 'night-only ' : '') + (p.tdx ? '+delays ' : '') + p.tdp + ' | ' + p.tdf.join('/'));
+
+  // One variant over all items -> per-item result (null where the report has no usable fit or no placebo day).
+  const runV = async (p, label) => {
+    const snap = physParamsGet();
+    physParamsSet(Object.assign({ tdn: false, tdx: false }, p));
+    const out = [];
+    try {
+      for (let k = 0; k < N; k++) {
+        const it = items[k], fit = t => anchoredFitTwoLeg(it.b, it.h, it.lat, it.lon, t);
+        const f0 = fit(it.tR);
+        let res = null;
+        if (f0) {
+          let ps = 0, pm = 0, pn = 0;
+          [-2, -1, 1, 2].forEach(dd => { const t = it.tR + dd * 86400000; if (t < it.h0 || t > it.h1) return; const f = fit(t); if (f) { ps += f.ok ? 1 : 0; pm += f.miss; pn++; } });
+          if (pn) res = { real: f0.ok ? 1 : 0, pl: ps / pn, mR: f0.miss, mP: pm / pn, td: f0.best.dMin != null ? 1 : 0 };
+        }
+        out.push(res);
+        if (k % 10 === 9) await new Promise(r => setTimeout(r, 0));
+      }
+    } finally { physParamsSet(snap); physParamsSet({ td: !!snap.td, tdn: !!snap.tdn, tdx: !!snap.tdx }); }
+    console.log('[td-study] ran', label || key(p));
+    return out;
+  };
+  const mean = (R, idx, fn) => { let s = 0, n = 0; idx.forEach(i => { if (R[i]) { s += fn(R[i]); n++; } }); return n ? s / n : null; };
+  const agg = (R, idx) => {
+    const n = idx.filter(i => R[i]).length;
+    return { n, real: mean(R, idx, r => r.real), placebo: mean(R, idx, r => r.pl), skill: mean(R, idx, r => r.real - r.pl),
+      missR: mean(R, idx, r => r.mR), missP: mean(R, idx, r => r.mP), gap: mean(R, idx, r => r.mP - r.mR), td: mean(R, idx, r => r.td) };
+  };
+  const aggRow = (name, R, idx) => { const a = agg(R, idx); return { variant: name, n: a.n, 'linked (real)': f2(a.real), 'linked (placebo days)': f2(a.placebo), 'skill = real - placebo': f2(a.skill),
+    'mean miss real km': f2(a.missR), 'mean miss placebo km': f2(a.missP), 'miss gap km (placebo - real)': f2(a.gap), 'touchdown used %': a.td == null ? null : Math.round(100 * a.td) }; };
+
+  // Paired bootstrap of the mean per-report difference (Y - X), reports resampled with replacement.
+  const rng = seed => () => { seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+  const bootCI = d => {
+    const n = d.length; if (!n) return null;
+    const rnd = rng(20261112), m = new Float64Array(B);
+    for (let b = 0; b < B; b++) { let s = 0; for (let i = 0; i < n; i++) s += d[(rnd() * n) | 0]; m[b] = s / n; }
+    m.sort();
+    const mu = d.reduce((a, c) => a + c, 0) / n;
+    return { n, mean: mu, lo: m[Math.floor(0.025 * B)], hi: m[Math.min(B - 1, Math.floor(0.975 * B))], pGt0: m.reduce((a, c) => a + (c > 0 ? 1 : 0), 0) / B };
+  };
+  const METRICS = [['skill', r => r.real - r.pl, 1], ['miss gap km', r => r.mP - r.mR, 1], ['mean miss real km', r => r.mR, -1]];
+  const cmp = (label, X, Y, idx, subset) => METRICS.map(([nm, fn, good]) => {
+    const d = []; idx.forEach(i => { if (X[i] && Y[i]) d.push(fn(Y[i]) - fn(X[i])); });
+    const c = bootCI(d);
+    return c ? { comparison: label, subset, metric: nm, n: c.n, 'diff (Y - X)': f2(c.mean), 'CI 2.5 %': f2(c.lo), 'CI 97.5 %': f2(c.hi), 'P(diff > 0)': f2(c.pGt0),
+      verdict: c.lo > 0 || c.hi < 0 ? ((c.mean * good > 0) ? 'better, CI excludes 0' : 'worse, CI excludes 0') : 'not distinguishable from 0' } : { comparison: label, subset, metric: nm, n: 0 };
+  });
+
+  console.log('[td-study] reports used:', N, '| day', DAY.length, '| night', NIGHT.length, '| bootstrap B =', B);
+  const legacy = await runV({ td: false }, 'legacy free delays');
+  const cur = await runV({ td: true, ...DEF }, 'physical, current (' + key(DEF) + ')');
+
+  console.log('[td-study] 1+2) paired bootstrap, physical (Y) - legacy (X), all / day / night');
+  console.table([aggRow('legacy free delays', legacy, ALL), aggRow('physical touchdown', cur, ALL),
+    aggRow('legacy | day', legacy, DAY), aggRow('physical | day', cur, DAY), aggRow('legacy | night', legacy, NIGHT), aggRow('physical | night', cur, NIGHT)]);
+  const ciRows = [].concat(cmp('physical - legacy', legacy, cur, ALL, 'all'), cmp('physical - legacy', legacy, cur, DAY, 'day'), cmp('physical - legacy', legacy, cur, NIGHT, 'night'));
+  console.table(ciRows);
+
+  // 4) hybrid (physical touchdown only at night) and physical + the legacy delays as extra candidates, vs legacy and vs physical
+  const hyb = await runV({ td: true, tdn: true, ...DEF }, 'hybrid: physical at night, legacy by day');
+  const phx = await runV({ td: true, tdx: true, ...DEF }, 'physical + legacy delays as extra candidates');
+  const hyx = await runV({ td: true, tdn: true, tdx: true, ...DEF }, 'hybrid + legacy delays');
+  const V4 = [['legacy', legacy], ['physical (all day)', cur], ['hybrid (night only)', hyb], ['physical + delays', phx], ['hybrid + delays', hyx]];
+  console.log('[td-study] 4) variants: all / day / night');
+  console.table([].concat(...[['all', ALL], ['day', DAY], ['night', NIGHT]].map(([nm, idx]) => V4.map(([vn, R]) => aggRow(vn + ' | ' + nm, R, idx)))));
+  const ci4 = [];
+  for (const [lab, X, Y] of [['hybrid - legacy', legacy, hyb], ['hybrid - physical', cur, hyb], ['physical+delays - legacy', legacy, phx], ['hybrid+delays - legacy', legacy, hyx], ['hybrid+delays - hybrid', hyb, hyx]])
+    ci4.push(...cmp(lab, X, Y, ALL, 'all'), ...cmp(lab, X, Y, DAY, 'day'), ...cmp(lab, X, Y, NIGHT, 'night'));
+  console.table(ci4);
+  if (opts.tune === false) { console.log('[td-study] tuning skipped (tune:false). nothing was applied.'); return { n: N, ciRows, ci4 }; }
+
+  // 3) tune on one half, score on the other (base = the hybrid unless opts.base === 'physical')
+  const BASEF = opts.base === 'physical' ? {} : { tdn: true };
+  const PEN = [0.25, 0.5, 1.5, 2, 3, 5, 8], FAC = [[1], [0.8, 1, 1.25], [0.5, 1, 2], [0.4, 0.7, 1, 1.4, 2.2]];
+  const baseR = BASEF.tdn ? hyb : cur;
+  const cache = { [key({ ...BASEF, ...DEF })]: { p: { ...BASEF, ...DEF }, R: baseR } };
+  const get = async p => { const q = { ...BASEF, tdf: p.tdf.slice(), tdp: p.tdp }, k = key(q); if (!cache[k]) cache[k] = { p: q, R: await runV({ td: true, ...q }) }; return cache[k]; };
+  const penRuns = [], facRuns = [];
+  for (const tdp of PEN) penRuns.push(await get({ tdf: DEF.tdf, tdp }));
+  for (const tdf of FAC) facRuns.push(await get({ tdf, tdp: DEF.tdp }));
+  const curE = cache[key({ ...BASEF, ...DEF })];
+  const pick = (cands, idx) => {   // needs a real gain on the tuning half; skill must not drop
+    const c0 = agg(curE.R, idx); let best = curE, bg = c0.gap;
+    cands.forEach(c => { const a = agg(c.R, idx); if (a.n && a.gap > bg + 0.02 && a.skill >= c0.skill - 0.01) { bg = a.gap; best = c; } });
+    return best;
+  };
+  const folds = [['tune first half -> score second half', HA, HB], ['tune second half -> score first half', HB, HA]];
+  const tuneRows = [], testCI = [], chosen = [];
+  for (const [name, tuneIdx, testIdx] of folds) {
+    const bp = pick(penRuns, tuneIdx), bf = pick(facRuns, tuneIdx);
+    const tuned = await get({ tdf: bf.p.tdf, tdp: bp.p.tdp });
+    chosen.push({ fold: name, penalty_km_per_efold: tuned.p.tdp, factors: tuned.p.tdf.join('/'), changed: key(tuned.p) !== key({ ...BASEF, ...DEF }) });
+    tuneRows.push(Object.assign({ fold: name, half: 'tuning' }, aggRow('current ' + key(DEF), curE.R, tuneIdx)), Object.assign({ fold: name, half: 'tuning' }, aggRow('tuned ' + key(tuned.p), tuned.R, tuneIdx)),
+      Object.assign({ fold: name, half: 'held-out' }, aggRow('legacy', legacy, testIdx)), Object.assign({ fold: name, half: 'held-out' }, aggRow('current ' + key(DEF), curE.R, testIdx)),
+      Object.assign({ fold: name, half: 'held-out' }, aggRow('tuned ' + key(tuned.p), tuned.R, testIdx)));
+    testCI.push(...cmp('tuned - current (' + name + ')', curE.R, tuned.R, testIdx, 'held-out'), ...cmp('tuned - legacy (' + name + ')', legacy, tuned.R, testIdx, 'held-out'));
+  }
+  console.log('[td-study] 3) chosen on one half, scored on the other');
+  console.table(chosen); console.table(tuneRows); console.table(testCI);
+  const sweep = [aggRow('legacy', legacy, ALL)].concat([curE].concat(penRuns, facRuns).map(c => aggRow(key(c.p), c.R, ALL)));
+  console.log('[td-study] one-at-a-time sweep on all reports (descriptive only, not a held-out score)');
+  console.table(sweep);
+  const recovered = testCI.filter(r => /tuned - legacy/.test(r.comparison) && r.metric === 'mean miss real km');
+  console.log('[td-study] nothing was applied. Held-out mean miss real km, tuned - legacy (negative = tuned is closer):', recovered.map(r => r['diff (Y - X)'] + ' [' + r['CI 2.5 %'] + ', ' + r['CI 97.5 %'] + ']').join(' | '));
+  return { n: N, ciRows, ci4, chosen, tuneRows, testCI, sweep };
+}
+window.plumeTdStudy = plumeTdStudy;
 
 // Console: await ttTouchdownStudy()  -- on the loaded "chemical solvents" reports within 15 km of a known source,
 // compares the single-layer path with the two-leg path by day/night: how much closer the path ends to the report,
@@ -8233,7 +8659,7 @@ window.ttTouchdownStudy = ttTouchdownStudy;
 // Where there is no wind data the cone rule (stackSourceFor) stays in charge.
 // Persisted results of the fit (settled reports only: their wind data is final, so the result cannot change until the
 // learned correction plumeCal.at or the source list changes, which invalidates the whole set).
-const FIT_MODEL_VER = 5;      // v4: results are cached per source (scope) under a content signature, not one slot per report
+const FIT_MODEL_VER = 6;      // v4: results are cached per source (scope) under a content signature, not one slot per report
 const FIT_BLOB_MAX = 6000;    // persisted results per (model, source) record
 // A saved compatibility result is only reused for exactly the model that produced it: algorithm version + physical
 // parameters + the learned correction's CONTENT (a recalibration that learns the same numbers keeps the cache).
@@ -8241,7 +8667,7 @@ const srcSigMemo = new WeakMap();
 function srcSigOf(b) { let s = srcSigMemo.get(b); if (!s) { s = ttHash(JSON.stringify([b.n, b.a, b.o, b.k, b.stk || null])); srcSigMemo.set(b, s); } return s; }
 let plumeCalSigObj = null, plumeCalSigVal = '';
 function plumeCalSig() { if (plumeCalSigObj !== plumeCal) { plumeCalSigObj = plumeCal; plumeCalSigVal = ttHash(JSON.stringify(plumeCal.src || {})); } return plumeCalSigVal; }
-const fitModelSig = () => `m${FIT_MODEL_VER}.${ttHash(JSON.stringify(physParamsGet()))}.${plumeCalSig()}`;
+const fitModelSig = () => `m${FIT_MODEL_VER}.${ttHash(JSON.stringify(physParamsGet()))}.${plumeCalSig()}.f${ttHash(FINE_TERRAIN_ENABLED ? fineDems.map(g => g.key).sort().join('|') : 'off')}`;   // + which fine DEMs are loaded
 function ttTrailKey(report, att) {
   const model = att ? `${att.b.n}#${srcSigOf(att.b)}.${plumeCalSig()}` : 'free';
   return `trail:v${TT_TRAIL_VER}:w${TRAIL_WINDOW_HOURS}:${ttHash(JSON.stringify(physParamsGet()))}:${(+report.latitude).toFixed(4)},${(+report.longitude).toFixed(4)}@${Date.parse(report.created_at)}:${model}`;
@@ -8834,9 +9260,10 @@ async function plumeBacktest(opts = {}) {
   // opts.maxKm (e.g. 60): also take reports farther than 30 km, to check the model beyond the range it was built on.
   const maxKm = opts.maxKm || PLUME_ATTRIB_MAX_KM, BT_CAP = opts.maxKm ? PLUME_DRAW_CAP_KM : 12;
   const since = new Date(Date.now() - PLUME_CAL_DAYS * 86400000).toISOString();
-  const { data, error } = await sb.from('air_reports').select('id,category,intensity,latitude,longitude,created_at,wind_direction,manual_wind_direction')
+  let { data, error } = await sb.from('air_reports').select('id,category,intensity,latitude,longitude,created_at,wind_direction,manual_wind_direction,comment')
     .gte('created_at', since).neq('category', 'Clean Air').limit(5000);
   if (error || !data) throw (error || new Error('no reports'));
+  data = data.filter(r => !isTestReport(r));   // TEST reports must not teach the model
   const rows = [], fitRows = [], windRows = [], allInt = { s: 0, n: 0 }, allMisses = [], allCats = {}, calmRows = [], FOLDS = 5, BUCKET_MS = 10800000;
   let allNear = 0;
   // Every known source with at least 20 eligible reports 2.5-30 km around it is tested. Beočin uses only chemical-solvent reports. Tall stacks use
@@ -9178,10 +9605,11 @@ async function recalibratePlumeModel(force) {
   workStatusBegin(workKey, t('workRecalibrating'));
   try {
     const since = new Date(Date.now() - PLUME_CAL_DAYS * 86400000).toISOString();
-    const { data, error } = await sb.from('air_reports')
-      .select('latitude,longitude,created_at,category')
+    let { data, error } = await sb.from('air_reports')
+      .select('latitude,longitude,created_at,category,comment')
       .gte('created_at', since).neq('category', 'Clean Air').limit(5000);
     if (error || !data) throw (error || new Error('no reports'));
+    data = data.filter(r => !isTestReport(r));
     const src = {};
     for (const b of KNOWN_BURNERS) {
       if (!PLUME_STACK_KINDS.includes(b.k)) continue;
@@ -9191,7 +9619,7 @@ async function recalibratePlumeModel(force) {
         return d >= 2.5 && d <= PLUME_ATTRIB_MAX_KM;
       });
       if (near.length < PLUME_CAL_MIN_REPORTS) continue;
-      await ensureTerrain(b).catch(() => {});
+      await ensureTerrain(b, { fine: true }).catch(() => {});
       const hourly = await omFetchLong92(b.a, b.o);
       if (!hourly?.time?.length) continue;
       const cells = await fetchReportCellWinds(near);
@@ -9292,7 +9720,7 @@ async function buildWindField(b, sh) {
   if (!sh) return field;
   const now = Date.now(), iso = new Date().toISOString();
   const snap = v => Math.round(v * 20) / 20;
-  const path = advectParcel(b.a, b.o, now - 3 * 3600000, now + FORECAST_AHEAD_H * 3600000, sh, { mode: burnerMode(b), stepMin: 12 });
+  const path = advectParcel(b.a, b.o, now - 3 * 3600000, now + FORECAST_AHEAD_H * 3600000, sh, { mode: burnerMode(b), stepMin: 12, src: b });
   const seen = new Set([`${snap(b.a)}_${snap(b.o)}`]), want = [];
   for (const d of [12, 24, 36, 48, 60]) {
     const q = path.find(x => x.dist >= d);
@@ -9420,7 +9848,7 @@ async function renderSmellForecast() {
     const endMs = now + FORECAST_AHEAD_H * 3600000;
     const puffs = rel.map(tr => ({
       tRelease: tr,
-      pts: advectParcel(b.a, b.o, tr, endMs, sh, { mode: burnerMode(b), biasDeg: est.bias, stepMin: FORECAST_STEP_MIN, fallbackVec: fbVec, field: fieldBySrc[b.n] })
+      pts: advectParcel(b.a, b.o, tr, endMs, sh, { mode: burnerMode(b), biasDeg: est.bias, stepMin: FORECAST_STEP_MIN, fallbackVec: fbVec, field: fieldBySrc[b.n], src: b })
     })).filter(p => p.pts.length > 1);
     if (!puffs.length) return;
 
@@ -9490,7 +9918,7 @@ async function renderSmellForecast() {
     for (let tr = now - 3 * 3600000; tr < now - 5 * 60000; tr += 60 * 60000) rel.push(tr);
     rel.push(now);
     const puffs = rel.map(tr => ({ tRelease: tr,
-      pts: advectParcel(b.a, b.o, tr, endMs, sh, { mode: burnerMode(b), biasDeg: est.bias, stepMin: FORECAST_STEP_MIN, field: fieldBySrc[b.n] })
+      pts: advectParcel(b.a, b.o, tr, endMs, sh, { mode: burnerMode(b), biasDeg: est.bias, stepMin: FORECAST_STEP_MIN, field: fieldBySrc[b.n], src: b })
     })).filter(p => p.pts.length > 1);
     if (!puffs.length) return;
     puffs.forEach((pf, k) => {
@@ -9650,7 +10078,8 @@ async function fetchElevations(points) {
     const chunk = points.slice(i, i + 100);
     const lat = chunk.map(p => Number(p.lat).toFixed(5)).join(',');
     const lon = chunk.map(p => Number(p.lon).toFixed(5)).join(',');
-    const r = await fetch(`https://api.open-meteo.com/v1/elevation?latitude=${lat}&longitude=${lon}`);
+    const r = await omFetch(`https://api.open-meteo.com/v1/elevation?latitude=${lat}&longitude=${lon}`);
+    if (!r) throw new Error('elevation: rate-limited or network error');
     if (!r.ok) throw new Error('elevation HTTP ' + r.status);
     const j = await r.json();
     if (!Array.isArray(j.elevation) || j.elevation.length !== chunk.length) throw new Error('elevation: bad response');
@@ -9750,9 +10179,10 @@ async function backfillMissingElevations(reports) {
 }
 
 async function fetchAll(){
-  try { const rows = await ttHook('loadReports'); if (rows && rows.length) return rows; } catch (e) { console.warn('[reports] hook failed, loading everything', e); }
-  const {data,error}=await sb.from('air_reports').select(AIR_REPORTS_LIST_COLUMNS).order('created_at',{ascending:false});
+  try { const rows = await ttHook('loadReports'); if (rows && rows.length) return TT_SCIENCE ? rows : rows.filter(r => !isTestReport(r)); } catch (e) { console.warn('[reports] hook failed, loading everything', e); }
+  let {data,error}=await sb.from('air_reports').select(AIR_REPORTS_LIST_COLUMNS).order('created_at',{ascending:false});
   if(error){ console.error(error); return []; }
+  if (!TT_SCIENCE) data = data.filter(r => !isTestReport(r));   // TEST reports are visible in science only
   backfillMissingElevations(data);   // fire-and-forget, no-op once everything is filled
   backfillMissingStability(data);
   return data;
@@ -10525,7 +10955,7 @@ async function filterPinsBySourceTrajectory(tracerCoords) {
   lastTraceBtStats = poiSource ? traceBtStats : null;
   lastTraceChance = poiSource ? traceChance : null;
   // Refresh anything on screen that shows trace numbers.
-  if (hhState && hhState.status !== 'loading' && document.getElementById('hhSheet')?.style.display === 'block') hhRenderSheet();
+  if (hhState && hhState.status !== 'loading' && (hhState.inline || document.getElementById('hhSheet')?.style.display === 'block')) hhRenderSheet();
   // The heatmap follows the Settings toggle only (also for traces started by tapping a factory / burner /
   // landfill pin): off means it is never drawn.
   if (traceHeatmapEnabled) renderTraceHeatLayer(tracerCoords, activeReportsToDrawTrails);
@@ -10544,6 +10974,25 @@ async function filterPinsBySourceTrajectory(tracerCoords) {
 /* ═══════════════════════════════════════════════════
    REPORT ACTION
 ═══════════════════════════════════════════════════ */
+/* Per-device cooldown between reports (matches the 'cooldownActive' text: one report per 30 min).
+   The server-side limit in the submit-report edge function is the real protection;
+   this only gives the user a friendly message first. */
+const REPORT_COOLDOWN_MS = 30 * 60 * 1000;
+const REPORT_LAST_KEY = TT_LS + 'last_report_at';
+
+function getReportCooldownRemainingMs() {
+  if (TT_SCIENCE) return 0;   // science: no limit on the number of reports
+  try {
+    const last = parseInt(localStorage.getItem(REPORT_LAST_KEY), 10) || 0;
+    return Math.max(0, last + REPORT_COOLDOWN_MS - Date.now());
+  } catch (e) { return 0; }
+}
+
+function markReportSubmittedNow() {
+  if (TT_SCIENCE) return;
+  try { localStorage.setItem(REPORT_LAST_KEY, String(Date.now())); } catch (e) {}
+}
+
 function resetReportingForm() {
   // If the user manually dropped a pin to file this report, turn pin-drop
   // mode back off so the pin doesn't stay "clicked"/active after submit.
@@ -10574,7 +11023,7 @@ async function reportBadAir() {
   try { await reportBadAirInner(); } finally { ttReportInFlight = false; ttReportBusy(false); }
 }
 async function reportBadAirInner(){
-  // Spam protection: at most one report per device per hour.
+  // Spam protection: at most one report per device per 30 minutes (REPORT_COOLDOWN_MS).
   const remaining = getReportCooldownRemainingMs();
   if (remaining > 0) {
     const mins = Math.ceil(remaining / 60000);
@@ -10587,18 +11036,14 @@ async function reportBadAirInner(){
 
   const category  = wizState.category;
   const intensity = wizState.intensity;
-  const comment   = document.getElementById('comment').value;
+  const comment   = (TT_SCIENCE && wizState.isTest ? TT_TEST_PREFIX : '') + document.getElementById('comment').value;
   const durationInput = document.getElementById('duration').value;
   const durationValue = durationInput && durationInput !== "" ? parseInt(durationInput) : 1;
 
   // New input values
-  const timeVal = document.getElementById('reportTime').value; // "HH:MM"
   const manualWind = document.getElementById('manualWind').value; // number string or ""
 
-  // Create Date object for current date + user-selected time
-  const reportDate = new Date();
-  const [hours, minutes] = timeVal.split(':');
-  reportDate.setHours(hours, minutes, 0, 0);
+  // The report time is set by the server (current time, to the minute); the client no longer sends one.
 
   // Parse manual wind direction — this is the user-reported value from Windfinder,
   // stored permanently in manual_wind_direction and used as the initial wind_direction
@@ -10656,7 +11101,7 @@ async function reportBadAirInner(){
   // Mixing-layer / dispersion context at the report's own time.
   let stabilityCtx = null;
   try {
-    stabilityCtx = await fetchStabilityContext(coords.lat, coords.lon, reportDate.toISOString());
+    stabilityCtx = await fetchStabilityContext(coords.lat, coords.lon, new Date().toISOString());
   } catch (stabErr) {
     console.warn('Stability fetch failed at report time, will be backfilled on next load:', stabErr);
   }
@@ -10681,8 +11126,7 @@ async function reportBadAirInner(){
       comment,
       category,
       intensity:             parseInt(intensity),
-      duration:              durationValue,
-      created_at:            reportDate.toISOString()
+      duration:              durationValue
     });
 
     markReportSubmittedNow();

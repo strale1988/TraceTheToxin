@@ -1345,3 +1345,10 @@ button:focus-visible, [role="button"]:focus-visible, a:focus-visible, input:focu
 #sqView .sq-tip{ min-height:34px; margin-top:6px; font-size:12px; display:flex; flex-wrap:wrap; gap:4px 12px; align-items:center; font-variant-numeric:tabular-nums; }
 #sqView .sq-tip span{ display:inline-flex; align-items:center; gap:4px; }
 @media (max-width:520px){ #sqView .sq-row{ grid-template-columns:70px 1fr 96px; } }
+
+/* Satellite heat history shown under the details (Detalji), not in the bottom sheet */
+.hh-inline{ max-width:720px; margin:16px auto 28px; padding:12px 14px 14px; background:var(--bg-surface); border:1px solid var(--border-color-strong); border-radius:14px; }
+.hh-inline-title{ font-size:15px; font-weight:700; margin-bottom:8px; }
+.hh-inline .hh-muted{ font-size:12.5px; }
+.hh-inline .hh-stat-v{ font-size:22px; }
+.hh-inline .hh-caveat, .hh-inline .hh-check{ font-size:12px; }
