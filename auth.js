@@ -17,6 +17,7 @@
   /* ── strings (the app's own T / t(), en + sr) ── */
   Object.assign(T, {
     authLoginTitle:   { en: 'Sign in to report',        sr: 'Prijavi se da bi prijavio' },
+    authLoginShort:   { en: 'Sign in',                   sr: 'Prijava' },
     authLoginMsg:     { en: 'Reporting bad air needs an account. Use the same login as TraceTheBreak.', sr: 'Za prijavu lošeg vazduha potreban je nalog. Koristi isti nalog kao u TraceTheBreak.' },
     authGoogle:       { en: 'Continue with Google',       sr: 'Nastavi sa Google' },
     authGithub:       { en: 'Continue with GitHub',       sr: 'Nastavi sa GitHub' },
@@ -155,7 +156,13 @@
   }
 
   /* ── UI: login dialog, username dialog, Settings > Account ── */
-  var CSS = '.tt-oauth-stack{display:flex;flex-direction:column;gap:8px;margin:12px 0 4px}' +
+  var CSS = '.tt-auth-pill{height:36px;padding:0 13px;border:none;border-radius:999px;background:var(--accent);color:var(--accent-contrast,#fff);' +
+    'font-size:var(--fs-12,12px);font-weight:var(--fw-semibold,600);display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;' +
+    'box-shadow:0 1px 3px var(--floating-shadow);-webkit-tap-highlight-color:transparent;touch-action:manipulation}' +
+    '.tt-auth-pill:active{transform:scale(.94)}.tt-auth-pill svg{width:16px;height:16px;flex-shrink:0}' +
+    '.tt-auth-avatar{width:36px;height:36px;padding:0;justify-content:center;font-size:var(--fs-14,14px);text-transform:uppercase}' +
+    '@media (max-width:380px){.tt-auth-pill:not(.tt-auth-avatar) span{display:none}.tt-auth-pill:not(.tt-auth-avatar){width:36px;padding:0;justify-content:center}}' +
+    '.tt-oauth-stack{display:flex;flex-direction:column;gap:8px;margin:12px 0 4px}' +
     '.tt-oauth-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:42px;border-radius:var(--radius-sm,8px);' +
     'border:1px solid var(--border-color-strong);background:var(--bg-surface);color:var(--text-primary);font-size:var(--fs-13,13px);' +
     'font-weight:var(--fw-semibold,600);cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation}' +
@@ -239,6 +246,7 @@
     $('ttUsernameSave').textContent = t('authUsernameSave');
     $('ttUsernameClose').textContent = t('authClose');
     if (A.session) hideLogin();
+    renderHeaderBtn();
     refreshFab();
 
     var title = $('ttAccountTitle'), body = $('ttAccountBody');
@@ -255,6 +263,31 @@
     }
   }
 
+  // Header button: "Prijava" for a signed-out visitor, the account's initial once signed in.
+  var PERSON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg>';
+  function renderHeaderBtn() {
+    var b = $('ttAuthBtn');
+    if (A.session) {
+      // Signed in: remove the button completely; only the Settings button (which holds the Account section) remains.
+      if (b) b.remove();
+    } else {
+      if (!b) {
+        var rc = document.querySelector('header .right-controls'); if (!rc) return;
+        b = document.createElement('button');
+        b.type = 'button'; b.id = 'ttAuthBtn'; b.onclick = onHeaderBtn;
+        rc.insertBefore(b, rc.firstChild);
+      }
+      b.className = 'tt-auth-pill';
+      b.innerHTML = PERSON + '<span>' + esc(t('authLoginShort')) + '</span>';
+      b.title = t('authLoginTitle');
+      b.setAttribute('aria-label', b.title);
+    }
+  }
+  function onHeaderBtn() {
+    if (!A.session) { showLogin(); return; }
+    if (A.profile && A.profile.username) { if (typeof showSettingsModal === 'function') showSettingsModal(); return; }
+    showUsername();
+  }
   // The report button is disabled until a location exists; for a visitor who is not signed in it must stay tappable, because
   // tapping it is what opens the login dialog.
   function keepFabTappable() {
